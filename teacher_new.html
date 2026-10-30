@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150086">
+<link rel="stylesheet" href="css/style.css?v=202610150088">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -24,7 +24,7 @@
       <input type="file" id="pdf-file" accept="application/pdf" multiple required>
       <div id="queue-note" class="banner" style="display:none; margin:8px 0 0;"></div>
       <label class="bank-include-label" style="margin-top:10px;"><input type="checkbox" id="auto-reg" checked> ⚡ <b>확인 없이 자동 등록</b> — 여러 시험지를 한꺼번에 고르면 기다릴 필요 없이 정답 읽기·단원 추정·QR 찍기·등록·문제은행 저장까지 알아서 해요. 못 읽은 정답은 비워 두고 등록한 뒤, 끝나면 나오는 결과 화면에서 문제 있는 것만 모아서 고치면 돼요. 같은 이름·내용의 시험지는 건너뛰어요. (시험지를 1개만 고르면 이 설정과 상관없이 하나씩 확인하며 등록해요) (단원·소단원은 확신 있는 것만 채우고 🤖 표시가 붙어요)</label>
-      <div style="margin:4px 0 0 24px; font-size:13px;">동시에 처리할 시험지 수 <select id="auto-pool" style="width:auto; display:inline-block; margin:0; padding:4px 8px;"><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select> <span class="hint" style="margin:0;">많을수록 서버 저장을 더 많이 겹치지만, 컴퓨터가 느려지고 구글 서버가 거부할 수 있어요. 막히면 줄이세요.</span></div>
+      <div style="margin:4px 0 0 24px; font-size:13px;">동시에 처리할 시험지 수 <select id="auto-pool" style="width:auto; display:inline-block; margin:0; padding:4px 8px;"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select> <span class="hint" style="margin:0;">많을수록 서버 저장을 더 많이 겹치지만, 컴퓨터가 느려지고 구글 서버가 거부할 수 있어요. 막히면 줄이세요.</span></div>
       <label class="field-label-spaced">정답지 PDF <span class="muted" style="font-weight:400;">(문제지와 따로 있을 때만 · 없으면 비워두세요)</span></label>
       <input type="file" id="pdf-answer-file" accept="application/pdf">
       <label class="field-label-spaced">시험지 이름</label>
@@ -156,15 +156,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150086"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150086"></script>
-<script src="js/vendor/pdf.min.js?v=202610150086"></script>
-<script src="js/config.js?v=202610150086"></script>
-<script src="js/api.js?v=202610150086"></script>
-<script src="js/common.js?v=202610150086"></script>
-<script src="js/bankcore.js?v=202610150086"></script>
-<script src="js/pdfui.js?v=202610150086"></script>
-<script src="js/pdfview.js?v=202610150086"></script>
+<script src="js/vendor/qrcode.min.js?v=202610150088"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150088"></script>
+<script src="js/vendor/pdf.min.js?v=202610150088"></script>
+<script src="js/config.js?v=202610150088"></script>
+<script src="js/api.js?v=202610150088"></script>
+<script src="js/common.js?v=202610150088"></script>
+<script src="js/bankcore.js?v=202610150088"></script>
+<script src="js/pdfui.js?v=202610150088"></script>
+<script src="js/pdfview.js?v=202610150088"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -769,7 +769,7 @@ function showAutoReview(R) {
         '<tr style="border-top:2px solid var(--line);"><td><b>평균</b></td><td>' + f(avg('read')) + '</td><td>' + f(avg('build')) + '</td><td>' + f(avg('srv')) + '</td><td>' + f(avg('bank')) + '</td><td><b>' + f(avg('all')) + '</b></td></tr></table>' +
         (() => { const B = T.map(x => x.tm.bs).filter(Boolean); if (!B.length) return ''; const m = k => B.reduce((a, o) => a + (o[k] || 0), 0) / B.length / 1000, mb = B.reduce((a, o) => a + (o.kb || 0), 0) / B.length / 1024;
           return '<div class="hint" style="margin:8px 0 2px;"><b>문제은행 저장 내역</b> (시험지 1개 평균 · 문항을 5개씩 묶어 4묶음씩 동시에 보내서, 아래 시간은 묶음별 시간을 더한 값이에요)<br>그림 만들기 ' + m('rend').toFixed(0) + '초 · 서버로 보내고 답 받기 ' + m('req').toFixed(0) + '초 · 보낸 그림 ' + mb.toFixed(1) + 'MB' +
-            (B.some(o => o.srv) ? '<br>서버 안에서: 드라이브에 그림 올리기 ' + m('up').toFixed(0) + '초 · 시트 쓸 차례 기다리기 ' + m('lock').toFixed(0) + '초 · 시트에 쓰기 ' + m('sheet').toFixed(0) + '초' : '<br>(서버 안의 시간은 Apps Script를 새 버전으로 배포하면 같이 나와요)') + '</div>'; })() + '</details>';
+            (B.some(o => o.srv) ? '<br>서버 안에서: 드라이브에 그림 올리기 ' + m('up').toFixed(0) + '초 · 시트 쓸 차례 기다리기 ' + m('lock').toFixed(0) + '초 · 시트에 쓰기 ' + m('sheet').toFixed(0) + '초<br>드라이브 올리기 방식: 빠른 방식 ' + B.reduce((a, o) => a + (o.fast || 0), 0) + '개 · 느린 방식 ' + B.reduce((a, o) => a + (o.slow || 0), 0) + '개' + (B.some(o => o.code) ? ' · 빠른 방식이 막힌 이유: ' + e((B.filter(o => o.code).pop() || {}).code) + ' ' + e((B.filter(o => o.msg).pop() || {}).msg || '') : '') : '<br>(서버 안의 시간은 Apps Script를 새 버전으로 배포하면 같이 나와요)') + '</div>'; })() + '</details>';
     } }
   if (R.notes.length) h += '<div class="card"><b>알림</b><div style="font-size:13px; margin-top:6px;">' + R.notes.map(e).join('<br>') + '</div></div>';
   h += '<a class="btn outline" href="teacher_list.html" style="width:100%;">시험지 목록으로</a>';
@@ -1221,7 +1221,7 @@ async function saveToBank(cls, source, onProgress, ranges) {
         const tReq = performance.now();
         const res = await callApi('saveQuestions', { password: getTeacherPassword(), questions: payload });
         BS.req += Math.round(performance.now() - tReq); BS.chunks++;
-        if (res && res.ms) { BS.srv = true; BS.up += res.ms.up || 0; BS.lock += res.ms.lock || 0; BS.sheet += res.ms.sheet || 0; }
+        if (res && res.ms) { BS.srv = true; BS.fast = (BS.fast || 0) + (res.ms.fast || 0); BS.slow = (BS.slow || 0) + (res.ms.slow || 0); if (res.ms.code) { BS.code = res.ms.code; BS.msg = res.ms.msg || BS.msg || ''; } BS.up += res.ms.up || 0; BS.lock += res.ms.lock || 0; BS.sheet += res.ms.sheet || 0; }
         if (!res.ok) { failure = new Error(res.error || '저장 실패'); return; }
         chunks[k].forEach(p => { p.imageBase64 = p.explBase64 = ''; });          // 보낸 그림은 메모리에서 비운다
         done += chunks[k].length;
