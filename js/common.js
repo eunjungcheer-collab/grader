@@ -1,4 +1,4 @@
-window.APP_BUILD = '202610150091';
+window.APP_BUILD = '202610150093';
 function renderHeader(opts) {
   const isLoggedIn = !!getTeacherPassword();
   const authHtml = isLoggedIn ? `

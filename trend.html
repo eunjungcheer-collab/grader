@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>학생별 성적 추이 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202610150093">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#95D1DB">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="records.html">← 시험 기록 관리</a></span>
+  <h1>📈 학생별 성적 추이</h1>
+  <p class="muted" id="tr-status">불러오는 중...</p>
+
+  <div class="card">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <input type="text" id="tr-q" placeholder="학생 이름 검색" style="flex:1; min-width:140px; margin:0;">
+      <select id="tr-range" style="width:auto; margin:0;">
+        <option value="6">최근 6개월</option>
+        <option value="12" selected>최근 12개월</option>
+        <option value="0">전체 기간</option>
+      </select>
+    </div>
+    <select id="tr-sel" size="6" style="margin-top:8px; width:100%;"></select>
+    <label style="display:flex; align-items:center; gap:6px; font-weight:400; font-size:13px; margin-top:8px;"><input type="checkbox" id="tr-avg" checked style="width:auto; margin:0;"> 전체 학생 평균도 같이 보기 (점선)</label>
+  </div>
+
+  <div class="card" id="tr-chart-card" style="display:none;">
+    <b id="tr-title"></b>
+    <div id="tr-chart" style="margin-top:8px;"></div>
+    <div id="tr-note" class="hint" style="margin-top:6px;"></div>
+    <table class="rs-table" id="tr-table" style="width:100%;"></table>
+  </div>
+  <p class="hint">월 평균은 그 달에 제출한 <b>객관식 점수(100점 환산)</b>의 평균이에요. 지난 학기 기록을 정리(새 학기 시작)한 뒤에도 월별 요약이 남아 있어서 그래프가 이어져요. 단, 「요약도 지우기」로 삭제한 기록은 그래프에 나오지 않아요.</p>
+</template>
+
+<script src="js/config.js?v=202610150093"></script>
+<script src="js/api.js?v=202610150093"></script>
+<script src="js/common.js?v=202610150093"></script>
+<style>
+.rs-table { border-collapse:collapse; margin-top:10px; font-size:14px; }
+.rs-table th, .rs-table td { border-bottom:1px solid var(--line); padding:5px 10px; text-align:center; }
+#tr-chart svg { width:100%; height:auto; display:block; }
+</style>
+<script>
+requireLogin();
+renderHeader({ wide: true });
+const $ = id => document.getElementById(id);
+const esc = escapeHtml;
+const nameKey = n => String(n === undefined || n === null ? '' : n).replace(/\s+/g, '');
+const monthOf = d => { const t = new Date(d); if (isNaN(t.getTime())) return ''; const k = new Date(t.getTime() + 9 * 3600 * 1000); return k.getUTCFullYear() + '-' + String(k.getUTCMonth() + 1).padStart(2, '0'); };
+let stu = {}, avgAll = {}, order = [];      // stu[key] = { shown, m: { 'yyyy-MM': {sum, n} }, total } ; avgAll = { month: {sum, n} }
+
+function add(map, key, sum, n) { const o = map[key] || (map[key] = { sum: 0, n: 0 }); o.sum += sum; o.n += n; }
+async function load() {
+  try {
+    const [subs, hist] = await Promise.all([callApi('listSubmissions', { password: getTeacherPassword() }), callApi('listHistory', { password: getTeacherPassword() })]);
+    if (!subs.ok) { $('tr-status').textContent = subs.error || '불러오지 못했어요.'; return; }
+    (subs.submissions || []).forEach(s => {
+      const k = nameKey(s.studentName), mo = monthOf(s.submittedAt);
+      if (!k || k === '이름없음' || !mo || !Number(s.total)) return;
+      const sc = Number(s.score100); if (!isFinite(sc)) return;
+      const o = stu[k] || (stu[k] = { shown: String(s.studentName).trim(), m: {}, total: 0 });
+      add(o.m, mo, sc, 1); o.total++; add(avgAll, mo, sc, 1);
+    });
+    const hRows = (hist && hist.ok) ? (hist.history || []) : [];
+    hRows.forEach(h => {
+      const k = nameKey(h.name); if (!k || !h.month || !h.count) return;
+      const o = stu[k] || (stu[k] = { shown: h.shown || h.name, m: {}, total: 0 });
+      add(o.m, h.month, h.sum, h.count); o.total += h.count; add(avgAll, h.month, h.sum, h.count);
+    });
+    order = Object.keys(stu).sort((a, b) => stu[a].shown.localeCompare(stu[b].shown, 'ko'));
+    $('tr-status').textContent = order.length ? '학생 ' + order.length + '명 · 이름을 고르면 월별 성적이 그래프로 나와요.' : '아직 점수가 있는 제출 기록이 없어요.';
+    fillList();
+  } catch (e) { $('tr-status').textContent = '서버에 연결할 수 없어요.'; }
+}
+function fillList() {
+  const q = $('tr-q').value.trim().replace(/\s+/g, '').toLowerCase(), sel = $('tr-sel'), cur = sel.value;
+  const list = order.filter(k => !q || k.toLowerCase().includes(q));
+  sel.innerHTML = list.map(k => '<option value="' + esc(k) + '">' + esc(stu[k].shown) + ' (' + stu[k].total + '회 제출)</option>').join('') || '<option disabled>일치하는 학생이 없어요</option>';
+  if (cur && list.indexOf(cur) >= 0) sel.value = cur; else if (list.length === 1) { sel.value = list[0]; }
+  draw();
+}
+function monthsBetween(a, b) { const out = []; let [y, m] = a.split('-').map(Number); const [y2, m2] = b.split('-').map(Number); while (y < y2 || (y === y2 && m <= m2)) { out.push(y + '-' + String(m).padStart(2, '0')); m++; if (m > 12) { m = 1; y++; } } return out; }
+function draw() {
+  const k = $('tr-sel').value, card = $('tr-chart-card');
+  if (!k || !stu[k]) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  const o = stu[k], keys = Object.keys(o.m).sort();
+  let first = keys[0], last = keys[keys.length - 1];
+  const now = monthOf(new Date()); if (now > last) last = now;
+  const range = +$('tr-range').value;
+  let months = monthsBetween(first, last);
+  if (range && months.length > range) months = months.slice(-range);
+  const showAvg = $('tr-avg').checked;
+  const val = (map, mo) => map[mo] && map[mo].n ? map[mo].sum / map[mo].n : null;
+  const W = 720, H = 300, L = 40, R = 16, T = 18, B = 40, iw = W - L - R, ih = H - T - B;
+  const x = i => L + (months.length === 1 ? iw / 2 : iw * i / (months.length - 1)), y = v => T + ih * (1 - v / 100);
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="월별 성적 추이 그래프">';
+  [0, 20, 40, 60, 80, 100].forEach(g => { svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(g) + '" y2="' + y(g) + '" stroke="#E5E7EB"/><text x="' + (L - 6) + '" y="' + (y(g) + 4) + '" font-size="11" text-anchor="end" fill="#6B7280">' + g + '</text>'; });
+  const every = Math.ceil(months.length / 12);
+  months.forEach((mo, i) => { if (i % every === 0 || i === months.length - 1) svg += '<text x="' + x(i) + '" y="' + (H - 18) + '" font-size="11" text-anchor="middle" fill="#6B7280">' + mo.slice(2).replace('-', '.') + '</text>'; });
+  const path = (map, color, dash, width) => {
+    let d = '', pen = false;
+    months.forEach((mo, i) => { const v = val(map, mo); if (v === null) { pen = false; return; } d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1) + ' '; pen = true; });
+    return d ? '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="' + width + '"' + (dash ? ' stroke-dasharray="6 5"' : '') + ' stroke-linejoin="round" stroke-linecap="round"/>' : '';
+  };
+  if (showAvg) svg += path(avgAll, '#9CA3AF', true, 2);
+  svg += path(o.m, '#0B1F5C', false, 3);
+  months.forEach((mo, i) => {
+    const v = val(o.m, mo); if (v === null) return;
+    const lbl = Math.round(v);
+    svg += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="4.5" fill="#0B1F5C" stroke="#fff" stroke-width="1.5"><title>' + mo + ' 평균 ' + lbl + '점 (' + o.m[mo].n + '회)</title></circle>' +
+      '<text x="' + x(i).toFixed(1) + '" y="' + (y(v) - 10).toFixed(1) + '" font-size="12" font-weight="700" text-anchor="middle" fill="#0B1F5C">' + lbl + '</text>';
+  });
+  svg += '</svg>';
+  $('tr-title').textContent = o.shown + ' — 월별 평균 점수';
+  $('tr-chart').innerHTML = svg;
+  const have = months.filter(mo => val(o.m, mo) !== null);
+  let note = showAvg ? '진한 실선 = ' + esc(o.shown) + ' · 회색 점선 = 전체 학생 평균. ' : '';
+  if (have.length >= 2) { const d = Math.round(val(o.m, have[have.length - 1]) - val(o.m, have[0])); note += have[0] + ' → ' + have[have.length - 1] + ': ' + (d > 0 ? '▲ ' + d + '점 상승' : d < 0 ? '▼ ' + (-d) + '점 하락' : '변화 없음') + '.'; }
+  else if (have.length === 1) note += '아직 한 달치 기록만 있어서 추이는 다음 달부터 보여요.';
+  $('tr-note').innerHTML = note;
+  $('tr-table').innerHTML = '<tr><th>월</th><th>평균</th><th>제출 횟수</th>' + (showAvg ? '<th>전체 평균</th>' : '') + '</tr>' + months.slice().reverse().filter(mo => val(o.m, mo) !== null).map(mo => {
+    const v = val(o.m, mo), a = val(avgAll, mo);
+    return '<tr><td>' + mo + '</td><td><b>' + Math.round(v) + '</b></td><td>' + o.m[mo].n + '</td>' + (showAvg ? '<td style="color:#6B7280;">' + (a === null ? '-' : Math.round(a)) + '</td>' : '') + '</tr>';
+  }).join('');
+}
+$('tr-q').addEventListener('input', fillList);
+$('tr-sel').addEventListener('change', draw);
+$('tr-range').addEventListener('change', draw);
+$('tr-avg').addEventListener('change', draw);
+load();
+</script>
+</body>
+</html>

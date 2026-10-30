@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150091">
+<link rel="stylesheet" href="css/style.css?v=202610150093">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,9 +16,9 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202610150091"></script>
-<script src="js/api.js?v=202610150091"></script>
-<script src="js/common.js?v=202610150091"></script>
+<script src="js/config.js?v=202610150093"></script>
+<script src="js/api.js?v=202610150093"></script>
+<script src="js/common.js?v=202610150093"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -139,18 +139,18 @@ async function submitAnswers(e) {
       <h2>문항별 결과</h2>
       <p class="hint">틀린 문항(❌)을 다시 풀어 보세요. 정답은 알려주지 않아요.</p>
       <div class="card">
-        ${res.correctAnswers.map((ans, i) => String(ans) === '-' ? `
+        ${res.results.map((rs, i) => rs === 'subj' ? `
           <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;">
             <span>${i + 1}번</span>
             <span>주관식 (자동 채점 제외)</span>
-          </div>` : isSkipAns(res.studentAnswers[i]) ? `
+          </div>` : rs === 'skip' ? `
           <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;">
             <span>${i + 1}번</span>
             <span>안 푼 문항 (채점 제외)</span>
           </div>` : `
           <div class="submission-row">
             <span>${i + 1}번</span>
-            <span>내 답: ${fmtAnswer(res.studentAnswers[i])} ${answerMatches(res.studentAnswers[i], ans) ? '✅' : '❌'}</span>
+            <span>내 답: ${fmtAnswer(res.studentAnswers[i])} ${rs === 'ok' ? '✅' : '❌'}</span>
           </div>`).join('')}
       </div>
     `;

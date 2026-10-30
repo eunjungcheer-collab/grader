@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150091">
+<link rel="stylesheet" href="css/style.css?v=202610150093">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -34,15 +34,26 @@
 
   <div id="list"></div>
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
+
+  <div class="card" style="margin-top:24px;">
+    <b>🗂 백업 · 새 학기 시작</b>
+    <p class="hint" style="margin:6px 0 10px;">기록이 너무 많아지면 느려질 수 있어요. 학기가 끝나면 <b>전체를 백업</b>해 두고, <b>학생 제출 기록만 비워서</b> 새로 시작하세요. 시험지·문제은행·QR은 그대로 쓸 수 있어요. 백업은 드라이브의 「자동채점 백업」 폴더에 스프레드시트 복사본으로 만들어져요.</p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" class="btn outline" id="bk-now" style="flex:1; min-width:150px;">💾 지금 백업만 하기</button>
+      <button type="button" class="btn primary" id="bk-term" style="flex:1; min-width:150px;">🌱 새 학기 시작하기</button>
+    </div>
+    <div id="bk-msg" class="hint" style="margin-top:8px;"></div>
+    <div style="margin-top:10px;"><a class="btn outline" href="trend.html" style="display:block; text-align:center;">📈 학생별 월별 성적 추이 보기</a></div>
+  </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202610150091"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150091"></script>
-<script src="js/config.js?v=202610150091"></script>
-<script src="js/api.js?v=202610150091"></script>
-<script src="js/common.js?v=202610150091"></script>
-<script src="js/bankcore.js?v=202610150091"></script>
-<script src="js/pdfui.js?v=202610150091"></script>
+<script src="js/vendor/pdf.min.js?v=202610150093"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150093"></script>
+<script src="js/config.js?v=202610150093"></script>
+<script src="js/api.js?v=202610150093"></script>
+<script src="js/common.js?v=202610150093"></script>
+<script src="js/bankcore.js?v=202610150093"></script>
+<script src="js/pdfui.js?v=202610150093"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -415,6 +426,46 @@ function render() {
 }
 
 $('q').addEventListener('input', () => { page = 1; render(); });
+// ── 백업 · 새 학기 ──
+function bkShow(r, extra) { $('bk-msg').innerHTML = (extra || '') + '백업: <a href="' + r.backup.url + '" target="_blank">' + escapeHtml(r.backup.name) + '</a> (<a href="' + r.backup.folderUrl + '" target="_blank">백업 폴더 열기</a>)'; }
+$('bk-now').addEventListener('click', async () => {
+  const b = $('bk-now'); b.disabled = true; $('bk-msg').textContent = '백업 만드는 중... (기록이 많으면 잠시 걸려요)';
+  try { const r = await callApi('backupNow', { password: getTeacherPassword() }); if (!r.ok) throw new Error(r.error || '실패'); bkShow(r, '✅ 백업했어요. '); }
+  catch (e) { $('bk-msg').innerHTML = '<span style="color:#C1392B;">' + escapeHtml(e.message) + '</span>'; }
+  b.disabled = false;
+});
+$('bk-term').addEventListener('click', () => {
+  const n = all.length;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; display:flex; align-items:center; justify-content:center; padding:16px;';
+  ov.innerHTML = '<div style="background:#fff; border-radius:14px; max-width:480px; width:100%; padding:18px; max-height:90vh; overflow:auto;">' +
+    '<b style="font-size:17px;">🌱 학기 마감 · 새 학기 시작</b>' +
+    '<p class="hint" style="margin:8px 0;">지금 학생 제출 기록 <b>' + n + '개</b>를 정리해요. 시험지·문제은행·QR은 그대로 쓰고, 학생들이 새로 제출하는 기록부터 다시 쌓여요.</p>' +
+    '<label style="display:block; border:1.5px solid var(--point); border-radius:10px; padding:10px; margin:8px 0; cursor:pointer;"><input type="radio" name="tm-mode" value="backup" checked> <b>💾 백업하고 비우기</b> (권장)<div class="hint" style="margin:4px 0 0 22px;">전체 백업 파일을 먼저 만들고, 성공하면 기록을 비워요. 나중에 백업 파일에서 다시 볼 수 있어요.</div></label>' +
+    '<label style="display:block; border:1.5px solid var(--line); border-radius:10px; padding:10px; margin:8px 0; cursor:pointer;"><input type="radio" name="tm-mode" value="delete"> <b style="color:#C1392B;">🗑 백업 없이 삭제</b><div class="hint" style="margin:4px 0 0 22px;">기록을 바로 지워요. <b>되돌릴 수 없어요.</b></div>' +
+    '<div id="tm-del-opt" style="display:none; margin:8px 0 0 22px;"><label style="font-weight:400; font-size:13px;"><input type="checkbox" id="tm-keep" checked> 학생별 월별 성적 요약(그래프용)은 남기기</label></div></label>' +
+    '<label style="font-size:13px; font-weight:400;">확인을 위해 <b>새학기</b>라고 입력하세요 <input type="text" id="tm-typed" placeholder="새학기" style="margin-top:4px;"></label>' +
+    '<div id="tm-err" style="color:#C1392B; font-size:13px; min-height:18px; margin-top:4px;"></div>' +
+    '<div style="display:flex; gap:8px; margin-top:6px;"><button type="button" class="btn outline" id="tm-cancel" style="flex:1;">취소</button><button type="button" class="btn primary" id="tm-go" style="flex:1;">진행</button></div></div>';
+  document.body.appendChild(ov);
+  const mode = () => ov.querySelector('input[name=tm-mode]:checked').value;
+  ov.querySelectorAll('input[name=tm-mode]').forEach(r => r.addEventListener('change', () => { ov.querySelector('#tm-del-opt').style.display = mode() === 'delete' ? '' : 'none'; }));
+  ov.querySelector('#tm-cancel').addEventListener('click', () => ov.remove());
+  ov.querySelector('#tm-go').addEventListener('click', async () => {
+    if (ov.querySelector('#tm-typed').value.trim() !== '새학기') { ov.querySelector('#tm-err').textContent = '「새학기」를 정확히 입력해야 진행돼요. 아무것도 지우지 않았어요.'; return; }
+    const m = mode(), keep = ov.querySelector('#tm-keep').checked;
+    ov.remove();
+    const b = $('bk-term'); b.disabled = true; $('bk-msg').textContent = (m === 'delete' ? '기록을 지우는 중...' : '백업 만들고 기록을 비우는 중...') + ' 이 창을 닫지 마세요.';
+    try {
+      const r = await callApi('startNewTerm', { password: getTeacherPassword(), confirm: 'yes', mode: m, keepHistory: keep });
+      if (!r.ok) throw new Error(r.error || '실패');
+      const head = '✅ 새 학기를 시작했어요. 학생 기록 ' + r.removed + '개를 비웠어요. ';
+      if (r.backup) bkShow(r, head); else $('bk-msg').innerHTML = head + '(백업 없이 삭제했어요)';
+      try { sessionStorage.removeItem('records_cache'); } catch (e) {}
+      setTimeout(() => location.reload(), 4000);
+    } catch (e) { $('bk-msg').innerHTML = '<span style="color:#C1392B;">' + escapeHtml(e.message) + '</span>'; b.disabled = false; }
+  });
+});
 $('sort-sel').addEventListener('change', () => { page = 1; render(); });
 load();
 </script>

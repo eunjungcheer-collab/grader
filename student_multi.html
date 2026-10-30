@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 여러 단원 채점 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150091">
+<link rel="stylesheet" href="css/style.css?v=202610150093">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,9 +14,9 @@
 <template id="page-content">
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
-<script src="js/config.js?v=202610150091"></script>
-<script src="js/api.js?v=202610150091"></script>
-<script src="js/common.js?v=202610150091"></script>
+<script src="js/config.js?v=202610150093"></script>
+<script src="js/api.js?v=202610150093"></script>
+<script src="js/common.js?v=202610150093"></script>
 <script>
 renderHeader();
 const bookId = new URLSearchParams(location.search).get('book');
@@ -180,10 +180,10 @@ function showResults(results) {
     </div>
     ${results.map(({ ex, res }) => `
       <h2>${ex.unit ? esc(ex.unit) + '단원 ' : ''}${esc(ex.label)} — ${res.total ? res.score + '/' + res.total : '객관식 없음'}</h2>
-      <div class="card">${res.correctAnswers.map((ans, i) => String(ans) === '-' ? `
-        <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${i + 1}번</span><span>주관식 (자동 채점 제외)</span></div>` : isSkipAns(res.studentAnswers[i]) ? `
+      <div class="card">${res.results.map((rs, i) => rs === 'subj' ? `
+        <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${i + 1}번</span><span>주관식 (자동 채점 제외)</span></div>` : rs === 'skip' ? `
         <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${i + 1}번</span><span>안 푼 문항 (채점 제외)</span></div>` : `
-        <div class="submission-row"><span>${i + 1}번</span><span>내 답: ${fmtAnswer(res.studentAnswers[i])} ${answerMatches(res.studentAnswers[i], ans) ? '✅' : '❌'}</span></div>`).join('')}</div>`).join('')}
+        <div class="submission-row"><span>${i + 1}번</span><span>내 답: ${fmtAnswer(res.studentAnswers[i])} ${rs === 'ok' ? '✅' : '❌'}</span></div>`).join('')}</div>`).join('')}
     <button type="button" class="btn outline" style="width:100%;" onclick="location.reload()">다른 단원 또 채점하기</button>`;
 }
 load();
