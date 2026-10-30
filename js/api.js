@@ -124,6 +124,18 @@ function answerMatches(given, correct) {
   if (!g || !c || c === '-') return false;
   return c.split('/').indexOf(g) >= 0;
 }
+// 「안 푸는 문항」: 학생이 뺀 번호는 답 대신 '~'로 보관한다 (채점·오답 집계에서 제외)
+function isSkipAns(a) { return String(a === undefined || a === null ? '' : a).trim() === '~'; }
+// "1-10, 15" · "1~10" 같은 입력에서 번호 모음을 만든다 (max를 넘는 번호는 버림)
+function parseNumSet(text, max) {
+  const out = new Set();
+  String(text || '').replace(/[~∼～–—]/g, '-').split(/[,，\s]+/).forEach(function (t) {
+    const m = t.match(/^(\d{1,3})(?:-(\d{1,3}))?$/); if (!m) return;
+    const a = parseInt(m[1], 10), b = m[2] ? parseInt(m[2], 10) : a;
+    for (let k = Math.min(a, b); k <= Math.max(a, b) && k <= max; k++) if (k >= 1) out.add(k);
+  });
+  return out;
+}
 // 화면에 보여줄 모양: "35" → "3, 5", "1/2" → "1 또는 2", "-" → "주관식"
 function fmtAnswer(a) {
   const n = normAnswer(a);

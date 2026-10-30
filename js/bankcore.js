@@ -321,7 +321,10 @@
         // 이어지는 부분: 이 단의 첫 표시 위쪽
         const firstTop = ms.length ? ms[0].top - 4 : pd.H - 62;
         if (lastNum !== null && firstTop - contentTop > 10 && body.some(it => it.top < firstTop)) {
-          out[lastNum].segments.push({ page: p, rect: [cd[0], contentTop, cd[1], firstTop] });
+          // 이어지는 해설의 첫 줄에 분수·수식처럼 키가 큰 글자가 있으면, 그 윗부분이 contentTop(쪽 높이의 9.6%) 위로 올라가 있어서 잘렸다 → 걸쳐 있는 글자만큼 위로 넓힌다 (쪽 머리글 높이 7%보다는 올라가지 않는다)
+          const hi = pd.items.filter(it => inCol(it) && it.bottom > pd.H * 0.07 && it.top < contentTop);
+          const segTop = hi.length ? Math.max(pd.H * 0.07, Math.min.apply(null, hi.map(it => it.top)) - 4) : contentTop;
+          out[lastNum].segments.push({ page: p, rect: [cd[0], segTop, cd[1], firstTop] });
         }
         ms.forEach((m, i) => {
           let bottom;

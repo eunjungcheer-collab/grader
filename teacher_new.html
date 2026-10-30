@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="stylesheet" href="css/style.css?v=202610150085">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -156,15 +156,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150082"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150082"></script>
-<script src="js/vendor/pdf.min.js?v=202610150082"></script>
-<script src="js/config.js?v=202610150082"></script>
-<script src="js/api.js?v=202610150082"></script>
-<script src="js/common.js?v=202610150082"></script>
-<script src="js/bankcore.js?v=202610150082"></script>
-<script src="js/pdfui.js?v=202610150082"></script>
-<script src="js/pdfview.js?v=202610150082"></script>
+<script src="js/vendor/qrcode.min.js?v=202610150085"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150085"></script>
+<script src="js/vendor/pdf.min.js?v=202610150085"></script>
+<script src="js/config.js?v=202610150085"></script>
+<script src="js/api.js?v=202610150085"></script>
+<script src="js/common.js?v=202610150085"></script>
+<script src="js/bankcore.js?v=202610150085"></script>
+<script src="js/pdfui.js?v=202610150085"></script>
+<script src="js/pdfview.js?v=202610150085"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -759,7 +759,10 @@ function showAutoReview(R) {
       const avg = k => rows.reduce((a, r) => a + r[k], 0) / rows.length, f = v => v.toFixed(0) + '초';
       h += '<details class="card"><summary style="cursor:pointer;"><b>⏱ 걸린 시간</b> <span class="hint">(시험지 1개 평균 ' + f(avg('all')) + ' · 눌러서 단계별 보기)</span></summary><div class="hint" style="margin:6px 0;">단계: 읽기·단원 추정 → PDF·QR 만들기 → 서버에 시험 등록, 이와 동시에 문제은행 저장(그래서 두 칸은 겹쳐요). 합계가 실제 걸린 시간이에요. 여러 시험지를 동시에 처리하므로 시험지마다 합계가 비슷하게 나와요.</div><table style="width:100%; font-size:12px; border-collapse:collapse;"><tr style="text-align:left;"><th>시험지</th><th>읽기</th><th>PDF·QR</th><th>서버 등록</th><th>문제은행(겹침)</th><th>합계</th></tr>' +
         rows.map(r => '<tr style="border-top:1px solid var(--line);"><td>' + e(r.name).slice(0, 28) + '</td><td>' + f(r.read) + '</td><td>' + f(r.build) + '</td><td>' + f(r.srv) + '</td><td>' + f(r.bank) + '</td><td><b>' + f(r.all) + '</b></td></tr>').join('') +
-        '<tr style="border-top:2px solid var(--line);"><td><b>평균</b></td><td>' + f(avg('read')) + '</td><td>' + f(avg('build')) + '</td><td>' + f(avg('srv')) + '</td><td>' + f(avg('bank')) + '</td><td><b>' + f(avg('all')) + '</b></td></tr></table></details>';
+        '<tr style="border-top:2px solid var(--line);"><td><b>평균</b></td><td>' + f(avg('read')) + '</td><td>' + f(avg('build')) + '</td><td>' + f(avg('srv')) + '</td><td>' + f(avg('bank')) + '</td><td><b>' + f(avg('all')) + '</b></td></tr></table>' +
+        (() => { const B = T.map(x => x.tm.bs).filter(Boolean); if (!B.length) return ''; const m = k => B.reduce((a, o) => a + (o[k] || 0), 0) / B.length / 1000, mb = B.reduce((a, o) => a + (o.kb || 0), 0) / B.length / 1024;
+          return '<div class="hint" style="margin:8px 0 2px;"><b>문제은행 저장 내역</b> (시험지 1개 평균 · 문항을 5개씩 묶어 4묶음씩 동시에 보내서, 아래 시간은 묶음별 시간을 더한 값이에요)<br>그림 만들기 ' + m('rend').toFixed(0) + '초 · 서버로 보내고 답 받기 ' + m('req').toFixed(0) + '초 · 보낸 그림 ' + mb.toFixed(1) + 'MB' +
+            (B.some(o => o.srv) ? '<br>서버 안에서: 드라이브에 그림 올리기 ' + m('up').toFixed(0) + '초 · 시트 쓸 차례 기다리기 ' + m('lock').toFixed(0) + '초 · 시트에 쓰기 ' + m('sheet').toFixed(0) + '초' : '<br>(서버 안의 시간은 Apps Script를 새 버전으로 배포하면 같이 나와요)') + '</div>'; })() + '</details>';
     } }
   if (R.notes.length) h += '<div class="card"><b>알림</b><div style="font-size:13px; margin-top:6px;">' + R.notes.map(e).join('<br>') + '</div></div>';
   h += '<a class="btn outline" href="teacher_list.html" style="width:100%;">시험지 목록으로</a>';
@@ -1180,7 +1183,7 @@ async function saveToBank(cls, source, onProgress, ranges) {
   window.__bankIds = {}; picks.forEach(p => { window.__bankIds[p.num] = p.id; });
   unassignedCount += picks.filter(p => p.unit === '(단원 미지정)').length;
   // 2단계: 그림을 만들면서 바로바로 서버로 보낸다 (그림 만들기와 서버 저장이 겹쳐서 빠르다). 문항마다 드라이브 파일을 만드느라 서버가 느려서 작게 묶어 많이 동시에 보낸다.
-  const BATCH = 2, PARALLEL = 8;
+  const BATCH = 5, PARALLEL = 4;
   const chunks = [];
   for (let s2 = 0; s2 < picks.length; s2 += BATCH) chunks.push(picks.slice(s2, s2 + BATCH));
   let next = 0, done = 0, failure = null;
@@ -1188,6 +1191,7 @@ async function saveToBank(cls, source, onProgress, ranges) {
     while (!failure) {
       const k = next++;
       if (k >= chunks.length) return;
+      const tChunk0 = performance.now();
       try {
         for (const p of chunks[k]) {
           const q = p._q;
@@ -1203,7 +1207,13 @@ async function saveToBank(cls, source, onProgress, ranges) {
           p.explNumRect = (ex && ex.numRect) ? relRect(ex.numRect, ex.segments[0].rect) : null;
         }
         const payload = chunks[k].map(p => { const o = Object.assign({}, p); delete o._q; return o; });
+        const BS = (window.__bankStat = window.__bankStat || { chunks: 0, kb: 0, rend: 0, req: 0, up: 0, lock: 0, sheet: 0, srv: false });
+        BS.rend += Math.round(performance.now() - tChunk0);
+        BS.kb += Math.round(payload.reduce((a, o) => a + (o.imageBase64 || '').length + (o.explBase64 || '').length, 0) * 0.75 / 1024);
+        const tReq = performance.now();
         const res = await callApi('saveQuestions', { password: getTeacherPassword(), questions: payload });
+        BS.req += Math.round(performance.now() - tReq); BS.chunks++;
+        if (res && res.ms) { BS.srv = true; BS.up += res.ms.up || 0; BS.lock += res.ms.lock || 0; BS.sheet += res.ms.sheet || 0; }
         if (!res.ok) { failure = new Error(res.error || '저장 실패'); return; }
         chunks[k].forEach(p => { p.imageBase64 = p.explBase64 = ''; });          // 보낸 그림은 메모리에서 비운다
         done += chunks[k].length;
@@ -1439,7 +1449,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
         location.href = 'teacher_list.html';
       }
     }
-    else if (res.ok && IS_CHILD) { childReport({ type: 'done', title: title, examId: examId, answers: answers.slice(), unread: (window.__unread || []).slice(), bankIds: window.__bankIds || {}, warning: bankWarning, unassigned: unassignedCount, units: Array.from(new Set(Array.from(document.querySelectorAll('.qunit-sel')).map(x => x.value || '(단원 미지정)'))), autoUnits: document.querySelectorAll('.qunit-sel[data-auto="1"]').length, tm: Object.assign({}, TM), qthumb: window.__qthumb || {}, unreadImg: window.__unreadImg || {}, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) }); }
+    else if (res.ok && IS_CHILD) { childReport({ type: 'done', title: title, examId: examId, answers: answers.slice(), unread: (window.__unread || []).slice(), bankIds: window.__bankIds || {}, warning: bankWarning, unassigned: unassignedCount, units: Array.from(new Set(Array.from(document.querySelectorAll('.qunit-sel')).map(x => x.value || '(단원 미지정)'))), autoUnits: document.querySelectorAll('.qunit-sel[data-auto="1"]').length, tm: Object.assign({}, TM, { bs: window.__bankStat || null }), qthumb: window.__qthumb || {}, unreadImg: window.__unreadImg || {}, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) }); }
     else if (res.ok) { if (bankWarning) alert(bankWarning); location.href = (window.__auto && unassignedCount && confirm('단원을 못 정한 문항이 ' + unassignedCount + '개 있어요. 「확인」을 누르면 그 문항만 문제은행에서 바로 열어요.')) ? 'bank_list.html?unassigned=1' : 'teacher_exam.html?id=' + examId; }
     else { window.__auto = false; if (IS_CHILD) childReport({ type: 'error', title: title, msg: res.error || '등록 실패' }); errorBox.innerHTML = '<div class="banner error">' + escapeHtml(res.error || '등록에 실패했어요.') + '</div>'; $('submit-btn').disabled = false; window.scrollTo(0, 0); }
   } catch (err) {

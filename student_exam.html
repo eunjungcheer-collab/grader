@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="stylesheet" href="css/style.css?v=202610150085">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,9 +16,9 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202610150082"></script>
-<script src="js/api.js?v=202610150082"></script>
-<script src="js/common.js?v=202610150082"></script>
+<script src="js/config.js?v=202610150085"></script>
+<script src="js/api.js?v=202610150085"></script>
+<script src="js/common.js?v=202610150085"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -51,6 +51,8 @@ async function loadExam() {
       <form id="answer-form" class="card">
         <label>이름</label>
         <input type="text" id="student-name" required>
+        <label style="margin-top:12px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 또는 1-10, 15 · 풀지 않는 번호는 채점에서 빠져요)</span></label>
+        <input type="text" id="skip-input" placeholder="예: 1-10" inputmode="numeric" autocomplete="off">
         <div id="answer-grid" style="margin-top:16px;"></div>
         <button type="submit" class="btn primary" style="width:100%; margin-top:20px;">제출하고 채점받기</button>
       </form>
@@ -88,24 +90,40 @@ async function loadExam() {
       });
     });
 
+    document.getElementById('skip-input').addEventListener('input', applySkip);
     document.getElementById('answer-form').addEventListener('submit', submitAnswers);
   } catch (err) {
     area.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
   }
 }
 
+// 안 푸는 문항: 그 번호의 답 버튼을 회색으로 막고, 이미 눌러 둔 답은 지운다
+let skipSet = new Set();
+function applySkip() {
+  skipSet = parseNumSet(document.getElementById('skip-input').value, answerCount);
+  const grid = document.getElementById('answer-grid');
+  grid.querySelectorAll('.qrow').forEach((row, i) => {
+    const off = skipSet.has(i + 1) && !isSub(i);
+    row.style.opacity = off ? '0.35' : '';
+    row.querySelectorAll('.ans-btn').forEach(b => { b.disabled = off; if (off) b.classList.remove('selected'); });
+    if (off) studentAnswers[i] = '';
+  });
+}
 async function submitAnswers(e) {
   e.preventDefault();
   const name = document.getElementById('student-name').value.trim();
   if (!name) return;
-  if (studentAnswers.some((a, i) => !isSub(i) && !a)) { alert('주관식이 아닌 모든 문항에 답을 선택해주세요.'); return; }
+  const skipAll = Array.from({ length: answerCount }, (_, i) => skipSet.has(i + 1) && !isSub(i));
+  const miss = studentAnswers.findIndex((a, i) => !isSub(i) && !skipAll[i] && !a);
+  if (miss >= 0) { alert(miss + 1 + '번에 답을 선택해주세요. (풀지 않는 문항은 위 「안 푸는 문항」에 번호를 적어 주세요)'); return; }
+  if (skipAll.every((x, i) => x || isSub(i))) { alert('풀 문항이 하나도 없어요. 「안 푸는 문항」을 확인해 주세요.'); return; }
 
   const btn = e.target.querySelector('button[type=submit]');
   btn.disabled = true;
   btn.textContent = '채점 중...';
 
   try {
-    const res = await callApi('submitAnswer', { id: examId, studentName: name, answers: studentAnswers });
+    const res = await callApi('submitAnswer', { id: examId, studentName: name, answers: studentAnswers.map((a, i) => skipAll[i] ? '~' : a) });
     if (!res.ok) { alert(res.error || '제출에 실패했어요.'); btn.disabled = false; btn.textContent = '제출하고 채점받기'; return; }
 
     document.getElementById('content-area').innerHTML = `
@@ -118,17 +136,21 @@ async function submitAnswers(e) {
         <p class="hint" style="margin-top:8px;">${res.total ? '객관식 ' + res.total + '문항 중 ' + res.score + '개 정답 · 100점 만점 환산' : ''}</p>
         ${(res.subjective && res.subjective.length) ? '<p class="hint" style="margin-top:4px;">주관식 ' + res.subjective.length + '문항(' + res.subjective.join(', ') + '번)은 점수에 합산하지 않아요. 선생님이 따로 채점해요.</p>' : ''}
       </div>
-      ${res.explUrl ? '<a class="btn primary" href="' + res.explUrl + '" target="_blank" style="width:100%;">📝 해설지 보기</a>' : ''}
-      <h2>문항별 정답</h2>
+      <h2>문항별 결과</h2>
+      <p class="hint">틀린 문항(❌)을 다시 풀어 보세요. 정답은 알려주지 않아요.</p>
       <div class="card">
         ${res.correctAnswers.map((ans, i) => String(ans) === '-' ? `
           <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;">
             <span>${i + 1}번</span>
             <span>주관식 (자동 채점 제외)</span>
+          </div>` : isSkipAns(res.studentAnswers[i]) ? `
+          <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;">
+            <span>${i + 1}번</span>
+            <span>안 푼 문항 (채점 제외)</span>
           </div>` : `
           <div class="submission-row">
             <span>${i + 1}번</span>
-            <span>내 답: ${fmtAnswer(res.studentAnswers[i])} · 정답: ${fmtAnswer(ans)} ${answerMatches(res.studentAnswers[i], ans) ? '✅' : '❌'}</span>
+            <span>내 답: ${fmtAnswer(res.studentAnswers[i])} ${answerMatches(res.studentAnswers[i], ans) ? '✅' : '❌'}</span>
           </div>`).join('')}
       </div>
     `;

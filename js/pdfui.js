@@ -564,6 +564,11 @@ function parseUnitNums(text) {
     if (m[2]) { const a = list[list.length - 1], b = parseInt(m[2], 10); for (let k = a; k <= b && k - a < 15; k++) list.push(k); }
     list.forEach(n => { if (n >= 1 && n <= 20) out.add(n); });
   }
+  // 「6-1-1.기체의 압력과 부피」「1-1.물질의 특성」처럼 "대단원-소단원[-번호].이름" 으로 시작하는 문제집 파일 이름: 맨 앞 숫자가 대단원이다 ("단원"이라는 글자가 없는 경우에만 쓴다)
+  if (!out.size) {
+    const pm = /(?:^|[\s_\]\[(])(\d{1,2})\s*-\s*\d{1,2}(?:\s*-\s*\d{1,2})?\s*[.．]\s*(?!중간|기말|학기|고사|평가|모의|\d)[가-힣A-Za-z]/.exec(src);
+    if (pm) { const n = parseInt(pm[1], 10); if (n >= 1 && n <= 20) out.add(n); }
+  }
   return Array.from(out).sort((a, b) => a - b);
 }
 // PDF 1쪽 맨 위쪽(머리글)에 찍힌 글자 — "중2 과학 3,4,5,7단원" 같은 제목이 여기 있는 경우가 많다

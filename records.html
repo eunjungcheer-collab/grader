@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="stylesheet" href="css/style.css?v=202610150085">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -36,13 +36,13 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202610150082"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150082"></script>
-<script src="js/config.js?v=202610150082"></script>
-<script src="js/api.js?v=202610150082"></script>
-<script src="js/common.js?v=202610150082"></script>
-<script src="js/bankcore.js?v=202610150082"></script>
-<script src="js/pdfui.js?v=202610150082"></script>
+<script src="js/vendor/pdf.min.js?v=202610150085"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150085"></script>
+<script src="js/config.js?v=202610150085"></script>
+<script src="js/api.js?v=202610150085"></script>
+<script src="js/common.js?v=202610150085"></script>
+<script src="js/bankcore.js?v=202610150085"></script>
+<script src="js/pdfui.js?v=202610150085"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -94,6 +94,7 @@ function wrongUnits(s) {
   let count = 0;
   for (let i = 0; i < correct.length; i++) {
     if (correct[i] === '-') continue;              // 주관식은 자동 채점 대상이 아니므로 제외
+    if (isSkipAns(given[i])) continue;                   // 학생이 안 푼다고 뺀 문항
     if (answerMatches(given[i], correct[i])) continue;   // 맞힌 문항
     count++;
     const unit = (bankUnitOf[ids[i]] || '__unknown__');
@@ -104,26 +105,26 @@ function wrongUnits(s) {
 // 학생이 푼 문항별 결과: [{n, given, correct, ok, subj}] (주관식 '-'은 자동 채점 제외)
 function itemResults(s) {
   const correct = s.correctAnswers || [], given = String(s.answers || '').split(',');
-  return correct.map((c, i) => ({ n: i + 1, given: (given[i] || '').trim(), correct: c, subj: c === '-', ok: c !== '-' && answerMatches(given[i], c) }));
+  return correct.map((c, i) => ({ n: i + 1, given: (given[i] || '').trim(), correct: c, subj: c === '-', skip: isSkipAns(given[i]), ok: c !== '-' && answerMatches(given[i], c) }));
 }
-function wrongNumsOf(s) { return itemResults(s).filter(r => !r.subj && !r.ok).map(r => r.n); }
+function wrongNumsOf(s) { return itemResults(s).filter(r => !r.subj && !r.skip && !r.ok).map(r => r.n); }
 function resultPanelHtml(s) {
   const rs = itemResults(s);
   if (!rs.length) return '<div class="hint">이 시험의 정답 정보를 찾지 못했어요.</div>';
-  const wrong = rs.filter(r => !r.subj && !r.ok);
-  const cell = r => '<span class="rs-cell ' + (r.subj ? 'subj' : r.ok ? 'ok' : 'bad') + '" title="' + r.n + '번 · 학생 ' + escapeHtml(r.given || '(무응답)') + ' / 정답 ' + escapeHtml(fmtAnswer(r.correct)) + '">' + r.n + '</span>';
+  const wrong = rs.filter(r => !r.subj && !r.skip && !r.ok);
+  const cell = r => '<span class="rs-cell ' + (r.subj || r.skip ? 'subj' : r.ok ? 'ok' : 'bad') + '" title="' + (r.skip ? '학생이 안 푼다고 뺀 문항 · ' : '') + r.n + '번 · 학생 ' + escapeHtml(r.given || '(무응답)') + ' / 정답 ' + escapeHtml(fmtAnswer(r.correct)) + '">' + r.n + '</span>';
   return '<div class="rs-grid">' + rs.map(cell).join('') + '</div>' +
     (wrong.length ? '<table class="rs-table"><tr><th>번호</th><th>학생 답</th><th>정답</th></tr>' +
       wrong.map(r => '<tr><td><b>' + r.n + '번</b></td><td style="color:#C1392B; font-weight:700;">' + escapeHtml(r.given ? fmtAnswer(r.given) : '(무응답)') + '</td><td>' + escapeHtml(fmtAnswer(r.correct)) + '</td></tr>').join('') + '</table>'
       : '<div class="hint" style="margin-top:6px;">🎉 틀린 문항이 없어요.</div>') +
-    '<div class="hint" style="margin-top:6px;">초록 = 정답 · 빨강 = 오답 · 회색 = 주관식(자동 채점 제외)</div>';
+    '<div class="hint" style="margin-top:6px;">초록 = 정답 · 빨강 = 오답 · 회색 = 주관식·안 푼 문항(자동 채점 제외)</div>';
 }
 // 선택한 시험의 문항별 오답 현황 (몇 명이 틀렸는지)
 function examStatsHtml(list) {
   if (!examFilter || !list.length) return '';
   const base = list.find(s => (s.correctAnswers || []).length); if (!base) return '';
   const n = base.correctAnswers.length, wrong = new Array(n).fill(0), cnt = list.length;
-  list.forEach(s => itemResults(s).forEach(r => { if (!r.subj && !r.ok && r.n <= n) wrong[r.n - 1]++; }));
+  list.forEach(s => itemResults(s).forEach(r => { if (!r.subj && !r.skip && !r.ok && r.n <= n) wrong[r.n - 1]++; }));
   const cells = wrong.map((w, i) => base.correctAnswers[i] === '-' ? '<span class="rs-cell subj" title="주관식">' + (i + 1) + '</span>' :
     '<span class="rs-cell ' + (w / cnt >= 0.5 ? 'bad' : w ? 'mid' : 'ok') + '" title="' + (i + 1) + '번 · ' + w + '/' + cnt + '명 오답">' + (i + 1) + '<small>' + w + '</small></span>').join('');
   return '<div class="card"><b>📊 문항별 오답 수</b> <span class="hint">(' + cnt + '명 중 · 칸 안 작은 숫자 = 틀린 사람 수 · 빨강 = 절반 이상 오답)</span><div class="rs-grid" style="margin-top:8px;">' + cells + '</div></div>';
@@ -136,7 +137,7 @@ function wrongCountNoSource(s) {
   let n = 0;
   for (let i = 0; i < correct.length; i++) {
     if (correct[i] === '-') continue;
-    if (!answerMatches(given[i], correct[i])) n++;
+    if (!isSkipAns(given[i]) && !answerMatches(given[i], correct[i])) n++;
   }
   return n;
 }
@@ -150,7 +151,7 @@ async function findTextMatches(s) {
   const given = String(s.answers || '').split(',');
   const wrongNums = [];
   for (let i = 0; i < correct.length; i++) {
-    if (correct[i] === '-' || answerMatches(given[i], correct[i])) continue;
+    if (correct[i] === '-' || isSkipAns(given[i]) || answerMatches(given[i], correct[i])) continue;
     wrongNums.push(i + 1);
   }
   const queries = [];
@@ -197,7 +198,7 @@ function rangeInfo(q, picks) {
   return parts && parts.length === k ? { k: k } : null;
 }
 async function buildWrongNote(s, opt, say) {
-  const wrong = itemResults(s).filter(r => !r.subj && !r.ok);
+  const wrong = itemResults(s).filter(r => !r.subj && !r.skip && !r.ok);
   if (!wrong.length) throw new Error('틀린 문항이 없어요.');
   const wrongBy = {}; wrong.forEach(r => { wrongBy[r.n] = r; });
   const entryOf = r => ({ n: r.n, given: r.given, answer: r.correct });
