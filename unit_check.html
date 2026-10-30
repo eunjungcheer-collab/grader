@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>단원 판별 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202610150082">
+<style>
+  .uc-card { border:1px solid #e5e7eb; border-radius:12px; padding:14px; margin:12px 0; background:#fff; }
+  .uc-name { font-weight:700; word-break:break-all; }
+  .uc-new { width:100%; margin-top:8px; font-weight:700; }
+  .uc-bar { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0; }
+  .uc-chip { background:#FEF3EB; border-radius:999px; padding:3px 10px; font-size:12.5px; }
+  .uc-chip.low { background:#FEF9C3; }
+  .uc-split { display:block; }
+  .uc-pdf { display:none; border:1px solid #e5e7eb; border-radius:10px; background:#f3f4f6; max-height:75vh; overflow:auto; padding:8px; margin-top:10px; }
+  .uc-zoom { position:sticky; top:-8px; z-index:2; display:flex; gap:6px; align-items:center; background:#f3f4f6; padding:4px 0 8px; }
+  .uc-zoom button { padding:4px 12px; font-size:15px; font-weight:700; border:1px solid #d1d5db; border-radius:8px; background:#fff; cursor:pointer; }
+  .uc-zoom .zv { min-width:48px; text-align:center; font-weight:700; font-size:13px; }
+  .uc-pages { width:100%; }
+  .uc-pdf canvas { display:block; width:100%; height:auto; margin:0 0 8px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.15); }
+  .uc-card.open .uc-pdf { display:block; }
+  @media (min-width: 1000px) {
+    .uc-card.open .uc-split { display:grid; grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.15fr); gap:16px; align-items:start; }
+    .uc-card.open .uc-pdf { margin-top:0; position:sticky; top:8px; max-height:88vh; }
+  }
+  .uc-src { font-size:12.5px; color:#6b7280; margin-top:6px; }
+</style>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#95D1DB">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>🔎 단원 판별</h1>
+  <p class="muted">PDF를 올리면 내용을 읽고 <b>몇 단원 문제인지</b> 알려 드려요. 아무것도 저장하지 않고, 제목(파일 이름) 끝에 붙일 단원 표시만 만들어 줘요. 여러 파일을 한꺼번에 올려도 돼요.</p>
+  <div class="card">
+    <input type="file" id="files" accept="application/pdf" multiple>
+    <div class="hint" style="margin-top:6px;">파일 이름이나 PDF 맨 위에 단원이 적혀 있으면 그대로 읽고, 없으면 문제 내용을 교재 목차와 비교해서 추정해요. 학년을 아는데 파일 이름에 없으면 <input type="text" id="grade-hint" placeholder="예: 중2" style="width:70px;"> 를 적어 주세요 (비워 두면 내용에서 알아내요).</div>
+  </div>
+  <div id="status" class="muted"></div>
+  <div id="bulk" style="display:none; margin:10px 0;"><button type="button" class="btn outline" id="copy-all">📋 전체 새 이름 목록 복사</button> <button type="button" class="btn outline" id="exam-all">➕ 전부 시험지로 등록</button> <button type="button" class="btn outline" id="bank-all">🗂️ 전부 문제은행에 등록</button> <button type="button" class="btn primary" id="dl-all">⬇️ 전부 내려받기 (정답 합쳐서)</button></div>
+  <div id="results"></div>
+</template>
+
+<script src="js/vendor/pdf.min.js?v=202610150082"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150082"></script>
+<script src="js/config.js?v=202610150082"></script>
+<script src="js/api.js?v=202610150082"></script>
+<script src="js/common.js?v=202610150082"></script>
+<script src="js/bankcore.js?v=202610150082"></script>
+<script src="js/pdfui.js?v=202610150082"></script>
+<script>
+requireLogin();
+renderHeader({ wide: true });
+const $ = id => document.getElementById(id);
+const rows = [];       // {file, bytes, el, input}
+
+function baseName(n) { return String(n || '').replace(/\.pdf$/i, '').replace(UNIT_SUFFIX_RE, '').trim(); }
+
+async function judge(file, gradeHint) {
+  const info = await loadPdfDoc(file);
+  const doc = info.doc;
+  const toc = await ensureToc();
+  const hdr = await pdfHeaderText(doc);
+  const grade = gradeHint || gradeFromText(file.name) || gradeFromText(hdr) || '';
+  let head = '';
+  for (let p = 1; p <= Math.min(2, doc.numPages); p++) { const tc = await (await doc.getPage(p)).getTextContent(); head += tc.items.map(i => i.str).join(' ') + '\n'; }
+  const sy = extractSchoolYear(head);
+  const headNS = head.replace(/\s+/g, '');
+  const isAnswer = doc.numPages <= 4 && !/이시험문제의저작권/.test(headNS) &&
+    (/정답\/?배점|평가기준표|채점기준|정답및해설|서답형정답|교과목별정답|정답표|정답과해설/.test(headNS) || /정답|해설|답지|평가\s*기준/.test(file.name));
+  const out = { isAnswer: isAnswer, school: sy.school, year: sy.year, bytes: info.bytes, grade: grade, counts: [], source: '', total: 0, note: '' };
+  if (isAnswer) { out.source = '정답·채점기준 파일로 보여요'; return out; }       // 정답 파일은 단원 판별을 하지 않고 짝이 되는 문제지에 붙인다
+  // 1) 파일 이름·머리글에 단원이 적혀 있으면 그대로 읽는다
+  let nums = parseUnitNums(file.name), src = '파일 이름';
+  if (!nums.length) { nums = parseUnitNums(hdr); src = 'PDF 머리글'; }
+  if (nums.length) {
+    const rowsU = nums.map(n => { const t = tocUnitByNo(toc, grade, n); return { unit: t ? t.unit : n + '단원', grade: t ? t.grade : grade, n: 1 }; });
+    out.source = src + '에 적혀 있어요 (추정 아님)';
+    out.counts = rowsU.map(r => ({ unit: r.unit, grade: r.grade, n: 0, low: false }));
+    out.suffix = unitSuffixText(rowsU, grade);
+    return out;
+  }
+  // 2) 내용으로 추정: 쪽마다 글자를 읽어 500자 안팎 조각으로 나눠 목차와 비교한다 (문항 분석보다 훨씬 빨라서 여러 파일에 알맞다)
+  let texts = [];
+  const maxP = Math.min(doc.numPages, 60);
+  for (let p = 1; p <= maxP; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const t = tc.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+    for (let k = 0; k < t.length && texts.length < 150; k += 500) { const seg = t.slice(k, k + 500); if (seg.length >= 60) texts.push(seg); }
+  }
+  out.note = '글자 조각 ' + texts.length + '개로 추정';
+  if (!texts.length) { out.note = '글자를 읽지 못했어요 (스캔한 그림 PDF일 수 있어요)'; return out; }
+  const seeds = (await tocSeeds()).filter(t => !t.grade || !grade || t.grade === grade);
+  if (!seeds.length) { out.note = '과학 목차가 비어 있어요. 문제은행의 「과학 목차」에서 목차를 먼저 넣어 주세요.'; return out; }
+  const est = estimateUnitsMixed(texts.map(t => ({ text: t })), grade, await tocSeeds());
+  const res = est.results.filter(r => r && r.unit);
+  out.total = texts.length;
+  const by = new Map();
+  res.forEach(r => { const k = (r.grade || '') + '|' + r.unit; const o = by.get(k) || { unit: r.unit, grade: r.grade || grade, n: 0, hi: 0 }; o.n++; if (r.confident) o.hi++; by.set(k, o); });
+  let list = Array.from(by.values()).sort((a, b) => b.n - a.n);
+  const readable = res.length;
+  // 한두 문항만 걸린 단원은 오추정일 가능성이 커서 제목에는 넣지 않는다 (아래 칩에는 보여 줌)
+  const keep = list.filter(o => o.n >= Math.max(2, Math.round(readable * 0.12)));
+  const use = keep.length ? keep : list.slice(0, 1);
+  out.counts = list.map(o => ({ unit: o.unit, grade: o.grade, n: o.n, low: o.hi < o.n / 2, used: use.includes(o) }));
+  out.suffix = unitSuffixText(use, grade);
+  out.source = '내용을 교재 목차와 비교한 추정이에요';
+  return out;
+}
+
+async function mergeBytes(qBytes, aBytes) {
+  const out = await PDFLib.PDFDocument.load(qBytes.slice ? qBytes.slice(0) : qBytes, { ignoreEncryption: true });
+  const ad = await PDFLib.PDFDocument.load(aBytes.slice ? aBytes.slice(0) : aBytes, { ignoreEncryption: true });
+  const pages = await out.copyPages(ad, ad.getPageIndices());
+  pages.forEach(p => out.addPage(p));
+  return await out.save();
+}
+// 정답 파일을 같은 시험(연도·학교가 같고 이름이 가장 비슷한)의 문제지와 짝지어 준다
+function pairAnswers(list) {
+  const norm = n => String(n).replace(/\.pdf$/i, '').replace(/정답\s*및\s*해설|정답과\s*해설|정답|해설|답지|답안|평가\s*기준표?|채점\s*기준표?|문제지|문제|[\s_\-()\[\].,+]/gi, '');
+  const common = (a, b) => { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; };
+  const used = new Set();
+  list.filter(x => x && x.o.isAnswer).forEach(a => {
+    let best = null, bs = -Infinity;
+    list.forEach((q, qi) => {
+      if (!q || q.o.isAnswer || used.has(q)) return;
+      const sameYear = a.o.year && q.o.year ? (a.o.year.slice(0, 4) === q.o.year.slice(0, 4) ? 1 : -1) : 0;
+      const sameSchool = a.o.school && q.o.school ? (a.o.school === q.o.school ? 1 : -1) : 0;
+      const sc = sameYear * 100 + sameSchool * 30 + common(norm(q.file.name), norm(a.file.name)) - Math.abs(list.indexOf(a) - qi) * 0.1;
+      if (sc > bs) { bs = sc; best = q; }
+    });
+    if (best && bs > -50 && (!a.o.year || !best.o.year || a.o.year.slice(0, 4) === best.o.year.slice(0, 4))) { used.add(best); best.o.ans = a; a.o.pairedWith = best.file.name; }
+  });
+}
+function renderCard(r, file, o) {
+  const el = document.createElement('div'); el.className = 'uc-card';
+  if (o.isAnswer) {
+    el.style.background = '#f8fafc';
+    el.innerHTML = '<div class="uc-name">📎 ' + escapeHtml(file.name) + '</div><div class="hint" style="margin-top:6px;">' + (o.pairedWith ? '정답 파일이에요 → <b>' + escapeHtml(o.pairedWith) + '</b> 에 붙여서 합쳐 드려요.' : '정답 파일로 보이는데 짝이 되는 문제지를 못 찾았어요.') + '</div>';
+    return el;
+  }
+  const bn = baseName(file.name), pre = [];
+  if (o.year && !/20\d\d/.test(bn)) pre.push(o.year);
+  if (o.school && bn.replace(/\s+/g, '').indexOf(o.school.replace(/중$/, '')) < 0) pre.push(o.school);       // 학교 이름이 이미 파일 이름에 있으면 다시 붙이지 않는다
+  const newName = (pre.length ? pre.join(' ') + ' ' : '') + bn + (o.suffix ? ' ' + o.suffix : '');
+  el.innerHTML = '<div class="uc-name">📄 ' + escapeHtml(file.name) + '</div><div class="uc-split"><div class="uc-left">' +
+    (o.school || o.year ? '<div class="hint" style="margin-top:6px;">시험지에서 찾은 정보: <b>' + escapeHtml([o.year, o.school].filter(Boolean).join(' ')) + '</b></div>' : '') +
+    ('<div style="margin-top:8px;"><label style="font-size:12.5px; font-weight:700;">단원 표시 <span class="muted" style="font-weight:400;">(직접 고치면 아래 새 이름에 바로 반영돼요)</span></label><input type="text" class="uc-sfx" value="' + escapeHtml(o.suffix || '') + '" placeholder="예: 중2-1,6,7단원 + 중3-2단원" style="width:100%; font-weight:700;"></div>' + (o.suffix ? '' : '<div class="banner error" style="margin-top:8px;">단원을 판단하지 못했어요. 위 칸에 직접 적어 주세요. ' + escapeHtml(o.note || '') + '</div>')) +
+    '<input type="text" class="uc-new" value="' + escapeHtml(newName) + '" title="직접 고쳐도 돼요">' +
+    (o.counts.length && o.total ? '<div class="uc-bar">' + o.counts.map(c => '<span class="uc-chip' + (c.low ? ' low' : '') + '" style="' + (c.used ? 'font-weight:700;' : 'opacity:.6;') + '">' + escapeHtml((c.grade ? c.grade + ' ' : '') + c.unit) + ' · ' + c.n + '개' + (c.used ? '' : ' (제목에서 제외)') + '</span>').join('') + '</div>' : '') +
+    '<div class="uc-src">' + escapeHtml(o.source) + (o.note ? ' · ' + escapeHtml(o.note) : '') + (o.counts.some(c => c.low) ? ' · 노란 칸은 확신이 낮아요' : '') + '</div>' +
+    (o.ans ? '<div class="hint" style="margin-top:8px;">📎 정답 파일 <b>' + escapeHtml(o.ans.file.name) + '</b> 을(를) 뒤에 붙여서 합쳐요.</div>' : '') +
+    '<div class="actions" style="margin-top:10px;"><button type="button" class="btn outline view">👀 PDF 보면서 고치기</button> <button type="button" class="btn outline go-exam">➕ 시험지로 등록</button> <button type="button" class="btn outline go-bank">🗂️ 문제은행에 등록</button> <button type="button" class="btn outline copy">📋 이름 복사</button> <button type="button" class="btn primary dl">' + (o.ans ? '⬇️ 문제+정답 합쳐서 받기' : '⬇️ 이 이름으로 PDF 내려받기') + '</button></div></div><div class="uc-pdf"></div></div>';
+  const inp = el.querySelector('.uc-new');
+  const sfxEl = el.querySelector('.uc-sfx');
+  if (sfxEl) sfxEl.addEventListener('input', () => { inp.value = (pre.length ? pre.join(' ') + ' ' : '') + bn + (sfxEl.value.trim() ? ' ' + sfxEl.value.trim() : ''); });
+  el.querySelector('.copy').addEventListener('click', async e => { try { await navigator.clipboard.writeText(inp.value); e.target.textContent = '✓ 복사됨'; } catch (x) { inp.select(); document.execCommand('copy'); e.target.textContent = '✓ 복사됨'; } });
+  // PDF 화면: 처음 열 때만 쪽을 그린다 (쪽 수가 많아도 필요한 만큼만 차례로)
+  const pdfBox = el.querySelector('.uc-pdf'), viewBtn = el.querySelector('.view');
+  let rendered = false;
+  r.openView = async () => {
+    el.classList.add('open'); viewBtn.textContent = '🙈 PDF 접기';
+    if (rendered) return; rendered = true;
+    pdfBox.innerHTML = '<div class="hint">PDF 불러오는 중...</div>';
+    try {
+      const d = await pdfjsLib.getDocument({ data: new Uint8Array(o.bytes.slice(0)) }).promise;
+      pdfBox.innerHTML = '<div class="uc-zoom"><button type="button" class="zm" title="축소">−</button><span class="zv">100%</span><button type="button" class="zp" title="확대">＋</button><button type="button" class="zf" title="가로 폭에 맞추기">폭 맞춤</button><span class="hint" style="margin:0;">Ctrl+마우스 휠로도 돼요</span></div><div class="uc-pages"></div>';
+      const pages = pdfBox.querySelector('.uc-pages'), zv = pdfBox.querySelector('.zv');
+      let zoom = 1;
+      const setZoom = z => { zoom = Math.max(0.5, Math.min(4, Math.round(z * 100) / 100)); pages.style.width = (zoom * 100) + '%'; zv.textContent = Math.round(zoom * 100) + '%'; };
+      pdfBox.querySelector('.zm').addEventListener('click', () => setZoom(zoom - 0.25));
+      pdfBox.querySelector('.zp').addEventListener('click', () => setZoom(zoom + 0.25));
+      pdfBox.querySelector('.zf').addEventListener('click', () => setZoom(1));
+      pdfBox.addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? 0.15 : -0.15)); } }, { passive: false });
+      for (let p = 1; p <= d.numPages; p++) {
+        const pg = await d.getPage(p), vp = pg.getViewport({ scale: 2.6 });
+        const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height; pages.appendChild(cv);
+        await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      }
+    } catch (e) { pdfBox.innerHTML = '<div class="banner error">PDF를 그리지 못했어요: ' + escapeHtml(e.message) + '</div>'; }
+  };
+  viewBtn.addEventListener('click', () => {
+    if (el.classList.contains('open')) { el.classList.remove('open'); viewBtn.textContent = '👀 PDF 보면서 고치기'; }
+    else r.openView();
+  });
+  r.download = async () => {
+    let bytes = o.bytes;
+    if (o.ans) bytes = await mergeBytes(o.bytes, o.ans.o.bytes);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    a.download = inp.value.trim().replace(/[\\/:*?"<>|]+/g, ' ') + '.pdf'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  };
+  const fileOf = async () => {            // 정답 파일이 짝지어져 있으면 합친 PDF를, 새 이름으로 넘긴다
+    const bytes = o.ans ? await mergeBytes(o.bytes, o.ans.o.bytes) : o.bytes;
+    return { name: inp.value.trim().replace(/[\\/:*?"<>|]+/g, ' ') + '.pdf', bytes: bytes };
+  };
+  r.fileOf = fileOf;
+  el.querySelector('.go-exam').addEventListener('click', async e => { e.target.disabled = true; try { await handoffSave([await fileOf()]); location.href = 'teacher_new.html?handoff=1'; } catch (x) { alert('넘기지 못했어요: ' + x.message); e.target.disabled = false; } });
+  el.querySelector('.go-bank').addEventListener('click', async e => { e.target.disabled = true; try { await handoffSave([await fileOf()]); location.href = 'bank_upload.html?handoff=1'; } catch (x) { alert('넘기지 못했어요: ' + x.message); e.target.disabled = false; } });
+  el.querySelector('.dl').addEventListener('click', e => { const b = e.target; b.disabled = true; r.download().catch(x => alert('합치지 못했어요: ' + x.message)).finally(() => { b.disabled = false; }); });
+  r.el = el; r.input = inp;
+  return el;
+}
+
+$('files').addEventListener('change', async () => {
+  const files = Array.from($('files').files);
+  $('results').innerHTML = ''; rows.length = 0; $('bulk').style.display = 'none';
+  const gh = $('grade-hint').value.trim();
+  await ensureToc(); await tocSeeds();
+  // 카드 자리를 순서대로 먼저 만들어 두고, 3개씩 동시에 읽어서 끝나는 대로 채운다
+  const slots = files.map(f => { const d = document.createElement('div'); d.className = 'uc-card'; d.innerHTML = '<div class="uc-name">📄 ' + escapeHtml(f.name) + '</div><div class="hint">⏳ 기다리는 중...</div>'; $('results').appendChild(d); return d; });
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < files.length) {
+      const i = next++, f = files[i];
+      slots[i].querySelector('.hint').textContent = '🔎 읽는 중...';
+      try {
+        const o = await judge(f, gh);
+        const r = { file: f, o: o };
+        const card = renderCard(r, f, o); slots[i].replaceWith(card); slots[i] = card; rows[i] = r;
+      } catch (e) {
+        slots[i].innerHTML = '<div class="uc-name">📄 ' + escapeHtml(f.name) + '</div><div class="banner error">읽지 못했어요: ' + escapeHtml(e.message) + '</div>';
+      }
+      done++; $('status').textContent = '읽는 중... ' + done + '/' + files.length;
+    }
+  };
+  $('status').textContent = files.length ? '읽는 중... 0/' + files.length : '';
+  await Promise.all([worker(), worker(), worker()]);
+  pairAnswers(rows);
+  $('results').innerHTML = '';
+  rows.forEach(r => { if (r) $('results').appendChild(renderCard(r, r.file, r.o)); });       // 정답 파일 짝이 정해졌으니 카드를 다시 그린다
+  { const first = rows.find(r => r && !r.o.isAnswer && r.openView); if (first) first.openView(); }       // 첫 시험지는 PDF를 바로 펼쳐 둔다
+  const nPair = rows.filter(r => r && r.o.ans).length;
+  $('status').textContent = files.length ? '✅ ' + files.length + '개 파일을 확인했어요.' + (nPair ? ' 정답 파일 ' + nPair + '개는 문제지에 합칠 수 있어요.' : '') : '';
+  if (rows.filter(r => r && !r.o.isAnswer).length > 1) $('bulk').style.display = 'block';
+});
+['exam', 'bank'].forEach(k => $(k + '-all').addEventListener('click', async e => {
+  e.target.disabled = true;
+  try {
+    const list = [];
+    for (const r of rows) if (r && !r.o.isAnswer && r.fileOf) list.push(await r.fileOf());
+    await handoffSave(list); location.href = (k === 'exam' ? 'teacher_new.html' : 'bank_upload.html') + '?handoff=1';
+  } catch (x) { alert('넘기지 못했어요: ' + x.message); e.target.disabled = false; }
+}));
+$('dl-all').addEventListener('click', async e => {
+  e.target.disabled = true;
+  for (const r of rows) { if (r && !r.o.isAnswer && r.download) { await r.download(); await new Promise(x => setTimeout(x, 600)); } }
+  e.target.disabled = false;
+});
+$('copy-all').addEventListener('click', async e => {
+  const t = rows.filter(r => r && !r.o.isAnswer).map(r => r.file.name + '  →  ' + r.input.value).join('\n');
+  try { await navigator.clipboard.writeText(t); e.target.textContent = '✓ 복사됨'; } catch (x) { e.target.textContent = '복사 실패'; }
+});
+</script>
+</body>
+</html>

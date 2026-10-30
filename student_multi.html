@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>교재 여러 단원 채점 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+</head>
+<body>
+<template id="page-content">
+  <div id="content-area" class="muted">불러오는 중...</div>
+</template>
+<script src="js/config.js?v=202610150082"></script>
+<script src="js/api.js?v=202610150082"></script>
+<script src="js/common.js?v=202610150082"></script>
+<script>
+renderHeader();
+const bookId = new URLSearchParams(location.search).get('book');
+function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+const area = () => document.getElementById('content-area');
+let book = null;      // {bookTitle, exams}
+let picked = [];      // 선택된 시험 목록
+let state = {};       // examId -> {info, answers[]}
+let studentName = '';
+
+async function load() {
+  if (!bookId) { area().innerHTML = '<div class="banner error">잘못된 링크예요.</div>'; return; }
+  try {
+    const res = await callApi('getBookPublic', { book: bookId });
+    if (!res.ok) { area().innerHTML = '<div class="banner error">' + esc(res.error) + '</div>'; return; }
+    book = res;
+    showPicker();
+  } catch (e) { area().innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>'; }
+}
+
+function showPicker(keep) {
+  const groups = [];
+  book.exams.forEach(ex => {
+    const key = ex.unit + '|' + ex.unitName;
+    let g = groups.find(x => x.key === key);
+    if (!g) { g = { key, unit: ex.unit, name: ex.unitName, items: [] }; groups.push(g); }
+    g.items.push(ex);
+  });
+  keep = keep || {};
+  area().innerHTML = `
+    <h1>${esc(book.bookTitle || '교재')} 채점</h1>
+    <p class="muted">이름을 쓰고, 채점할 단원을 <b>여러 개</b> 골라도 돼요.</p>
+    <div class="card">
+      <label>이름</label>
+      <input type="text" id="student-name" value="${esc(studentName)}">
+    </div>
+    <div id="groups"></div>
+    <button type="button" class="btn primary" id="go" style="width:100%; margin-top:12px;">선택한 단원 답 입력하기</button>
+    <div id="pick-msg" class="hint" style="margin-top:8px;"></div>`;
+  const box = document.getElementById('groups');
+  groups.forEach((g, gi) => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <b>${g.unit ? esc(g.unit) + '단원 ' : ''}${esc(g.name)}</b>
+        <label style="font-weight:400; font-size:13px;"><input type="checkbox" class="all" data-g="${gi}"> 전체</label></div>
+      ${g.items.map(ex => `<label style="display:block; font-weight:400; padding:6px 0;"><input type="checkbox" class="sec" data-g="${gi}" value="${esc(ex.id)}" ${keep[ex.id] ? 'checked' : ''}> ${esc(ex.label)} <span class="hint">(${ex.count}문항)</span></label>`).join('')}`;
+    box.appendChild(d);
+  });
+  box.querySelectorAll('.all').forEach(a => a.addEventListener('change', function () {
+    box.querySelectorAll('.sec[data-g="' + this.dataset.g + '"]').forEach(c => c.checked = this.checked);
+  }));
+  document.getElementById('go').addEventListener('click', startAnswering);
+}
+
+async function startAnswering() {
+  studentName = document.getElementById('student-name').value.trim();
+  const ids = Array.from(document.querySelectorAll('.sec:checked')).map(c => c.value);
+  const msg = document.getElementById('pick-msg');
+  if (!studentName) { msg.textContent = '이름을 먼저 써주세요.'; return; }
+  if (!ids.length) { msg.textContent = '채점할 단원을 하나 이상 골라주세요.'; return; }
+  msg.textContent = '불러오는 중...';
+  picked = book.exams.filter(e => ids.indexOf(e.id) >= 0);
+  try {
+    const infos = await Promise.all(picked.map(e => callApi('getExamPublic', { id: e.id })));
+    infos.forEach((r, i) => {
+      if (!r.ok) throw new Error(r.error || '불러오기 실패');
+      state[picked[i].id] = { info: r, answers: new Array(r.answerCount).fill('') };
+    });
+  } catch (e) { msg.textContent = '오류: ' + e.message; return; }
+  showAnswering();
+}
+
+function showAnswering() {
+  area().innerHTML = `
+    <h1>${esc(studentName)}님 답안 입력</h1>
+    <p class="muted">주관식(회색)은 입력하지 않아요. 복수 선택 문항은 정답을 모두 눌러요.</p>
+    <div id="secs"></div>
+    <button type="button" class="btn primary" id="submit" style="width:100%; margin-top:16px;">제출하고 채점받기</button>
+    <button type="button" class="btn outline" id="back" style="width:100%; margin-top:8px;">← 단원 다시 고르기</button>
+    <div id="sub-msg" class="hint" style="margin-top:8px;"></div>`;
+  const wrap = document.getElementById('secs');
+  picked.forEach(ex => {
+    const st = state[ex.id], r = st.info;
+    const sub = r.subjective || [], mul = r.multi || [];
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<h2 style="margin-top:0;">${ex.unit ? esc(ex.unit) + '단원 ' : ''}${esc(ex.label)}</h2><div class="grid"></div>`;
+    const grid = card.querySelector('.grid');
+    for (let i = 0; i < r.answerCount; i++) {
+      const row = document.createElement('div');
+      if (sub.indexOf(i + 1) >= 0) {
+        row.className = 'qrow is-sub';
+        row.innerHTML = `<span class="qnum">${i + 1}</span><span class="sub-note">주관식 · 입력하지 않아요</span>`;
+      } else {
+        row.className = 'qrow';
+        row.innerHTML = `<span class="qnum">${i + 1}</span><div class="ans-btns">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="ans-btn" data-q="${i}" data-v="${n}">${n}</button>`).join('')}</div>${mul.indexOf(i + 1) >= 0 ? '<span class="multi-note">복수 선택</span>' : ''}`;
+      }
+      grid.appendChild(row);
+    }
+    grid.querySelectorAll('.ans-btn').forEach(btn => btn.addEventListener('click', function () {
+      const q = parseInt(this.dataset.q, 10), v = this.dataset.v;
+      if (mul.indexOf(q + 1) >= 0) {
+        this.classList.toggle('selected');
+        st.answers[q] = Array.from(grid.querySelectorAll('.ans-btn[data-q="' + q + '"].selected')).map(b => b.dataset.v).sort().join('');
+        return;
+      }
+      st.answers[q] = v;
+      grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(b => b.classList.remove('selected'));
+      this.classList.add('selected');
+    }));
+    wrap.appendChild(card);
+  });
+  document.getElementById('back').addEventListener('click', () => { const k = {}; picked.forEach(e => k[e.id] = 1); showPicker(k); });
+  document.getElementById('submit').addEventListener('click', submitAll);
+}
+
+async function submitAll() {
+  const msg = document.getElementById('sub-msg');
+  for (const ex of picked) {
+    const st = state[ex.id], sub = st.info.subjective || [];
+    const miss = st.answers.findIndex((a, i) => sub.indexOf(i + 1) < 0 && !a);
+    if (miss >= 0) { msg.textContent = '"' + ex.label + '" ' + (miss + 1) + '번에 답을 선택해주세요.'; return; }
+  }
+  const btn = document.getElementById('submit');
+  btn.disabled = true; btn.textContent = '채점 중...';
+  const results = [];
+  try {
+    for (const ex of picked) {
+      const res = await callApi('submitAnswer', { id: ex.id, studentName: studentName, answers: state[ex.id].answers });
+      if (!res.ok) throw new Error((ex.label) + ': ' + (res.error || '제출 실패'));
+      results.push({ ex, res });
+    }
+  } catch (e) {
+    msg.textContent = '오류: ' + e.message + (results.length ? ' (앞의 ' + results.length + '개 단원은 이미 제출됐어요)' : '');
+    btn.disabled = false; btn.textContent = '제출하고 채점받기';
+    return;
+  }
+  showResults(results);
+}
+
+function showResults(results) {
+  let sc = 0, tot = 0;
+  results.forEach(({ res }) => { sc += res.score || 0; tot += res.total || 0; });
+  area().innerHTML = `
+    <h1>채점 결과</h1>
+    <div class="card center">
+      <p class="muted">${esc(studentName)}님 · ${results.length}개 단원</p>
+      <div class="score-badge ${tot && sc === tot ? 'pass' : 'fail'}" style="font-size:30px; padding:10px 28px;">${tot ? to100(sc, tot) + '점' : '객관식 없음'}</div>
+      <p class="hint" style="margin-top:8px;">전체 ${tot}문항 중 ${sc}개 정답 · 100점 만점 환산</p>
+    </div>
+    ${results.map(({ ex, res }) => `
+      <h2>${ex.unit ? esc(ex.unit) + '단원 ' : ''}${esc(ex.label)} — ${res.total ? res.score + '/' + res.total : '객관식 없음'}</h2>
+      <div class="card">${res.correctAnswers.map((ans, i) => String(ans) === '-' ? `
+        <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${i + 1}번</span><span>주관식 (자동 채점 제외)</span></div>` : `
+        <div class="submission-row"><span>${i + 1}번</span><span>내 답: ${fmtAnswer(res.studentAnswers[i])} · 정답: ${fmtAnswer(ans)} ${answerMatches(res.studentAnswers[i], ans) ? '✅' : '❌'}</span></div>`).join('')}</div>`).join('')}
+    <button type="button" class="btn outline" style="width:100%;" onclick="location.reload()">다른 단원 또 채점하기</button>`;
+}
+load();
+</script>
+</body>
+</html>

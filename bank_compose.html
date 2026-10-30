@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>시험 조합 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#95D1DB">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="bank_list.html">← 문제은행</a></span>
+  <h1>문제은행에서 새 시험 조합하기</h1>
+  <p class="muted">단원을 고르면 그 범위의 문항으로 새 시험지를 만들고, QR코드와 정답이 자동으로 등록돼요.</p>
+  <div id="error-banner"></div>
+  <div id="content" class="muted">불러오는 중...</div>
+</template>
+
+<script src="js/vendor/qrcode.min.js?v=202610150082"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150082"></script>
+<script src="js/config.js?v=202610150082"></script>
+<script src="js/api.js?v=202610150082"></script>
+<script src="js/common.js?v=202610150082"></script>
+<script src="js/bankcore.js?v=202610150082"></script>
+<script src="js/pdfui.js?v=202610150082"></script>
+<script>
+requireLogin();
+renderHeader();
+const $ = id => document.getElementById(id);
+let groups = {};          // 단원 키("중2 · 물질의 특성") → 문항 목록
+let groupMeta = {};       // 단원 키 → {grade, unit}
+let allQuestions = [];
+const unitState = { checked: new Set(), counts: {}, subs: {} };    // subs: { 단원키: Set(소단원 이름) } — 비어 있으면 대단원 전체
+const subSet = u => unitState.subs[u] || (unitState.subs[u] = new Set());    // 단원 목록을 다시 그려도 체크·개수가 유지되게
+
+
+// ───────── 문항 구성 프리셋 ─────────
+const DEFAULT_PRESETS = { '기초': { '상': 10, '중': 50, '하': 40 }, '기본': { '상': 20, '중': 50, '하': 30 }, '심화': { '상': 30, '중': 50, '하': 20 } };
+let presets = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+let curPreset = null;
+const DIFFS = ['상', '중', '하'];
+const FALLBACK = { '상': ['중', '하'], '중': ['상', '하'], '하': ['중', '상'] };
+
+// 전체 개수 N을 비율(합이 100이 아니어도 됨)대로 나눈다. 소수점은 가장 큰 나머지부터 올려서 합이 N이 되게 한다.
+function allocate(N, pct) {
+  const sum = DIFFS.reduce((a, d) => a + (Number(pct[d]) || 0), 0);
+  if (!(N > 0) || !(sum > 0)) return { '상': 0, '중': 0, '하': 0 };
+  const raw = DIFFS.map(d => N * (Number(pct[d]) || 0) / sum);
+  const base = raw.map(Math.floor);
+  let left = N - base.reduce((a, b) => a + b, 0);
+  const order = DIFFS.map((d, i) => ({ i: i, frac: raw[i] - base[i], tie: ['중', '하', '상'].indexOf(d) }))
+    .sort((a, b) => (b.frac - a.frac) || (a.tie - b.tie));
+  for (let k = 0; left > 0; k = (k + 1) % 3, left--) base[order[k].i]++;
+  return { '상': base[0], '중': base[1], '하': base[2] };
+}
+
+function refreshPresetUI() {
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('on', b.dataset.p === curPreset));
+  const info = $('preset-info');
+  if (!curPreset) { info.textContent = '프리셋: ' + Object.keys(presets).map(n => n + '(상 ' + presets[n]['상'] + '·중 ' + presets[n]['중'] + '·하 ' + presets[n]['하'] + ')').join(' / '); return; }
+  const pc = presets[curPreset], sum = pc['상'] + pc['중'] + pc['하'];
+  const N = parseInt($('total').value, 10);
+  let t = curPreset + ' = 상 ' + pc['상'] + '% · 중 ' + pc['중'] + '% · 하 ' + pc['하'] + '%';
+  if (sum !== 100) t += ' (합이 ' + sum + '%라서 비율로 환산)';
+  t += N > 0 ? ' → 전체 ' + N + '문항 기준으로 아래 개수를 채웠어요.' : ' — 위의 전체 문항 수를 입력하면 개수가 계산돼요.';
+  info.textContent = t;
+}
+function applyPreset() {
+  if (!curPreset) { refreshPresetUI(); return; }
+  const N = parseInt($('total').value, 10);
+  const c = allocate(N, presets[curPreset]);
+  DIFFS.forEach(d => { $('n-' + d).value = N > 0 ? c[d] : ''; });
+  refreshPresetUI();
+}
+function fillEditor() {
+  document.querySelectorAll('#preset-editor tr[data-p]').forEach(tr => {
+    const n = tr.dataset.p;
+    tr.querySelectorAll('.pe').forEach(inp => { inp.value = presets[n][inp.dataset.k]; });
+    updateSum(tr);
+  });
+}
+function updateSum(tr) {
+  const v = Array.from(tr.querySelectorAll('.pe')).reduce((a, i) => a + (parseInt(i.value, 10) || 0), 0);
+  const cell = tr.querySelector('.pe-sum');
+  cell.innerHTML = v === 100 ? '100' : '<span class="preset-warn">' + v + '</span>';
+}
+function setupPresets() {
+  document.querySelectorAll('.preset-btn').forEach(b => b.addEventListener('click', () => {
+    curPreset = curPreset === b.dataset.p ? null : b.dataset.p;
+    if (!curPreset) DIFFS.forEach(d => { $('n-' + d).value = ''; });
+    applyPreset();
+  }));
+  $('total').addEventListener('input', applyPreset);
+  DIFFS.forEach(d => $('n-' + d).addEventListener('input', () => { curPreset = null; refreshPresetUI(); }));
+  $('preset-edit-btn').addEventListener('click', () => {
+    const ed = $('preset-editor');
+    ed.style.display = ed.style.display === 'none' ? 'block' : 'none';
+    if (ed.style.display === 'block') fillEditor();
+  });
+  document.querySelectorAll('#preset-editor .pe').forEach(inp => inp.addEventListener('input', () => updateSum(inp.closest('tr'))));
+  $('preset-save').addEventListener('click', async () => {
+    const next = {};
+    document.querySelectorAll('#preset-editor tr[data-p]').forEach(tr => {
+      next[tr.dataset.p] = {};
+      tr.querySelectorAll('.pe').forEach(i => { next[tr.dataset.p][i.dataset.k] = Math.max(0, parseInt(i.value, 10) || 0); });
+    });
+    const bad = Object.keys(next).find(n => DIFFS.every(d => next[n][d] === 0));
+    if (bad) { $('preset-msg').textContent = ' ' + bad + ': 모두 0이에요. 숫자를 넣어주세요.'; return; }
+    presets = next;
+    $('preset-msg').textContent = ' 저장 중...';
+    try {
+      const r = await callApi('setPresets', { password: getTeacherPassword(), presets: next });
+      $('preset-msg').textContent = r.ok ? ' ✅ 저장했어요 (다른 컴퓨터에서도 같아요)' : (' 저장 실패: ' + r.error);
+    } catch (e) { $('preset-msg').textContent = ' 서버에 저장하지 못했어요 (이 화면에서만 적용돼요)'; }
+    applyPreset();
+  });
+  $('preset-reset').addEventListener('click', () => { presets = JSON.parse(JSON.stringify(DEFAULT_PRESETS)); fillEditor(); $('preset-msg').textContent = ' 처음 값으로 되돌렸어요. 저장을 눌러야 서버에 반영돼요.'; applyPreset(); });
+  // 서버에 저장된 값이 있으면 불러온다
+  callApi('getPresets', { password: getTeacherPassword() }).then(r => {
+    if (r.ok && r.presets) {
+      Object.keys(r.presets).forEach(n => { if (presets[n]) presets[n] = r.presets[n]; });
+      applyPreset();
+    }
+  }).catch(() => {});
+  refreshPresetUI();
+}
+
+const dKey = q => q.difficulty || '미정';
+let excludeIds = new Set();   // "겹치지 않게"로 뺄 문항 id들 (유사 시험지 만들기)
+let regenFrom = null;         // 원본 시험 정보(복습 재구성 때 안내 문구에 씀)
+
+let kindFilter = '일반';          // 문제 종류: '일반'(기본) | '기출' | '' 전체
+let schoolFilter = new Set();   // 기출문제를 학교·시험별로 좁힐 때(비어있으면 전체 학교)
+let yearFilter = new Set();     // 기출문제를 출제년도별로 좁힐 때(비어있으면 전체 연도)
+const yearName = q => q.year || '(연도 없음)';
+const schoolName = q => q.school || '(학교·시험 이름 없음)';
+function passesFilters(q) {
+  if (kindFilter && q.kind !== kindFilter) return false;
+  if (schoolFilter.size && q.kind === '기출' && !schoolFilter.has(schoolName(q))) return false;   // 학교 선택은 기출문제에만 적용
+  if (yearFilter.size && q.kind === '기출' && !yearFilter.has(yearName(q))) return false;       // 연도 선택도 기출문제에만 적용
+  return true;
+}
+function poolFor(u) {
+  let p = (groups[u] || []).filter(passesFilters);
+  if (unitState.subs[u] && unitState.subs[u].size) p = p.filter(q => unitState.subs[u].has(q.sub || ''));      // 소단원을 골랐으면 그 소단원 문항만
+  const chk = $('exclude-prev');
+  if (chk && chk.checked && excludeIds.size) p = p.filter(q => !excludeIds.has(q.id));
+  return p;
+}
+function showAvail() {
+  const units = Array.from(document.querySelectorAll('.use:checked')).map(c => c.dataset.u);
+  const c = { '상': 0, '중': 0, '하': 0, '미정': 0 };
+  let nSub = 0, nExcluded = 0;
+  units.forEach(u => {
+    groups[u].filter(passesFilters).forEach(q => { if (excludeIds.has(q.id)) nExcluded++; });
+    poolFor(u).forEach(q => { c[dKey(q)]++; if (q.answer === '-') nSub++; });
+  });
+  let t = units.length ? '선택한 단원의 보유 문항 → 상 ' + c['상'] + ' · 중 ' + c['중'] + ' · 하 ' + c['하'] + ' · 난이도 미정 ' + c['미정'] : '단원을 선택하면 난이도별 보유 개수가 보여요.';
+  if (nSub) t += ' (이 중 주관식 ' + nSub + '개 — 시험에 들어가면 회색으로 표시되고 자동 채점에서 빠져요)';
+  if (nExcluded) t += ' · 겹치지 않게 제외됨 ' + nExcluded + '개';
+  $('diff-avail').textContent = t;
+}
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+
+// ───────── 문제 종류(일반/기출)·학교 필터, 학년별 단원 목록 ─────────
+function tagsHtml(q) {
+  return (q.grade ? '<span class="tag-grade">' + escapeHtml(q.grade) + '</span>' : '') +
+    (isPastExam(q) ? '<span class="tag-past">기출</span>' : '') + (isBookQ(q) ? '<span class="tag-book">내신교재</span>' : '') + escapeHtml(q.unit) +
+    (isPastExam(q) && q.year ? ' <span class="tag-school">' + escapeHtml(q.year) + '</span>' : '') +
+    (isPastExam(q) && q.school ? ' <span class="tag-school">' + escapeHtml(q.school) + '</span>' : '');
+}
+function renderKindChips() {
+  const n = { all: allQuestions.length, normal: allQuestions.filter(q => !isPastExam(q) && !isBookQ(q)).length, past: allQuestions.filter(isPastExam).length, book: allQuestions.filter(isBookQ).length };
+  $('kind-chips').innerHTML = [['일반', '일반 문제', n.normal], ['기출', '기출문제', n.past]].concat(n.book ? [['교재', '내신교재', n.book]] : []).concat([['', '전체 (일반·기출·내신교재 모두)', n.all]]).map(v =>
+    '<label class="kind-chip' + (kindFilter === v[0] ? ' on' : '') + '"><input type="radio" name="kind" value="' + v[0] + '"' + (kindFilter === v[0] ? ' checked' : '') + '> ' + v[1] + ' <span class="muted">(' + v[2] + ')</span></label>').join('') +
+    (n.past || n.book ? '' : '<span class="hint" style="margin-left:8px;">기출문제로 저장한 문항이 아직 없어요 (가져올 때 구분을 「기출문제」로 고르세요)</span>');
+  $('kind-chips').querySelectorAll('input').forEach(r => r.addEventListener('change', () => { kindFilter = r.value; renderKindChips(); renderSchoolFilter(); renderYearFilter(); renderUnits(); showAvail(); }));
+}
+function renderSchoolFilter() {
+  const box = $('school-filter');
+  const cnt = {};
+  allQuestions.filter(isPastExam).forEach(q => { const k = schoolName(q); cnt[k] = (cnt[k] || 0) + 1; });
+  const names = Object.keys(cnt).sort(naturalCompare);
+  if (kindFilter === '일반' || !names.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="hint" style="margin:6px 0 2px;">기출문제를 학교·시험별로 좁히기 (아무것도 안 고르면 모두)</div>' +
+    names.map(n => '<label class="bank-include-label school-chip"><input type="checkbox" class="sch" data-s="' + escapeHtml(n) + '"' + (schoolFilter.has(n) ? ' checked' : '') + '> ' + escapeHtml(n) + ' <span class="muted">(' + cnt[n] + ')</span></label>').join('');
+  box.querySelectorAll('.sch').forEach(c => c.addEventListener('change', () => { if (c.checked) schoolFilter.add(c.dataset.s); else schoolFilter.delete(c.dataset.s); renderUnits(); showAvail(); }));
+}
+function updatePastFilterBox() {
+  const has = allQuestions.some(isPastExam);
+  $('past-filter').style.display = (kindFilter !== '일반' && has) ? '' : 'none';
+}
+function renderYearFilter() {
+  updatePastFilterBox();
+  const box = $('year-filter');
+  const cnt = {};
+  allQuestions.filter(isPastExam).forEach(q => { const k = yearName(q); cnt[k] = (cnt[k] || 0) + 1; });
+  const names = Object.keys(cnt).sort((a, b) => b.localeCompare(a));      // 최근 연도부터
+  if (kindFilter === '일반' || !names.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="hint" style="margin:6px 0 2px;">기출문제를 출제년도별로 좁히기 (아무것도 안 고르면 모든 연도)</div>' +
+    names.map(n => '<label class="bank-include-label school-chip"><input type="checkbox" class="yrf" data-y="' + escapeHtml(n) + '"' + (yearFilter.has(n) ? ' checked' : '') + '> ' + escapeHtml(n) + ' <span class="muted">(' + cnt[n] + ')</span></label>').join('');
+  box.querySelectorAll('.yrf').forEach(c => c.addEventListener('change', () => { if (c.checked) yearFilter.add(c.dataset.y); else yearFilter.delete(c.dataset.y); renderUnits(); showAvail(); }));
+}
+// 대단원 밑의 소단원 선택칸 (목차의 소단원 + 문항에 이미 붙은 소단원). 하나도 안 고르면 대단원 전체.
+function subBlockHtml(k, g, all) {
+  const ent = tocEntryFor(g, groupMeta[k].unit), names = [];
+  ((ent && ent.subs) || []).forEach(sb => names.push(sb.name));
+  all.forEach(q => { if (q.sub && names.indexOf(q.sub) < 0) names.push(q.sub); });
+  if (!names.length) return '';
+  const cnt = {}; all.forEach(q => { const n = q.sub || ''; cnt[n] = (cnt[n] || 0) + 1; });
+  const sel = subSet(k);
+  return '<div class="sub-rows" data-u="' + escapeHtml(k) + '" style="margin:0 0 8px 26px; padding:6px 10px; background:#F8FAFC; border-radius:8px;' + (unitState.checked.has(k) ? '' : ' display:none;') + '">' +
+    '<div class="hint" style="margin:0 0 4px;">소단원을 고르면 그 소단원 문항만 나와요. 하나도 안 고르면 대단원 전체예요.</div>' +
+    names.map(n => '<label class="bank-include-label" style="display:inline-flex; margin-right:12px; font-size:13px;' + (cnt[n] ? '' : ' opacity:.55;') + '"><input type="checkbox" class="subuse" data-u="' + escapeHtml(k) + '" data-s="' + escapeHtml(n) + '"' + (sel.has(n) ? ' checked' : '') + '> ' + escapeHtml(n) + ' <span class="muted" style="font-weight:400;">(' + (cnt[n] || 0) + ')</span></label>').join('') +
+    ((cnt[''] && names.length) ? '<span class="muted" style="font-size:12px;">· 소단원 미지정 ' + cnt[''] + '문항 (소단원을 고르면 빠져요)</span>' : '') + '</div>';
+}
+function renderUnits() {
+  const keys = Object.keys(groups).filter(k => groups[k].some(passesFilters));
+  const byGrade = {};
+  keys.forEach(k => { const g = groupMeta[k].grade; (byGrade[g] = byGrade[g] || []).push(k); });
+  const grades = Object.keys(byGrade).sort((a, b) => gradeRank(a) - gradeRank(b));
+  if (!grades.length) { $('unit-box').innerHTML = '<p class="hint">이 조건에 맞는 문항이 없어요.</p>'; return; }
+  $('unit-box').innerHTML = grades.map(g => {
+    const ks = byGrade[g].sort((a, b) => naturalCompare(groupMeta[a].unit, groupMeta[b].unit));
+    const total = ks.reduce((n, k) => n + groups[k].filter(passesFilters).length, 0);
+    return '<div class="grade-block"><div class="grade-head"><label class="bank-include-label"><input type="checkbox" class="grade-all" data-g="' + escapeHtml(g) + '"> <b>' +
+      (g ? escapeHtml(g) : '학년 미분류') + '</b> <span class="muted" style="font-weight:400;">(' + total + '문항)</span></label></div>' +
+      ks.map(k => {
+        const all = groups[k].filter(passesFilters);
+        const noAns = all.filter(q => !q.answer).length, nSub = all.filter(q => q.answer === '-').length, nPast = all.filter(isPastExam).length;
+        const label = g ? groupMeta[k].unit : k;
+        return '<div class="bank-compose-unit-row"><label class="bank-include-label"><input type="checkbox" class="use" data-u="' + escapeHtml(k) + '"' + (unitState.checked.has(k) ? ' checked' : '') + '> ' + escapeHtml(label) +
+          ' <span class="muted" style="font-weight:400;">(' + all.length + '문항' + (!kindFilter && nPast ? ', 기출 ' + nPast : '') + (nSub ? ', 주관식 ' + nSub : '') + (noAns ? ', 정답없음 ' + noAns : '') + ')</span></label>' +
+          '<input type="text" class="cnt bank-answer-input" data-u="' + escapeHtml(k) + '" placeholder="개수" value="' + escapeHtml(String(unitState.counts[k] === undefined ? '' : unitState.counts[k])) + '"></div>' + subBlockHtml(k, g, all);
+      }).join('') + '</div>';
+  }).join('');
+  const box = $('unit-box');
+  const toggleSubRows = () => box.querySelectorAll('.sub-rows').forEach(d => { d.style.display = unitState.checked.has(d.dataset.u) ? '' : 'none'; });
+  box.querySelectorAll('.use').forEach(c => c.addEventListener('change', () => { if (c.checked) unitState.checked.add(c.dataset.u); else unitState.checked.delete(c.dataset.u); toggleSubRows(); syncGradeBoxes(); showAvail(); }));
+  box.querySelectorAll('.subuse').forEach(c => c.addEventListener('change', () => { if (c.checked) subSet(c.dataset.u).add(c.dataset.s); else subSet(c.dataset.u).delete(c.dataset.s); showAvail(); }));
+  box.querySelectorAll('.cnt').forEach(c => c.addEventListener('input', () => { unitState.counts[c.dataset.u] = c.value; }));
+  box.querySelectorAll('.grade-all').forEach(c => c.addEventListener('change', () => {       // 학년 이름을 누르면 그 학년 단원 전체 선택/해제
+    c.closest('.grade-block').querySelectorAll('.use').forEach(u => { u.checked = c.checked; if (c.checked) unitState.checked.add(u.dataset.u); else unitState.checked.delete(u.dataset.u); });
+    toggleSubRows();
+    showAvail();
+  }));
+  syncGradeBoxes();
+}
+// 학년 칸의 체크 상태: 그 학년 단원이 전부 체크되어 있으면 체크
+function syncGradeBoxes() {
+  document.querySelectorAll('#unit-box .grade-block').forEach(b => {
+    const us = Array.from(b.querySelectorAll('.use'));
+    b.querySelector('.grade-all').checked = us.length > 0 && us.every(u => u.checked);
+  });
+}
+
+async function loadRegenParams() {
+  const params = new URLSearchParams(location.search);
+  const regenId = params.get('regen') || params.get('excludeExam');
+  const unitsParam = params.get('units');
+  let presetUnits = null;
+  if (unitsParam) { try { presetUnits = JSON.parse(decodeURIComponent(unitsParam)); } catch (e) {} }
+  if (regenId) {
+    try {
+      const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: regenId });
+      if (d.ok) {
+        if (d.sourceQuestionIds && d.sourceQuestionIds.length) excludeIds = new Set(d.sourceQuestionIds);
+        regenFrom = { id: regenId, title: d.title, recipe: d.composeRecipe, hadSource: !!(d.sourceQuestionIds && d.sourceQuestionIds.length) };
+      }
+    } catch (e) {}
+  }
+  return presetUnits;
+}
+
+(async function () {
+  try {
+    const res = await callApi('listQuestions', { password: getTeacherPassword() });
+    if (!res.ok) { $('content').innerHTML = '<div class="banner error">' + escapeHtml(res.error) + '</div>'; return; }
+    allQuestions = res.questions;
+    try { await ensureToc(); } catch (e) {}
+    if (allQuestions.length && !allQuestions.some(q => 'kind' in q)) { $('error-banner').innerHTML = '<div class="banner error">⚠️ 서버(Apps Script)가 옛날 버전이라 기출/일반 구분이 저장·표시되지 않아요. 새 AppsScript_Code.gs로 다시 배포해주세요.</div>'; }
+    res.questions.forEach(q => { const k = unitKey(q); (groups[k] = groups[k] || []).push(q); if (!groupMeta[k]) groupMeta[k] = { grade: q.grade || '', unit: String(q.unit) }; });
+    if (!Object.keys(groups).length) { $('content').innerHTML = '<div class="card center muted">문제은행에 문항이 없어요. 먼저 <a href="bank_upload.html">PDF에서 문항을 가져와</a> 주세요.</div>'; return; }
+
+    const presetUnits = await loadRegenParams();
+    const whoName = new URLSearchParams(location.search).get('who') || '';     // 유사오답: 학생 이름(제목·안내에 씀)
+
+    // 특정 문항 id들을 바로 받아서(유사 오답 문제 등) 선택 화면 없이 검토 화면으로 직행
+    const directParams = new URLSearchParams(location.search);
+    const directIdsRaw = directParams.get('directIds');
+    if (directIdsRaw) {
+      let ids = [];
+      try { ids = JSON.parse(decodeURIComponent(directIdsRaw)); } catch (e) {}
+      const byId = {}; res.questions.forEach(q => byId[q.id] = q);
+      const picks = ids.map(id => byId[id]).filter(Boolean);
+      const title = directParams.get('title') ? decodeURIComponent(directParams.get('title')) : '유사오답 모음';
+      $('content').className = '';
+      $('content').innerHTML = '<div id="review-area"></div>';
+      if (!picks.length) {
+        $('content').innerHTML = '<div class="card center muted">유사오답 문항을 찾지 못했어요. 문제은행에 아직 관련 문항이 없을 수 있어요.</div>';
+        return;
+      }
+      // 검토 화면으로 가기 전에, 어느 단원 문항을 넣을지 고를 수 있게 한다 (기본은 전부 선택)
+      const pg = {};
+      picks.forEach(q => { const k = unitKey(q); (pg[k] = pg[k] || []).push(q); });
+      const pkeys = Object.keys(pg).sort(naturalCompare);
+      const manualUrl = 'bank_compose.html' + (whoName ? '?who=' + encodeURIComponent(whoName) : '');
+      $('content').innerHTML = '<div class="card" id="direct-pick"><h3 style="margin-top:0;">유사오답 — 출제할 단원 선택</h3>' +
+        '<p class="hint">비슷한 문항을 ' + picks.length + '개 찾았어요. 넣을 단원을 고르세요. (아래에서 단원을 직접 고르는 방식으로 바꿀 수도 있어요)</p>' +
+        pkeys.map(k => '<label class="bank-include-label" style="display:block;"><input type="checkbox" class="dpick" data-k="' + escapeHtml(k) + '" checked> ' + escapeHtml(k) +
+          ' <span class="muted">(' + pg[k].length + '문항)</span></label>').join('') +
+        '<button type="button" class="btn primary" id="direct-go" style="width:100%; margin-top:12px;">선택한 단원으로 검토하기</button>' +
+        '<p class="hint" style="margin-top:10px;"><a href="' + manualUrl + '">단원을 처음부터 직접 골라서 출제하기 →</a></p></div><div id="review-area"></div>';
+      const goDirect = () => {
+        const on = new Set(Array.from(document.querySelectorAll('.dpick:checked')).map(c => c.dataset.k));
+        const sel = picks.filter(q => on.has(unitKey(q)));
+        if (!sel.length) { alert('단원을 하나 이상 선택해주세요.'); return; }
+        $('direct-pick').style.display = 'none';
+        showReview(title, sel, null);
+      };
+      $('direct-go').addEventListener('click', goDirect);
+      return;
+    }
+
+    $('content').className = '';
+    $('content').innerHTML = `
+      ${regenFrom ? `<div class="banner" style="margin-bottom:14px;">
+          ${presetUnits
+            ? '📝 <b>"' + escapeHtml(regenFrom.title) + '"</b>에서 ' + (whoName ? '<b>' + escapeHtml(whoName) + '</b> 학생이 ' : '') + '틀린 문항의 단원을 바탕으로 <b>유사오답</b>을 만들어요. 단원별 개수는 틀린 문항 수예요.'
+            : '🔁 <b>"' + escapeHtml(regenFrom.title) + '"</b>' + (regenFrom.recipe ? '와 비슷한 시험' : '에서 쓴 문항') + '을 바탕으로 만들어요.'}
+          ${regenFrom.hadSource ? '<label class="bank-include-label" style="margin-top:6px;"><input type="checkbox" id="exclude-prev" checked> 기존 시험과 겹치지 않게 (이미 낸 문항은 빼고 고르기)</label>' : '<p class="hint" style="margin:4px 0 0;">이 시험은 예전 버전으로 만들어져서 "겹치지 않게" 옵션은 못 써요. 문항은 겹칠 수 있어요.</p>'}
+        </div>` : ''}
+      <div class="card">
+        <label>시험지 이름</label>
+        <input type="text" id="title" placeholder="예: 중3 과학 1단원 모음고사" value="${regenFrom ? escapeHtml(regenFrom.title) + (presetUnits ? ' - ' + (whoName ? escapeHtml(whoName) + ' ' : '') + '유사오답' : ' (유사)') : ''}">
+        <label class="field-label-spaced">문제 종류</label>
+        <div class="kind-chips" id="kind-chips"></div>
+        <details id="past-filter" style="display:none; margin:6px 0;"><summary class="hint" style="cursor:pointer;">학교·연도로 좁히기 (선택 — 안 고르면 기출문제 전부)</summary>
+          <div id="school-filter" class="school-filter"></div>
+          <div id="year-filter" class="school-filter"></div>
+        </details>
+        <label class="field-label-spaced">학년 · 단원 선택 (개수를 비워두면 그 단원 문항을 모두 사용해요)</label>
+        <div class="bank-compose-units" id="unit-box"></div>
+        <p class="hint">아래 "전체 문항 수"를 입력하면, 단원별 개수 대신 선택한 단원들에서 고르게 자동으로 뽑아요.</p>
+        <label>전체 문항 수 (선택)</label>
+        <input type="text" id="total" placeholder="예: 20" value="${regenFrom && regenFrom.recipe && regenFrom.recipe.total ? regenFrom.recipe.total : ''}">
+        <label class="field-label-spaced">난이도 구성 (선택)</label>
+        <p class="hint">프리셋을 누르면 위의 <b>전체 문항 수</b>에 맞춰 상·중·하 개수가 자동 계산돼요. 아래 개수는 직접 고쳐도 돼요. 개수를 정하면 <b>선택한 단원들 전체에서</b> 난이도별로 뽑고, 위의 단원별 개수는 무시돼요.</p>
+        <div class="preset-row">
+          <b style="font-size:13px;">문항 구성</b>
+          <button type="button" class="preset-btn" data-p="기초">기초</button>
+          <button type="button" class="preset-btn" data-p="기본">기본</button>
+          <button type="button" class="preset-btn" data-p="심화">심화</button>
+          <button type="button" class="btn ghost" id="preset-edit-btn" style="padding:7px 12px;">⚙ 비율 수정</button>
+        </div>
+        <div id="preset-info" class="hint"></div>
+        <div id="preset-editor" class="preset-editor" style="display:none;">
+          <table>
+            <tr><th></th><th><span class="diff-tag d-상">상 %</span></th><th><span class="diff-tag d-중">중 %</span></th><th><span class="diff-tag d-하">하 %</span></th><th>합계</th></tr>
+            ${['기초', '기본', '심화'].map(n => `<tr data-p="${n}"><td><b>${n}</b></td>
+              <td><input type="text" class="pe" data-k="상" inputmode="numeric"></td>
+              <td><input type="text" class="pe" data-k="중" inputmode="numeric"></td>
+              <td><input type="text" class="pe" data-k="하" inputmode="numeric"></td>
+              <td class="pe-sum"></td></tr>`).join('')}
+          </table>
+          <p class="hint">합이 100이 아니면 그 비율로 환산해서 적용해요. (예: 30·40·20 → 상 33% · 중 44% · 하 22%)</p>
+          <button type="button" class="btn primary" id="preset-save" style="padding:8px 14px;">저장</button>
+          <button type="button" class="btn ghost" id="preset-reset" style="padding:8px 14px;">처음 값으로</button>
+          <span class="hint" id="preset-msg"></span>
+        </div>
+        <div class="diff-inputs">
+          <span class="diff-tag d-상">상</span><input type="text" id="n-상" placeholder="0" inputmode="numeric" value="${regenFrom && regenFrom.recipe && regenFrom.recipe.diffCounts ? regenFrom.recipe.diffCounts['상'] || '' : ''}">
+          <span class="diff-tag d-중">중</span><input type="text" id="n-중" placeholder="0" inputmode="numeric" value="${regenFrom && regenFrom.recipe && regenFrom.recipe.diffCounts ? regenFrom.recipe.diffCounts['중'] || '' : ''}">
+          <span class="diff-tag d-하">하</span><input type="text" id="n-하" placeholder="0" inputmode="numeric" value="${regenFrom && regenFrom.recipe && regenFrom.recipe.diffCounts ? regenFrom.recipe.diffCounts['하'] || '' : ''}">
+        </div>
+        <div id="diff-avail" class="hint"></div>
+        <label class="bank-include-label" style="margin:4px 0;"><input type="checkbox" id="fill-short" checked> 어떤 난이도 문항이 모자라면 가까운 난이도로 채우기</label>
+        <p class="hint" style="margin-bottom:2px;">난이도 개수를 안 정할 때, 뽑을 난이도 범위:</p>
+        <div style="display:flex; gap:14px; flex-wrap:wrap;">
+          ${['상', '중', '하', '미정'].map(d => '<label class="bank-include-label"><input type="checkbox" class="dfilter" value="' + d + '" checked> ' + d + '</label>').join('')}
+        </div>
+        <label class="bank-include-label field-label-spaced"><input type="checkbox" id="easy-first" checked> 쉬운 문항부터 배치 (같은 단원 안에서 하 → 중 → 상 · 단원은 항상 순서대로 모아서 배치)</label>
+        <label class="bank-include-label"><input type="checkbox" id="shuffle"> 문항 순서 섞기 (위 배치보다 우선)</label>
+        <label class="bank-include-label" style="margin-top:8px;"><input type="checkbox" id="make-expl" checked> 정답·해설지도 함께 만들기 (시험지 뒤에 정답표 → 해설 순서로 이어붙여서 한 PDF로 · 양면 인쇄하면 정답이 시험지 바로 뒷면에 오지 않게 빈 쪽을 끼워요)</label>
+        <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:18px;">문항 고르기 → 검토</button>
+      </div>
+      <div id="review-area" style="display:none;"></div>`;
+    $('go-btn').addEventListener('click', buildPicksAndReview);
+    // 처음 상태: 유사오답(단원별 틀린 개수)이나 유사 시험지(원래 조건)에서 넘어왔으면 그 단원을 미리 체크한다
+    if (presetUnits) {
+      Object.keys(presetUnits).forEach(k => { unitState.checked.add(k); unitState.counts[k] = presetUnits[k]; });
+      kindFilter = '';          // 유사오답은 학생이 푼 단원 전체(일반+기출)에서 고른다
+    } else if (regenFrom && regenFrom.recipe) {
+      (regenFrom.recipe.units || []).forEach(k => unitState.checked.add(k));
+      Object.keys(regenFrom.recipe.subs || {}).forEach(k => { unitState.subs[k] = new Set(regenFrom.recipe.subs[k]); });
+      if (regenFrom.recipe.mode === 'count' && regenFrom.recipe.perUnit) Object.assign(unitState.counts, regenFrom.recipe.perUnit);
+      if ('kind' in regenFrom.recipe) kindFilter = regenFrom.recipe.kind || '';
+      (regenFrom.recipe.schools || []).forEach(x => schoolFilter.add(x));
+      (regenFrom.recipe.years || []).forEach(x => yearFilter.add(x));
+    }
+    renderKindChips(); renderSchoolFilter(); renderYearFilter(); renderUnits();
+    const excludeChk = $('exclude-prev');
+    if (excludeChk) excludeChk.addEventListener('change', showAvail);
+    showAvail();
+    setupPresets();
+  } catch (e) { $('content').innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>'; }
+})();
+
+// ── 1단계: 조건에 맞는 문항 고르기 ──
+function buildPicksAndReview() {
+  const err = $('error-banner');
+  err.innerHTML = '';
+  const title = $('title').value.trim();
+  if (!title) { err.innerHTML = '<div class="banner error">시험지 이름을 입력해주세요.</div>'; return; }
+  const units = Array.from(document.querySelectorAll('.use:checked')).map(c => c.dataset.u);
+  if (!units.length) { err.innerHTML = '<div class="banner error">단원을 하나 이상 선택해주세요.</div>'; return; }
+
+  let picks = [];
+  const wantD = { '상': parseInt($('n-상').value, 10) || 0, '중': parseInt($('n-중').value, 10) || 0, '하': parseInt($('n-하').value, 10) || 0 };
+  const wantSum = wantD['상'] + wantD['중'] + wantD['하'];
+  let fillNotes = [];
+  const subsRecipe = {}; units.forEach(u => { if (unitState.subs[u] && unitState.subs[u].size) subsRecipe[u] = Array.from(unitState.subs[u]); });
+  const recipe = { units: units, subs: subsRecipe, kind: kindFilter, schools: Array.from(schoolFilter), years: Array.from(yearFilter), shuffle: $('shuffle').checked, easyFirst: $('easy-first').checked, fillShort: $('fill-short').checked };
+  if (wantSum > 0) {
+    recipe.mode = 'difficulty'; recipe.diffCounts = wantD;
+    const poolsBy = {};
+    DIFFS.forEach(d => poolsBy[d] = units.map(u => shuffle(poolFor(u).filter(q => dKey(q) === d))));
+    const take = (d, need) => {
+      const got = [];
+      while (need > 0 && poolsBy[d].some(p => p.length)) {
+        for (const p of poolsBy[d]) { if (need <= 0) break; if (p.length) { got.push(p.pop()); need--; } }
+      }
+      return got;
+    };
+    const lack = {};
+    DIFFS.forEach(d => { const got = take(d, wantD[d]); picks = picks.concat(got); lack[d] = wantD[d] - got.length; });
+    const short = [];
+    DIFFS.forEach(d => {
+      if (lack[d] <= 0) return;
+      if ($('fill-short').checked) {
+        for (const d2 of FALLBACK[d]) {
+          if (lack[d] <= 0) break;
+          const g = take(d2, lack[d]);
+          if (g.length) { picks = picks.concat(g); lack[d] -= g.length; fillNotes.push(d + ' ' + g.length + '개가 모자라서 ' + d2 + ' 문항으로 채웠어요.'); }
+        }
+      }
+      if (lack[d] > 0) short.push(d + ' ' + wantD[d] + '개 요청 → ' + (wantD[d] - lack[d]) + '개뿐');
+    });
+    if (short.length) { err.innerHTML = '<div class="banner error">문항이 부족해요: ' + short.join(', ') + '. 개수를 줄이거나 단원을 더 선택하세요.</div>'; return; }
+  } else {
+    recipe.mode = 'count'; recipe.total = parseInt($('total').value, 10) || null;
+    const allowed = new Set(Array.from(document.querySelectorAll('.dfilter:checked')).map(c => c.value));
+    recipe.allowedDiff = Array.from(allowed);
+    const pool0 = {};
+    units.forEach(u => pool0[u] = poolFor(u).filter(q => allowed.has(dKey(q))));
+    const total = recipe.total;
+    if (total > 0) {
+      const pools = {};
+      units.forEach(u => pools[u] = shuffle(pool0[u].slice()));
+      let remaining = total;
+      while (remaining > 0 && units.some(u => pools[u].length)) {
+        for (const u of units) { if (remaining <= 0) break; if (pools[u].length) { picks.push(pools[u].pop()); remaining--; } }
+      }
+    } else {
+      recipe.perUnit = {};
+      units.forEach(u => {
+        const pool = shuffle(pool0[u].slice());
+        const raw = document.querySelector('.cnt[data-u="' + u.replace(/"/g, '\\"') + '"]').value.trim();
+        const n = raw ? Math.max(0, parseInt(raw, 10) || 0) : pool.length;
+        if (raw) recipe.perUnit[u] = n;
+        picks = picks.concat(pool.slice(0, n));
+      });
+    }
+  }
+  if (!picks.length) { err.innerHTML = '<div class="banner error">고를 수 있는 문항이 없어요. (겹치지 않게 제외하고 나니 남은 게 없을 수 있어요)</div>'; return; }
+  if ($('shuffle').checked) shuffle(picks);
+  else {
+    // 같은 단원(→ 소단원)끼리 모아서 단원 순서대로 배치하고, 쉬운 문항부터를 켰으면 각 단원 안에서 하 → 중 → 상 순서로 놓는다
+    const rank = { '하': 0, '중': 1, '미정': 1, '상': 2 }, easy = $('easy-first').checked;
+    picks = picks.map((q, i) => [q, i]).sort((a, b) => {
+      const x = a[0], y = b[0];
+      return (gradeRank(x.grade) - gradeRank(y.grade)) || naturalCompare(x.unit || '', y.unit || '') || naturalCompare(x.sub || '', y.sub || '') ||
+        (easy ? (rank[dKey(x)] - rank[dKey(y)]) : 0) || (a[1] - b[1]);
+    }).map(x => x[0]);
+  }
+  if (fillNotes.length) alert(fillNotes.join('\n'));
+  showReview(title, picks, recipe);
+}
+
+// ── 2단계: 검토 화면 — 빼거나 더 넣을 수 있다 ──
+let reviewPicks = [], reviewTitle = '', reviewRecipe = null;
+// 연관 문제 함께 묶기: "위 실험을 바탕으로…" 처럼 앞 문항의 자료를 이어 쓰는 문항은 대표(앞) 문항과 같이 넣는다
+let groupNote = '';
+function expandGroups(picks) {
+  const bySrc = {};
+  allQuestions.forEach(q => { if (q.num) (bySrc[q.source] = bySrc[q.source] || []).push(q); });
+  const out = [], seen = new Set(); let added = 0;
+  // 저장된 연결 정보(head)가 없는 문항은 본문("위 실험을 바탕으로…", "[7~8]")을 보고 앞 문항과의 연결을 찾아 준다
+  const autoHead = {};
+  Object.keys(bySrc).forEach(src => {
+    const hs = BankCore.linkHeads(bySrc[src].map(x => ({ num: x.num, text: x.textPreview || '' })));
+    Object.keys(hs).forEach(n => { autoHead[src + '\u0001' + n] = hs[n]; });
+  });
+  const headOf = x => x.head || autoHead[x.source + '\u0001' + x.num] || 0;
+  picks.forEach(q => {
+    if (seen.has(q.id)) return;
+    const root = q.num ? (headOf(q) || q.num) : 0;
+    if (!root) { seen.add(q.id); out.push(q); return; }
+    const mates = (bySrc[q.source] || []).filter(x => x.num === root || headOf(x) === root).sort((a, b) => a.num - b.num);
+    if (mates.length < 2) { seen.add(q.id); out.push(q); return; }
+    mates.forEach(x => { if (seen.has(x.id)) return; seen.add(x.id); out.push(x); if (!picks.some(p => p.id === x.id)) added++; });
+  });
+  groupNote = added ? '연관된 문제 ' + added + '개를 함께 넣었어요 (위 실험을 바탕으로 하는 문항 등은 같이 나와야 풀 수 있어요).' : '';
+  return out;
+}
+// 시험지 이름 끝에 선택한 단원 번호를 붙인다: "… 1,3,5단원"
+function titleWithUnits(title, picks) {
+  const base = String(title || '').replace(UNIT_SUFFIX_RE, '').trim();
+  const sfx = unitSuffixText(picks.map(q => ({ unit: q.unit, grade: q.grade })), '');     // "중2-3,5,7단원"
+  if (sfx) return base + ' ' + sfx;
+  const names = Array.from(new Set(picks.map(q => String(q.unit || '').replace(/^[\d\s.\-]+/, '').trim()).filter(x => x && x !== '(단원 미지정)'))).slice(0, 2);
+  return names.length ? base + ' ' + names.map(n => n.slice(0, 10)).join('·') : base;
+}
+function showReview(title, picks, recipe) {
+  picks = expandGroups(picks);
+  title = titleWithUnits(title, picks);
+  reviewPicks = picks.slice(); reviewTitle = title; reviewRecipe = recipe;
+  const formCard = document.querySelector('#content > .card');
+  if (formCard) formCard.style.display = 'none';
+  $('review-area').style.display = 'block';
+  renderReview();
+  $('review-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderReview() {
+  const nSub = reviewPicks.filter(q => q.answer === '-').length;
+  $('review-area').innerHTML = `
+    <div class="card">
+      <h2 style="margin-top:0;">검토: "${escapeHtml(reviewTitle)}" · 총 ${reviewPicks.length}문항${nSub ? ' (주관식 ' + nSub + ')' : ''}</h2>
+      ${groupNote ? '<p class="hint" style="margin:0 0 8px;">🔗 ' + groupNote + '</p>' : ''}
+      <p class="hint">빼고 싶은 문항은 "빼기"를 누르세요. 더 넣고 싶으면 아래에서 검색해서 추가하세요.</p>
+      <div id="review-list"></div>
+      <div style="margin-top:12px;">
+        <label>문항 추가 (단원·내용으로 검색)</label>
+        <input type="text" id="add-search" placeholder="단원·학교·학년·내용으로 검색 (예: 기출, 중2, 전기)">
+        <div id="add-results" class="hint"></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button type="button" class="btn ghost" id="back-btn" style="padding:10px 16px;">← 조건 다시 선택</button>
+        <button type="button" class="btn outline" id="teacher-btn" style="padding:10px 16px;" title="문제 바로 밑에 정답·해설이 붙은 강사용 PDF만 내려받아요 (등록은 하지 않아요)">📘 강사용 시험지 받기</button>
+        <button type="button" class="btn primary" id="finalize-btn" style="flex:1;">이 ${reviewPicks.length}문항으로 최종 확정 → PDF 만들기</button>
+      </div>
+    </div>`;
+  renderReviewList();
+  $('back-btn').addEventListener('click', () => {
+    const formCard = document.querySelector('#content > .card');
+    if (formCard) { $('review-area').style.display = 'none'; formCard.style.display = ''; }
+    else history.back();
+  });
+  $('finalize-btn').addEventListener('click', finalize);
+  $('teacher-btn').addEventListener('click', makeTeacher);
+  $('add-search').addEventListener('input', renderAddResults);
+}
+function renderReviewList() {
+  $('review-list').innerHTML = reviewPicks.map((q, i) => `
+    <div class="review-row" data-i="${i}">
+      <div class="review-row-top">
+        <span><b>${i + 1}.</b> <span class="diff-tag d-${dKey(q)}">${dKey(q)}</span> ${tagsHtml(q)}
+          ${rangeInfo(q, reviewPicks) ? '<span class="hint">문제 ' + rangeInfo(q, reviewPicks).k + '개 묶음 · 정답 ' + rangeInfo(q, reviewPicks).parts.map(a => escapeHtml(fmtAnswer(a))).join(', ') + '</span>' : (q.answer === '-' ? '<span class="tag-sub">서술형</span>' : '<span class="hint">정답 ' + escapeHtml(fmtAnswer(q.answer)) + '</span>')}</span>
+        <button type="button" class="btn danger rm-btn" data-i="${i}" style="padding:6px 12px; flex-shrink:0;">빼기</button>
+      </div>
+      <img class="review-thumb" src="${driveThumb(q.fileId, 900)}" loading="lazy" title="누르면 크게 보여요">
+    </div>`).join('');
+  $('review-list').querySelectorAll('.review-thumb').forEach(im => im.addEventListener('click', () => zoomImg(im.dataset.full || im.src.replace(/=w\d+$/, '=w1600'))));
+  $('review-list').querySelectorAll('.rm-btn').forEach(b => b.addEventListener('click', () => {
+    reviewPicks.splice(parseInt(b.dataset.i, 10), 1);
+    renderReview();
+  }));
+}
+function renderAddResults() {
+  const q = $('add-search').value.trim().toLowerCase();
+  const box = $('add-results');
+  if (!q) { box.innerHTML = ''; return; }
+  const pickedIds = new Set(reviewPicks.map(x => x.id));
+  const all = Object.values(groups).flat();
+  // 띄어쓰기로 나눈 낱말을 모두 만족하는 문항만 보여 준다 (예: "중2 1단원" = 중2 이면서 1단원). "1단원"은 단원 번호가 1인 것만(11단원 제외).
+  const toks = q.split(/[\s,+\-]+/).filter(Boolean);
+  const tokOk = (x, t) => {
+    const um = t.match(/^0*(\d{1,2})\s*단원$/);
+    if (um) return new RegExp('^\\s*0*' + um[1] + '(?!\\d)').test(String(x.unit || ''));
+    return [x.unit, x.grade, x.school, x.year, isPastExam(x) ? '기출' : (isBookQ(x) ? '내신교재 교재' : '일반'), x.textPreview].some(v => String(v || '').toLowerCase().includes(t));
+  };
+  const hits = all.filter(x => !pickedIds.has(x.id) && toks.every(t => tokOk(x, t))).slice(0, 15);
+  box.innerHTML = hits.length ? hits.map(x => `
+    <div class="review-row">
+      <div class="review-row-top">
+        <span>${tagsHtml(x)} <span class="diff-tag d-${dKey(x)}">${dKey(x)}</span> ${x.answer === '-' ? '<span class="tag-sub">서술형</span>' : '정답 ' + escapeHtml(fmtAnswer(x.answer))}</span>
+        <button type="button" class="btn outline add-btn" data-id="${x.id}" style="padding:6px 12px; flex-shrink:0;">추가</button>
+      </div>
+      <img class="review-thumb" src="${driveThumb(x.fileId, 900)}" loading="lazy" title="누르면 크게 보여요">
+    </div>`).join('') : '<p class="hint">일치하는 문항이 없어요.</p>';
+  box.querySelectorAll('.review-thumb').forEach(im => im.addEventListener('click', (e) => { e.stopPropagation(); zoomImg(im.src.replace(/=w\d+$/, '=w1600')); }));
+  box.querySelectorAll('.add-btn').forEach(b => b.addEventListener('click', () => {
+    const item = all.find(x => x.id === b.dataset.id);
+    if (item) { reviewPicks.push(item); renderReview(); $('add-search').focus(); }
+  }));
+}
+
+
+
+// 한 그림에 문제가 여러 개 들어 있는 문항("[18~19] 다음 표를 보고…" 처럼 자료를 같이 쓰는 묶음)은 시험지에서도 번호를 여러 개 차지한다.
+// 정답이 "12"(=1번 문제의 답 1, 2번 문제의 답 2)처럼 문제 수만큼 적혀 있을 때만 나눈다. 시험지 번호는 3~4 처럼 이름표 하나로 덮는다.
+function rangeInfo(q, picks) {
+  const m = String(q.textPreview || '').match(/^\s*[\[(【]\s*(\d{1,2})\s*[~∼～\-–]\s*(\d{1,2})\s*(?:번)?\s*[\])】]/);
+  if (!m) return null;
+  const k = parseInt(m[2], 10) - parseInt(m[1], 10) + 1;
+  if (!(k >= 2 && k <= 4)) return null;
+  // 같은 시험의 뒷 번호 문항이 따로 들어 있으면(예: [25~26]의 25번·26번을 각각 고른 경우) 묶음 문항이 아니다. 25번의 정답 '4,5'(2개)를 두 문제의 정답으로 읽으면 안 된다.
+  const a0 = parseInt(m[1], 10), b0 = parseInt(m[2], 10);
+  if (picks && picks.some(o => o !== q && o.source === q.source && o.num > a0 && o.num <= b0)) return null;
+  const ans = String(q.answer || '').trim();
+  let parts = null;
+  if (/^\d+$/.test(ans) && ans.length === k) parts = ans.split('');
+  else if (/^[\d\-]+([,\s]+[\d\-]+)+$/.test(ans)) parts = ans.split(/[,\s]+/);
+  return parts && parts.length === k ? { k: k, parts: parts } : null;
+}
+// picks → [{ start(첫 시험지 번호), k(차지하는 번호 수), parts(번호별 정답) | null, label("3" 또는 "3~4") }]
+function buildSlots(picks) {
+  let n = 1;
+  return picks.map(q => {
+    const ri = rangeInfo(q, picks), k = ri ? ri.k : 1, start = n;
+    n += k;
+    return { start: start, k: k, parts: ri ? ri.parts : null, label: k > 1 ? start + '~' + (start + k - 1) : String(start) };
+  });
+}
+function flatAnswers(picks, slots) {
+  const out = [];
+  picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => out.push(a)); else out.push(String(q.answer)); });
+  return out;
+}
+
+// 강사용 PDF 만들기: 문제 밑에 정답·해설 + 맨 뒤에 정답표·해설. items: 문항 그림 목록(번호·정답·배지 포함), map: 해설 그림(fileId→base64)
+async function buildTeacherBytes(title, picks, slots, items, map) {
+  items.forEach((it, i) => { const q = picks[i]; if (q.explFileId && map[q.explFileId]) { const sz = pngSize(BankCore.b64ToBytes(map[q.explFileId])); it.explBase64 = map[q.explFileId]; it.explW = sz.width; it.explH = sz.height; } if (!it.tag) it.tag = BankCore.pastTagText(q); });
+  const tdoc = await BankCore.composeTeacherPdf(PDFLib, title, items, { keepTitle: picks.length > 0 && picks.every(q => q.kind === '기출') });
+  const explImgs = [];
+  picks.forEach((q, qi) => { if (q.explFileId && map[q.explFileId]) { const sz = pngSize(BankCore.b64ToBytes(map[q.explFileId])); explImgs.push({ base64: map[q.explFileId], width: sz.width, height: sz.height, naturalW: sz.width / 2.2, numRect: q.explNumRect || null, tag: BankCore.pastTagText(q), num: slots[qi].label }); } });
+  let explDoc = null;
+  if (explImgs.length) explDoc = await BankCore.composeExamPdf(PDFLib, title + ' 해설', explImgs, { subtitle: explImgs.every(x => x.numRect) ? '※ 정답 옆의 진한 파란 원 번호가 시험지의 문항 번호예요.' : '※ 왼쪽 진한 파란 원 번호가 시험지의 문항 번호예요. (해설 안에 다른 번호가 보여도 무시하세요)', centerLine: false });
+  const flatPicks = [];
+  picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => flatPicks.push(Object.assign({}, q, { answer: a }))); else flatPicks.push(q); });
+  const back = await BankCore.answerSheetDoc(PDFLib, title, flatPicks, explDoc);
+  const merged = await BankCore.mergePdfs(PDFLib, tdoc, back);
+  await BankCore.addPageNumbers(PDFLib, merged);
+  return await merged.save();
+}
+
+// 강사용 시험지: 문제 바로 밑에 정답(빨간 글씨)·해설이 붙고 객관식 정답 번호에 빨간 동그라미를 친 PDF. 버튼을 눌렀을 때만 만들고, 등록은 하지 않는다.
+async function makeTeacher() {
+  const err = $('error-banner'); err.innerHTML = '';
+  const picks = reviewPicks, title = reviewTitle;
+  if (!picks.length) return;
+  showSpinner('문항 이미지 불러오는 중...');
+  _imgCache.clear(); prefetchImages(picks.map(q => q.fileId).concat(picks.map(q => q.explFileId)));
+  try {
+    const B = 5, items = [], map = {}, slots = buildSlots(picks);
+    for (let s = 0; s < picks.length; s += B) {
+      const slice = picks.slice(s, s + B);
+      updateSpinner('문항 이미지 불러오는 중... ' + Math.min(s + B, picks.length) + '/' + picks.length);
+      const res = { ok: true, images: await getImgs(slice.map(q => q.fileId)) };
+      for (let k = 0; k < res.images.length; k++) {
+        const im = res.images[k], q = slice[k];
+        const cleaned = await BankCore.cleanImageBase64(im.base64);
+        const b64 = cleaned ? cleaned.base64 : im.base64;
+        const size = cleaned ? { width: cleaned.width, height: cleaned.height } : pngSize(BankCore.b64ToBytes(im.base64));
+        items.push({ base64: b64, width: size.width, height: size.height, naturalW: size.width / BankCore.CROP_SCALE, num: slots[s + k].label, answer: q.answer, numRect: (q && q.numRect) || null, subAnswers: slots[s + k].parts, numStart: slots[s + k].start, headRange: BankCore.parseHeadRange(q && q.textPreview), srcKey: (q && q.source) || '', origNum: q && q.num });
+      }
+    }
+    const withExpl = picks.filter(q => q.explFileId);
+    for (let s = 0; s < withExpl.length; s += B) {
+      const slice = withExpl.slice(s, s + B);
+      updateSpinner('해설 이미지 불러오는 중... ' + Math.min(s + B, withExpl.length) + '/' + withExpl.length);
+      const r2 = { ok: true, images: await getImgs(slice.map(q => q.explFileId)) };
+      for (const im of r2.images) { const c = await BankCore.cleanImageBase64(im.base64); map[im.fileId] = c ? c.base64 : im.base64; }
+    }
+    items.forEach((it, i) => { const q = picks[i]; if (q.explFileId && map[q.explFileId]) { const sz = pngSize(BankCore.b64ToBytes(map[q.explFileId])); it.explBase64 = map[q.explFileId]; it.explW = sz.width; it.explH = sz.height; } });
+    updateSpinner('강사용 시험지 만드는 중...');
+    const bytes = await buildTeacherBytes(title, picks, slots, items, map);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    a.download = title.replace(/[\\/:*?"<>|]/g, '_') + ' 강사용.pdf'; document.body.appendChild(a); a.click(); a.remove();
+    hideSpinner();
+  } catch (e) {
+    hideSpinner();
+    err.innerHTML = '<div class="banner error">강사용 시험지를 만들지 못했어요: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+
+// ── 문항·해설 그림 가져오기: 5개씩 묶어 여러 묶음을 동시에 받는다 (한 묶음씩 차례로 받으면 서버 응답을 계속 기다려야 해서 느리다) ──
+const _imgCache = new Map();
+function prefetchImages(ids, conc) {
+  const todo = Array.from(new Set(ids.filter(Boolean))).filter(id => !_imgCache.has(id));
+  const batches = [];
+  for (let s = 0; s < todo.length; s += 5) batches.push(todo.slice(s, s + 5));
+  batches.forEach(b => {
+    let res, rej; const bp = new Promise((a, r) => { res = a; rej = r; }); bp.catch(() => {});
+    b.forEach(id => { const pr = bp.then(r => { const im = (r.images || []).find(x => x.fileId === id); if (!im) throw new Error('이미지를 불러오지 못했어요'); return im; }); pr.catch(() => {}); _imgCache.set(id, pr); });
+    b._d = { res: res, rej: rej };
+  });
+  let next = 0;
+  const worker = async () => {
+    while (next < batches.length) {
+      const b = batches[next++];
+      try { const r = await callApi('getQuestionImages', { password: getTeacherPassword(), fileIds: b }); if (!r.ok) b._d.rej(new Error(r.error || '이미지를 불러오지 못했어요')); else b._d.res(r); }
+      catch (e) { b._d.rej(e); }
+    }
+  };
+  Array.from({ length: Math.min(conc || 5, batches.length) }, worker);
+}
+async function getImgs(ids) {
+  const miss = ids.filter(id => !_imgCache.has(id));
+  if (miss.length) prefetchImages(miss);
+  return Promise.all(ids.map(id => _imgCache.get(id)));
+}
+
+// ── 3단계: 최종 확정 — PDF 생성 ──
+async function finalize() {
+  const err = $('error-banner');
+  err.innerHTML = '';
+  const picks = reviewPicks, title = reviewTitle, recipe = reviewRecipe;
+  const noAns = picks.filter(q => !q.answer);
+  if (noAns.length) {
+    err.innerHTML = '<div class="banner error">정답이 없는 문항이 ' + noAns.length + '개 있어요. 문제은행에서 정답을 먼저 입력하거나 검토 화면에서 빼주세요.</div>';
+    $('review-area').scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+  showSpinner('문항 이미지 불러오는 중...');
+  _imgCache.clear(); prefetchImages(picks.map(q => q.fileId).concat(picks.map(q => q.explFileId)));
+  try {
+    const imgs = [];
+    const B = 5, slots = buildSlots(picks);
+    for (let s = 0; s < picks.length; s += B) {
+      const slice = picks.slice(s, s + B);
+      updateSpinner('문항 이미지 불러오는 중... ' + Math.min(s + B, picks.length) + '/' + picks.length);
+      const res = { ok: true, images: await getImgs(slice.map(q => q.fileId)) };
+      for (let k = 0; k < res.images.length; k++) {
+        const im = res.images[k], q = slice[k];
+        // 문제은행에 예전 버전으로 저장된 그림에는 원본 페이지의 칼럼 구분선 조각이 붙어 있을 수 있어서,
+        // 조합할 때 한 번 더 깨끗이 한다 (가로 크기·번호 위치는 그대로, 선과 아래쪽 빈 여백만 정리)
+        const cleaned = await BankCore.cleanImageBase64(im.base64);
+        const b64 = cleaned ? cleaned.base64 : im.base64;
+        const size = cleaned ? { width: cleaned.width, height: cleaned.height } : pngSize(BankCore.b64ToBytes(im.base64));
+        imgs.push({ base64: b64, width: size.width, height: size.height, naturalW: size.width / BankCore.CROP_SCALE, numRect: (q && q.numRect) || null, answer: q.answer, tag: BankCore.pastTagText(q), num: slots[s + k].label, headRange: BankCore.parseHeadRange(q.textPreview), srcKey: q.source || '', origNum: q.num });
+      }
+    }
+    updateSpinner('시험지 PDF 만드는 중...');
+    const examId = genExamId();
+    const doc = await BankCore.composeExamPdf(PDFLib, title, imgs, { qrReserve: 62, keepTitle: picks.length > 0 && picks.every(q => q.kind === '기출') });
+    await stampQrOnDoc(doc, studentLinkFor(examId), { size: 50, corner: 'top-right', margin: 4 });
+
+    let edoc = null, explFillNote = '';
+    // 해설 그림이 저장된 문항의 해설 그림을 가져온다 (정답·해설지와 강사용 시험지에서 같이 쓴다)
+    const withExpl = picks.filter(q => q.explFileId);
+    const map = {};
+    if (withExpl.length) {
+      for (let s = 0; s < withExpl.length; s += B) {
+        const slice = withExpl.slice(s, s + B);
+        updateSpinner('해설 이미지 불러오는 중... ' + Math.min(s + B, withExpl.length) + '/' + withExpl.length);
+        const r2 = { ok: true, images: await getImgs(slice.map(q => q.explFileId)) };
+        for (const im of r2.images) {
+          const cleaned = await BankCore.cleanImageBase64(im.base64);      // 해설 그림도 선 조각·빈 여백 정리
+          map[im.fileId] = cleaned ? cleaned.base64 : im.base64;
+        }
+      }
+    }
+    if ($('make-expl').checked) {
+      // 해설 그림이 저장된 문항은 해설을, 없는 문항은 정답표에만 정답을 적는다 (정답표는 항상 들어간다)
+      let explDoc = null;
+      if (withExpl.length) {
+        const explImgs = [];
+        picks.forEach((q, qi) => {
+          if (q.explFileId && map[q.explFileId]) {
+            const size = pngSize(BankCore.b64ToBytes(map[q.explFileId]));
+            explImgs.push({ base64: map[q.explFileId], width: size.width, height: size.height, naturalW: size.width / 2.2, numRect: q.explNumRect || null, tag: BankCore.pastTagText(q), num: slots[qi].label });
+          }
+        });
+        updateSpinner('해설 만드는 중...');
+        const allPos = explImgs.every(x => x.numRect);
+        explDoc = await BankCore.composeExamPdf(PDFLib, title + ' 해설', explImgs,
+          { subtitle: allPos ? '※ 정답 옆의 진한 파란 원 번호가 시험지의 문항 번호예요.' : '※ 왼쪽 진한 파란 원 번호가 시험지의 문항 번호예요. (해설 안에 다른 번호가 보여도 무시하세요)', centerLine: false });
+      }
+      if (withExpl.length < picks.length) explFillNote = withExpl.length
+        ? '해설이 저장되지 않은 ' + (picks.length - withExpl.length) + '문항은 정답표에 정답만 들어갔어요.'
+        : '저장된 해설이 있는 문항이 없어서, 정답표만 시험지 뒤에 붙였어요.';
+      updateSpinner('정답표 만드는 중...');
+      const flatPicks = [];
+      picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => flatPicks.push(Object.assign({}, q, { answer: a }))); else flatPicks.push(q); });
+      edoc = await BankCore.answerSheetDoc(PDFLib, title, flatPicks, explDoc);
+    }
+
+    const merged = await BankCore.mergePdfs(PDFLib, doc, edoc);
+    await BankCore.addPageNumbers(PDFLib, merged);
+    const pdfBase64 = arrayBufferToBase64(await merged.save());
+
+    updateSpinner('서버에 저장하는 중... (강사용 시험지도 함께 만들어요)');
+    // 서버로 올리는 동안 기다리지 않고, 그 사이에 강사용 시험지를 같이 만든다
+    const teacherP = (async () => {
+      const tItems = imgs.map((im, i) => ({ base64: im.base64, width: im.width, height: im.height, naturalW: im.naturalW, num: slots[i].label, answer: picks[i].answer, numRect: im.numRect, tag: im.tag, subAnswers: slots[i].parts, numStart: slots[i].start, headRange: im.headRange, srcKey: im.srcKey, origNum: im.origNum }));
+      return await buildTeacherBytes(title, picks, slots, tItems, map);
+    })().catch(e => { console.warn('강사용 PDF 만들기 실패', e); return null; });
+    const res = await callApi('createExam', {
+      password: getTeacherPassword(), id: examId, title: title,
+      answers: flatAnswers(picks, slots), pdfBase64: pdfBase64, filename: title,
+      sourceQuestionIds: picks.map(q => q.id), composeRecipe: recipe,
+    });
+    if (res.ok) {
+      // 강사용 PDF를 이 브라우저에 보관해 둔다 → 등록 완료 화면에서 학생용을 받을 때 함께 받아진다
+      try { const tb = await teacherP; if (tb) await teacherPdfSave(examId, title + ' 강사용.pdf', tb); } catch (e) { console.warn('강사용 PDF 보관 실패', e); }
+    }
+    hideSpinner();
+    if (res.ok) { if (explFillNote) alert(explFillNote); location.href = 'teacher_exam.html?id=' + examId; }
+    else { err.innerHTML = '<div class="banner error">' + escapeHtml(res.error || '등록 실패') + '</div>'; }
+  } catch (e) {
+    hideSpinner();
+    err.innerHTML = '<div class="banner error">오류: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+</script>
+</body>
+</html>

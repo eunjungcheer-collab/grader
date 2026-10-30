@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>시험지 상세 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#95D1DB">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="teacher_list.html">← 시험지 목록</a></span>
+  <div id="detail-container" class="muted">불러오는 중...</div>
+</template>
+
+<script src="js/vendor/qrcode.min.js?v=202610150082"></script>
+<script src="js/config.js?v=202610150082"></script>
+<script src="js/api.js?v=202610150082"></script>
+<script src="js/common.js?v=202610150082"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150082"></script>
+<script src="js/bankcore.js?v=202610150082"></script>
+<script src="js/pdfui.js?v=202610150082"></script>
+<script>
+requireLogin();
+renderHeader();
+
+const examId = new URLSearchParams(location.search).get('id');
+
+
+// ── 문제은행에서 출제한 시험지의 강사용 PDF를 다시 만든다 (bank_compose.html 의 강사용 만들기와 같은 방식) ──
+function rangeInfo(q, picks) {
+  const m = String(q.textPreview || '').match(/^\s*[\[(【]\s*(\d{1,2})\s*[~∼～\-–]\s*(\d{1,2})\s*(?:번)?\s*[\])】]/);
+  if (!m) return null;
+  const k = parseInt(m[2], 10) - parseInt(m[1], 10) + 1;
+  if (!(k >= 2 && k <= 4)) return null;
+  // 같은 시험의 뒷 번호 문항이 따로 들어 있으면(예: [25~26]의 25번·26번을 각각 고른 경우) 묶음 문항이 아니다. 25번의 정답 '4,5'(2개)를 두 문제의 정답으로 읽으면 안 된다.
+  const a0 = parseInt(m[1], 10), b0 = parseInt(m[2], 10);
+  if (picks && picks.some(o => o !== q && o.source === q.source && o.num > a0 && o.num <= b0)) return null;
+  const ans = String(q.answer || '').trim();
+  let parts = null;
+  if (/^\d+$/.test(ans) && ans.length === k) parts = ans.split('');
+  else if (/^[\d\-]+([,\s]+[\d\-]+)+$/.test(ans)) parts = ans.split(/[,\s]+/);
+  return parts && parts.length === k ? { k: k, parts: parts } : null;
+}
+function buildSlots(picks) {
+  let n = 1;
+  return picks.map(q => {
+    const ri = rangeInfo(q, picks), k = ri ? ri.k : 1, start = n;
+    n += k;
+    return { start: start, k: k, parts: ri ? ri.parts : null, label: k > 1 ? start + '~' + (start + k - 1) : String(start) };
+  });
+}
+// ── 문항·해설 그림 가져오기: 5개씩 묶어 여러 묶음을 동시에 받는다 (한 묶음씩 차례로 받으면 서버 응답을 계속 기다려야 해서 느리다) ──
+const _imgCache = new Map();
+function prefetchImages(ids, conc) {
+  const todo = Array.from(new Set(ids.filter(Boolean))).filter(id => !_imgCache.has(id));
+  const batches = [];
+  for (let s = 0; s < todo.length; s += 5) batches.push(todo.slice(s, s + 5));
+  batches.forEach(b => {
+    let res, rej; const bp = new Promise((a, r) => { res = a; rej = r; }); bp.catch(() => {});
+    b.forEach(id => { const pr = bp.then(r => { const im = (r.images || []).find(x => x.fileId === id); if (!im) throw new Error('이미지를 불러오지 못했어요'); return im; }); pr.catch(() => {}); _imgCache.set(id, pr); });
+    b._d = { res: res, rej: rej };
+  });
+  let next = 0;
+  const worker = async () => {
+    while (next < batches.length) {
+      const b = batches[next++];
+      try { const r = await callApi('getQuestionImages', { password: getTeacherPassword(), fileIds: b }); if (!r.ok) b._d.rej(new Error(r.error || '이미지를 불러오지 못했어요')); else b._d.res(r); }
+      catch (e) { b._d.rej(e); }
+    }
+  };
+  Array.from({ length: Math.min(conc || 5, batches.length) }, worker);
+}
+async function getImgs(ids) {
+  const miss = ids.filter(id => !_imgCache.has(id));
+  if (miss.length) prefetchImages(miss);
+  return Promise.all(ids.map(id => _imgCache.get(id)));
+}
+
+async function makeTeacherFromBank(exam, say) {
+  const lq = await callApi('listQuestions', { password: getTeacherPassword() });
+  if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요');
+  const byId = {}; lq.questions.forEach(q => { byId[q.id] = q; });
+  const picks = exam.sourceQuestionIds.map(id => byId[id]).filter(Boolean);
+  const lost = exam.sourceQuestionIds.length - picks.length;
+  if (!picks.length) throw new Error('이 시험지에 쓴 문항이 문제은행에서 모두 삭제돼 있어요.');
+  if (lost) throw new Error('이 시험지에 쓴 문항 ' + lost + '개가 문제은행에서 삭제돼서 같은 시험지를 다시 만들 수 없어요.');
+  _imgCache.clear(); prefetchImages(picks.map(q => q.fileId).concat(picks.map(q => q.explFileId)));
+  const slots = buildSlots(picks), B = 5, items = [], map = {};
+  for (let s = 0; s < picks.length; s += B) {
+    const slice = picks.slice(s, s + B);
+    say('문항 이미지 불러오는 중... ' + Math.min(s + B, picks.length) + '/' + picks.length);
+    const r = { ok: true, images: await getImgs(slice.map(q => q.fileId)) };
+    for (let k = 0; k < r.images.length; k++) {
+      const im = r.images[k], q = slice[k];
+      const cleaned = await BankCore.cleanImageBase64(im.base64);
+      const b64 = cleaned ? cleaned.base64 : im.base64;
+      const size = cleaned ? { width: cleaned.width, height: cleaned.height } : pngSize(BankCore.b64ToBytes(im.base64));
+      items.push({ base64: b64, width: size.width, height: size.height, naturalW: size.width / BankCore.CROP_SCALE, num: slots[s + k].label, answer: q.answer, numRect: q.numRect || null, subAnswers: slots[s + k].parts, numStart: slots[s + k].start, headRange: BankCore.parseHeadRange(q.textPreview), srcKey: q.source || '', origNum: q.num });
+    }
+  }
+  const withExpl = picks.filter(q => q.explFileId);
+  for (let s = 0; s < withExpl.length; s += B) {
+    const slice = withExpl.slice(s, s + B);
+    say('해설 이미지 불러오는 중... ' + Math.min(s + B, withExpl.length) + '/' + withExpl.length);
+    const r2 = { ok: true, images: await getImgs(slice.map(q => q.explFileId)) };
+    for (const im of r2.images) { const c = await BankCore.cleanImageBase64(im.base64); map[im.fileId] = c ? c.base64 : im.base64; }
+  }
+  say('강사용 시험지 만드는 중...');
+  items.forEach((it, i) => { const q = picks[i]; if (q.explFileId && map[q.explFileId]) { const sz = pngSize(BankCore.b64ToBytes(map[q.explFileId])); it.explBase64 = map[q.explFileId]; it.explW = sz.width; it.explH = sz.height; } it.tag = BankCore.pastTagText(q); });
+  const tdoc = await BankCore.composeTeacherPdf(PDFLib, exam.title, items, { keepTitle: picks.length > 0 && picks.every(q => q.kind === '기출') });
+  const explImgs = [];
+  picks.forEach((q, qi) => { if (q.explFileId && map[q.explFileId]) { const sz = pngSize(BankCore.b64ToBytes(map[q.explFileId])); explImgs.push({ base64: map[q.explFileId], width: sz.width, height: sz.height, naturalW: sz.width / 2.2, numRect: q.explNumRect || null, tag: BankCore.pastTagText(q), num: slots[qi].label }); } });
+  let explDoc = null;
+  if (explImgs.length) explDoc = await BankCore.composeExamPdf(PDFLib, exam.title + ' 해설', explImgs, { subtitle: explImgs.every(x => x.numRect) ? '※ 정답 옆의 진한 파란 원 번호가 시험지의 문항 번호예요.' : '※ 왼쪽 진한 파란 원 번호가 시험지의 문항 번호예요. (해설 안에 다른 번호가 보여도 무시하세요)', centerLine: false });
+  const flatPicks = [];
+  picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => flatPicks.push(Object.assign({}, q, { answer: a }))); else flatPicks.push(q); });
+  const back = await BankCore.answerSheetDoc(PDFLib, exam.title, flatPicks, explDoc);
+  const merged = await BankCore.mergePdfs(PDFLib, tdoc, back);
+  await BankCore.addPageNumbers(PDFLib, merged);
+  return await merged.save();
+}
+
+(async function () {
+  const container = document.getElementById('detail-container');
+  if (!examId) { container.innerHTML = '<div class="banner error">잘못된 접근이에요.</div>'; return; }
+
+  try {
+    const res = await callApi('getExamDetail', { password: getTeacherPassword(), id: examId });
+    if (!res.ok) { container.innerHTML = '<div class="banner error">' + res.error + '</div>'; return; }
+
+    const studentUrl = location.origin + location.pathname.replace('teacher_exam.html', '') + 'student_exam.html?id=' + res.id;
+
+    container.innerHTML = `
+      <h1>${escapeHtml(res.title)}</h1>
+      <p class="muted">${res.answers.length}문항${res.answers.some(a => a === '-') ? ' (주관식 ' + res.answers.filter(a => a === '-').length + ')' : ''} · ${formatDate(res.createdAt)} 등록</p>
+      <div class="card center">
+        <div id="qr-holder" class="qr-preview"></div>
+        ${res.pdfUrl ? '' : '<div class="banner" style="text-align:left; margin:0 0 10px;">📚 <b>교재 합본 PDF에 이 단원의 QR이 찍혀 있어요.</b> (교재 QR 합본 만들기에서 받은 PDF) 이 시험의 학생 제출 링크·QR은 아래에 있어요.</div>'}
+        <div style="font-weight:700; margin:2px 0 8px; text-align:left;${res.pdfUrl ? '' : ' display:none;'}">⬇️ 받을 파일 고르기</div>
+        <a class="btn primary" id="dl-student" href="${res.pdfUrl}" target="_blank" style="width:100%;${res.pdfUrl ? '' : ' display:none;'}">📄 학생용만 받기${res.explUrl ? ' (QR 찍힌 PDF)' : ' (해설 포함)'}</a>
+        <button type="button" class="btn primary" id="dl-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📄📘 학생용 + 강사용 둘 다 받기</button>
+        <button type="button" class="btn outline" id="dl-teacher-only" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📘 강사용만 받기 (정답 동그라미·문제 밑 정답·해설)</button>
+        <p class="hint" id="dl-note" style="margin:6px 0 0;">「둘 다」를 누르면 브라우저가 여러 파일 받기를 물을 수 있어요. 허용해 주세요.</p>
+        ${res.explUrl ? '<a class="btn outline" href="' + res.explUrl + '" target="_blank" style="width:100%; margin-top:8px;">📝 해설지 PDF 열기 (예전 방식 — 따로 저장된 해설)</a>' : ''}
+        <p class="hint">학생 제출 링크: <a href="${studentUrl}">${studentUrl}</a></p>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          ${res.sourceQuestionIds && res.sourceQuestionIds.length && !(res.composeRecipe && res.composeRecipe.book) ? '<a class="btn outline" href="bank_compose.html?regen=' + res.id + '" style="flex:1; padding:9px;">🔁 유사 시험지 만들기</a>' : ''}
+          <button type="button" class="btn danger" id="del-exam-btn" style="flex:1; padding:9px;">🗑 시험지 삭제</button>
+        </div>
+      </div>
+
+      <h2>정답표 <button type="button" class="btn outline" id="ans-edit-btn" style="padding:5px 12px; font-size:13px; margin-left:8px;">✏️ 정답 고치기</button></h2>
+      <div class="card" id="ans-edit" style="display:none;">
+        <p class="hint" style="margin-top:0;">고칠 번호의 칸만 바꾸세요. 한 개는 <b>3</b>, 모두 맞아야 하는 복수정답은 <b>35</b>, 둘 중 하나만 맞아도 되면 <b>3/5</b>, 주관식은 <b>-</b> 로 적어요. 저장하면 이 시험의 <b>이미 제출된 학생 점수도 새 정답으로 다시 채점</b>돼요.</p>
+        <div id="ans-edit-grid" style="display:flex; flex-wrap:wrap; gap:6px 10px;"></div>
+        <div style="margin-top:10px;"><button type="button" class="btn primary" id="ans-save-btn" style="padding:8px 16px;">💾 저장하고 다시 채점</button> <span class="hint" id="ans-edit-msg"></span></div>
+      </div>
+      <div class="card" id="ans-view" style="line-height:2;">
+        ${res.answers.map((a, i) => a === '-' ? '<span style="display:inline-block; min-width:64px; color:#9CA3AF;"><b>' + (i + 1) + '</b>번 <span class="tag-sub">주관식</span></span>' : '<span style="display:inline-block; min-width:64px;"><b>' + (i + 1) + '</b>번 ' + fmtAnswer(a) + (String(a).length > 1 ? ' <span class="tag-sub" style="background:#1D4ED8;">복수</span>' : '') + '</span>').join('')}
+      </div>
+
+      <h2>제출 현황 (${res.submissions.length}명) <a href="records.html" class="hint" style="font-weight:400;">→ 전체 기록 관리에서 보기</a></h2>
+      <p class="hint">점수는 <b>객관식 ${res.answers.filter(a => a !== '-').length}문항</b>만 채점해서 <b>100점 만점으로 환산</b>한 값이에요.${res.answers.some(a => a === '-') ? ' 주관식 ' + res.answers.filter(a => a === '-').length + '문항은 합산하지 않아요.' : ''}
+        ${res.submissions.length ? '<br>평균 <b>' + (Math.round(res.submissions.reduce((a, x) => a + (to100(x.score, x.total) || 0), 0) / res.submissions.length * 10) / 10) + '점</b> · 최고 <b>' + Math.max.apply(null, res.submissions.map(x => to100(x.score, x.total) || 0)) + '점</b> · 최저 <b>' + Math.min.apply(null, res.submissions.map(x => to100(x.score, x.total) || 0)) + '점</b>' : ''}</p>
+      <div class="card">
+        ${res.submissions.length === 0 ? '<p class="muted">아직 제출한 학생이 없어요.</p>' :
+          res.submissions.map(s => `
+            <div class="submission-row">
+              <span>${escapeHtml(s.studentName)}</span>
+              <span><span class="score-badge ${s.total && s.score === s.total ? 'pass' : 'fail'}">${to100(s.score, s.total) === null ? '-' : to100(s.score, s.total) + '점'}</span> <span class="hint">(${s.score}/${s.total})</span></span>
+            </div>`).join('')}
+      </div>
+    `;
+
+    // 받을 파일 고르기: 학생용만 / 둘 다 / 강사용만. 강사용은 이 브라우저에 보관돼 있으면 그걸 쓰고, 없으면 (문제은행 출제 시험지는) 그 자리에서 다시 만든다.
+    {
+      const noteEl = document.getElementById('dl-note'), bothBtn = document.getElementById('dl-both'), tOnly = document.getElementById('dl-teacher-only');
+      const canMake = !!(res.sourceQuestionIds && res.sourceQuestionIds.length);
+      const saveBlob = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+      async function obtainTeacher() {
+        const rec = await teacherPdfGet(examId);
+        if (rec && rec.blob) return { blob: rec.blob, name: rec.name || (res.title.replace(/[\\/:*?"<>|]/g, '_') + ' 강사용.pdf') };
+        if (!canMake) return null;
+        noteEl.textContent = '강사용 PDF를 만드는 중... 문항을 불러오고 있어요';
+        const bytes = await makeTeacherFromBank(res, m => { noteEl.textContent = m; });
+        const name = res.title.replace(/[\\/:*?"<>|]/g, '_') + ' 강사용.pdf';
+        try { await teacherPdfSave(examId, name, bytes); } catch (e) {}
+        return { blob: new Blob([bytes], { type: 'application/pdf' }), name: name };
+      }
+      teacherPdfGet(examId).then(rec => {
+        if (!(rec && rec.blob) && !canMake) { bothBtn.disabled = tOnly.disabled = true; noteEl.textContent = '이 시험지의 강사용 PDF는 이 브라우저에 없고 문제은행에서 출제한 시험지도 아니라서 다시 만들 수 없어요. (강사용은 시험지를 등록한 브라우저에서만 받을 수 있어요)'; }
+      });
+      const run = async (withStudent, btn) => {
+        btn.disabled = true;
+        try {
+          if (withStudent) window.open(res.pdfUrl, '_blank');
+          const t = await obtainTeacher();
+          if (t) { saveBlob(t.blob, t.name); noteEl.textContent = '강사용 PDF를 받았어요.' + (withStudent ? ' 학생용은 새 창에서 열렸어요.' : ''); }
+          else noteEl.textContent = '강사용 PDF를 만들 수 없어요.';
+        } catch (e) { noteEl.innerHTML = '<span style="color:#C1392B;">강사용 PDF를 만들지 못했어요: ' + escapeHtml(e.message) + '</span>'; }
+        btn.disabled = false;
+      };
+      bothBtn.addEventListener('click', () => run(true, bothBtn));
+      tOnly.addEventListener('click', () => run(false, tOnly));
+    }
+
+    const qrCanvas = document.createElement('canvas');
+    QRCode.toCanvas(qrCanvas, studentUrl, { width: 160 }, function (err) {
+      if (!err) document.getElementById('qr-holder').appendChild(qrCanvas);
+    });
+
+    {
+      const grid = document.getElementById('ans-edit-grid'), box = document.getElementById('ans-edit'), msg = document.getElementById('ans-edit-msg');
+      grid.innerHTML = res.answers.map((a, i) => '<label style="display:inline-flex; align-items:center; gap:4px;"><b style="min-width:26px;text-align:right;">' + (i + 1) + '</b><input type="text" class="ans-in" data-i="' + i + '" value="' + escapeHtml(String(a)) + '" style="width:64px; padding:6px; margin:0; text-align:center;"></label>').join('');
+      document.getElementById('ans-edit-btn').addEventListener('click', () => { box.style.display = box.style.display === 'none' ? 'block' : 'none'; });
+      document.getElementById('ans-save-btn').addEventListener('click', async () => {
+        const vals = Array.from(grid.querySelectorAll('.ans-in')).map(x => x.value.trim());
+        if (vals.some(v => !v)) { msg.textContent = '⚠️ 빈 칸이 있어요. 주관식은 - 를 적어 주세요.'; return; }
+        const changed = vals.map((v, i) => [i + 1, res.answers[i], v]).filter(x => normAnswer(x[1]) !== normAnswer(x[2]));
+        if (!changed.length) { msg.textContent = '바뀐 정답이 없어요.'; return; }
+        if (!confirm('정답 ' + changed.length + '개를 바꿔요:\n' + changed.map(x => x[0] + '번 ' + fmtAnswer(x[1]) + ' → ' + fmtAnswer(x[2])).join('\n') + '\n\n이미 제출한 ' + res.submissions.length + '명의 점수도 다시 채점돼요. 진행할까요?')) return;
+        const btn = document.getElementById('ans-save-btn'); btn.disabled = true; msg.textContent = '저장하고 다시 채점하는 중...';
+        try {
+          const r = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: examId, answers: vals });
+          if (!r.ok) { msg.textContent = '⚠️ ' + (r.error || '저장하지 못했어요'); btn.disabled = false; return; }
+          msg.textContent = '✅ 저장했어요 (다시 채점한 기록 ' + (r.regraded || 0) + '건)'; setTimeout(() => location.reload(), 900);
+        } catch (e) { msg.textContent = '⚠️ ' + e.message; btn.disabled = false; }
+      });
+    }
+    document.getElementById('del-exam-btn').addEventListener('click', async () => {
+      const ch = await askDeleteExams([{ id: res.id || examId, title: res.title, hasRecipe: !!res.composeRecipe && !res.composeRecipe.book, submissionCount: res.submissionCount }]);
+      if (!ch) return;
+      const alsoScores = ch.scores, bankDel = ch.bankDel;
+      const btn = document.getElementById('del-exam-btn');
+      btn.disabled = true; btn.textContent = '삭제 중...';
+      try {
+        const r = await callApi('deleteExam', { password: getTeacherPassword(), id: examId, deleteSubmissions: alsoScores });
+        if (!r.ok) throw new Error(r.error || '삭제 실패');
+        if (bankDel) { btn.textContent = '문제은행 정리 중...'; try { await bankDel(); } catch (e) { alert('시험지는 지웠지만 문제은행 삭제 중 오류가 났어요: ' + e.message); } }
+        location.href = 'teacher_list.html';
+      } catch (e) { alert('삭제 중 오류: ' + e.message); btn.disabled = false; btn.textContent = '🗑 시험지 삭제'; }
+    });
+  } catch (err) {
+    container.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "이은정 과학 자동채점",
+  "short_name": "이은정 과학",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#95D1DB",
+  "theme_color": "#95D1DB",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

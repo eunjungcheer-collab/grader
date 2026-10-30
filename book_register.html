@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+.bk-table { width:100%; border-collapse:collapse; font-size:13px; }
+.bk-table th, .bk-table td { border-bottom:1px solid var(--line); padding:6px 6px; text-align:left; vertical-align:middle; }
+.bk-table th { background:#F3F4F6; font-size:12px; }
+.bk-table input[type=text] { margin:0; padding:5px 6px; font-size:13px; }
+.bk-grid { display:flex; flex-wrap:wrap; gap:4px 3px; min-width:300px; }
+.bk-c { display:flex; flex-direction:column; align-items:center; margin:0; font-weight:400; width:30px; }
+.bk-c span { font-size:10px; color:#6B7280; line-height:1.2; }
+.bk-c input[type=text] { width:30px; padding:4px 0; text-align:center; font-family:monospace; font-size:14px; font-weight:700; }
+.bk-c input.bk-bad { background:#FDECEA; border-color:#C1392B; color:#C1392B; }
+.bk-c input.bk-sub { background:#FFF7E6; border-color:#B45309; color:#B45309; }
+.bk-c:nth-child(5n) { margin-right:6px; }
+.bk-st-ok { color:#145A32; font-weight:700; }
+.bk-st-warn { color:#B45309; font-weight:700; }
+.bk-st-bad { color:#C1392B; font-weight:700; }
+.bk-unit td { background:#E8EBF5; font-weight:800; color:#0B1F5C; }
+</style>
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>📚 교재 QR 합본 만들기</h1>
+  <p class="muted">교재 PDF 한 권을 올리면 목차대로 소단원(25문제씩)을 찾아 <b>정답을 읽고</b>, 단원마다 시험을 등록한 뒤 <b>각 단원 첫 쪽에 QR을 찍은 교재 합본 PDF</b> 한 개를 만들어 드려요. 그 PDF를 학생에게 나눠주면 풀다가 단원 QR을 찍어 답안을 입력해요.</p>
+  <div id="error-banner"></div>
+
+  <div class="card">
+    <label>교재 PDF (문제편 + 정답편이 한 파일, 목차에 쪽수가 있는 교재)</label>
+    <input type="file" id="book-file" accept="application/pdf">
+    <label class="field-label-spaced">교재 이름 <span class="muted" style="font-weight:400;">(시험 이름 앞에 붙어요. 예: 중2)</span></label>
+    <input type="text" id="book-name" placeholder="예: 중2">
+    <button type="button" class="btn primary" id="read-btn" style="width:100%; margin-top:14px;" disabled>1단계 · 목차와 정답 읽기</button>
+    <p class="hint" id="read-msg" style="margin:8px 0 0;"></p>
+  </div>
+
+  <div id="step2" style="display:none;">
+    <h2>2단계 · 확인하고 고치기</h2>
+    <p class="hint">정답 칸: <b>숫자</b>는 객관식 정답, <b>-</b> 는 주관식(서술형 — 자동 채점 안 함), <b>?</b> 는 못 읽은 것이에요. 틀린 게 보이면 칸에서 바로 고치세요. 번호 순서대로 띄어쓰기로 구분돼 있어요.</p>
+    <div class="card" style="padding:8px; overflow-x:auto;">
+      <table class="bk-table" id="bk-table"></table>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <label>QR 크기 / 위치</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="qr-size" style="width:auto;"><option value="40">작게 (40)</option><option value="46" selected>보통 (46)</option><option value="56">크게 (56)</option></select>
+        <select id="qr-corner" style="width:auto;"><option value="top-right" selected>맨 위 오른쪽</option><option value="top-left">맨 위 왼쪽</option></select>
+      </div>
+      <label class="field-label-spaced"><input type="checkbox" id="to-bank" checked> 문제도 <b>문제은행에 「내신교재」 문제로 저장</b> (오답노트·유사오답이 일반 시험지처럼 돼요. 시간이 더 걸려요)</label>
+      <label class="field-label-spaced"><input type="checkbox" id="multi-qr" checked> 목차 쪽에 「여러 단원 한꺼번에 채점」 QR도 찍기</label>
+      <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 QR 합본 PDF 만들기</button>
+      <p class="hint" id="go-msg" style="margin:8px 0 0;"></p>
+    </div>
+  </div>
+</template>
+
+<script src="js/vendor/qrcode.min.js?v=202610150082"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150082"></script>
+<script src="js/vendor/pdf.min.js?v=202610150082"></script>
+<script src="js/config.js?v=202610150082"></script>
+<script src="js/api.js?v=202610150082"></script>
+<script src="js/common.js?v=202610150082"></script>
+<script src="js/bankcore.js?v=202610150082"></script>
+<script src="js/pdfui.js?v=202610150082"></script>
+<script>
+requireLogin();
+renderHeader({ wide: true, wider: true });
+setupPdfJs();
+const $ = id => document.getElementById(id);
+
+let bookBytes = null, bookDoc = null, bookFileName = '', sections = [], tocPage = 0, bookId = '';
+
+$('book-file').addEventListener('change', () => {
+  const f = $('book-file').files[0];
+  $('read-btn').disabled = !f;
+  if (f && !$('book-name').value) { const m = f.name.match(/중\s*[123]|초\s*[3-6]|고\s*[123]/); if (m) $('book-name').value = m[0].replace(/\s+/g, ''); }
+});
+
+function hash36(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
+const secTitle = s => ($('book-name').value.trim() ? $('book-name').value.trim() + ' ' : '') + s.name + ' ' + s.tag + '공략';
+
+// ── 1단계: 목차 + 정답 읽기 ──
+$('read-btn').addEventListener('click', async () => {
+  const f = $('book-file').files[0]; if (!f) return;
+  const err = $('error-banner'); err.innerHTML = '';
+  $('read-btn').disabled = true;
+  try {
+    $('read-msg').textContent = '파일을 여는 중... (용량이 크면 잠시 걸려요)';
+    bookBytes = await f.arrayBuffer(); bookFileName = f.name;
+    bookDoc = await pdfjsLib.getDocument({ data: new Uint8Array(bookBytes.slice(0)) }).promise;
+    $('read-msg').textContent = '목차를 읽는 중...';
+    const toc = await BankCore.parseBookToc(bookDoc, 8);
+    if (!toc.sections.length) throw new Error('목차에서 단원 줄을 찾지 못했어요. 「최다빈출 공략 1-1.○○(01) 4~9 357~359」처럼 문제 쪽·정답 쪽이 적힌 목차가 앞쪽에 있는 교재만 읽을 수 있어요.');
+    tocPage = toc.tocPage;
+    sections = toc.sections.map((s, i) => Object.assign(s, { order: i + 1, on: true, answers: [] }));
+    bookId = 'b' + hash36(f.name + '|' + bookDoc.numPages + '|' + sections.length);
+    const pages = []; const lo = Math.min.apply(null, sections.map(s => s.aa)), hi = Math.max.apply(null, sections.map(s => s.ab));
+    for (let p = lo; p <= hi; p++) pages.push(p);
+    const t0 = Date.now();
+    const rows = await BankCore.readLabeledImageAnswers(bookDoc, pages, (i, n) => {
+      const sec = Math.round((Date.now() - t0) / 1000);
+      $('read-msg').textContent = '정답을 읽는 중... ' + i + '/' + n + '쪽 (' + sec + '초)';
+    });
+    sections.forEach(s => {
+      const rr = rows.filter(r => r.p >= s.aa && r.p <= s.ab);
+      const N = rr.reduce((m, r) => Math.max(m, r.n), 0);
+      s.answers = new Array(N).fill('?');
+      s.peek = {};
+      rr.forEach(r => { if (r.n >= 1 && r.n <= N) { s.answers[r.n - 1] = r.d; if (r.rect) s.peek[r.n] = { p: r.p, rect: r.rect }; } });
+    });
+    renderTable();
+    $('step2').style.display = 'block';
+    const unread = sections.reduce((a, s) => a + s.answers.filter(x => x === '?').length, 0);
+    const text = sections.reduce((a, s) => a + s.answers.filter(x => x === '-').length, 0);
+    $('read-msg').innerHTML = '✅ 단원 ' + sections.length + '개 · 정답 ' + sections.reduce((a, s) => a + s.answers.length, 0) + '개를 읽었어요.' + (text ? ' 글로 된 정답(서술형으로 처리) ' + text + '개.' : '') + (unread ? ' <b style="color:#C1392B;">못 읽은 것 ' + unread + '개 — 아래에서 ? 를 채워 주세요.</b>' : '');
+    $('step2').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) {
+    err.innerHTML = '<div class="banner error">' + escapeHtml(e.message) + '</div>';
+    $('read-msg').textContent = '';
+  }
+  $('read-btn').disabled = false;
+});
+
+function renderTable() {
+  let html = '<tr><th style="width:34px;">선택</th><th>단원 / 시험 이름</th><th>문제 쪽</th><th>정답 쪽</th><th>문항</th><th>정답 (번호 순서대로)</th><th>상태</th></tr>';
+  let lastUnit = 0;
+  sections.forEach((s, i) => {
+    if (s.unit !== lastUnit) { lastUnit = s.unit; html += '<tr class="bk-unit"><td colspan="7">' + s.unit + '단원 ' + escapeHtml(s.unitName) + '</td></tr>'; }
+    html += '<tr data-i="' + i + '"><td><input type="checkbox" class="bk-on" ' + (s.on ? 'checked' : '') + '></td>' +
+      '<td>' + escapeHtml(secTitle(s)) + '</td><td>' + s.qa + '~' + s.qb + '</td><td>' + s.aa + '~' + s.ab + '</td><td class="bk-n">' + s.answers.length + '</td>' +
+      '<td><div class="bk-grid">' + s.answers.map((a, k) => '<label class="bk-c"><span>' + (k + 1) + '</span><input type="text" data-k="' + k + '" value="' + escapeHtml(a) + '" maxlength="5"></label>').join('') + '</div></td><td class="bk-st"></td></tr>';
+  });
+  $('bk-table').innerHTML = html;
+  $('bk-table').querySelectorAll('tr[data-i]').forEach(tr => {
+    const s = sections[+tr.dataset.i];
+    tr.querySelector('.bk-on').addEventListener('change', e => { s.on = e.target.checked; });
+    tr.querySelectorAll('.bk-c input').forEach(inp => inp.addEventListener('focus', () => peekAnswer(s, +inp.dataset.k + 1)));
+    tr.querySelectorAll('.bk-c input').forEach(inp => inp.addEventListener('input', () => { s.answers[+inp.dataset.k] = inp.value.trim().replace(/[\s,]/g, '') || '?'; updateRow(tr, s); }));
+    updateRow(tr, s);
+  });
+}
+// 칸을 누르면 그 문항의 정답이 적힌 원본 부분(교재 PDF의 해당 줄)을 화면 아래에 보여 준다 — 이상한 칸을 눈으로 보고 고치기 위해
+async function peekAnswer(s, n) {
+  let box = $('bk-peek');
+  if (!box) { box = document.createElement('div'); box.id = 'bk-peek'; box.style.cssText = 'position:fixed; right:12px; bottom:12px; width:min(460px,92vw); background:#fff; border:2px solid #0B1F5C; border-radius:12px; padding:8px 10px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:50; font-size:13px;'; document.body.appendChild(box); }
+  const pk = s.peek && s.peek[n];
+  if (!pk || typeof bookDoc === 'undefined' || !bookDoc) { box.innerHTML = '<b>' + escapeHtml(secTitle(s)) + ' ' + n + '번</b> <span class="muted">— 원본 그림을 찾지 못했어요. 교재 정답 쪽 ' + s.aa + '~' + s.ab + '를 확인하세요.</span>'; return; }
+  const key = s.order + ':' + n; box.dataset.key = key;
+  box.innerHTML = '<b>' + escapeHtml(secTitle(s)) + ' · ' + n + '번</b> <span class="muted">(교재 ' + pk.p + '쪽)</span> <button type="button" style="float:right; border:0; background:none; font-size:16px; cursor:pointer;" onclick="this.parentNode.remove()">✕</button><div class="muted" style="margin:4px 0;">그림을 만드는 중...</div>';
+  try {
+    const c = await BankCore.renderRect(bookDoc, pk.p, pk.rect, 2.4, false);
+    if (box.dataset.key !== key) return;
+    box.querySelector('.muted:last-child').outerHTML = '<img src="' + c.toDataURL('image/png') + '" style="width:100%; display:block; margin-top:4px; border:1px solid #E5E7EB;">';
+  } catch (e) { box.querySelector('.muted:last-child').textContent = '그림을 만들지 못했어요: ' + e.message; }
+}
+function rowIssue(s) {
+  if (!s.answers.length) return '정답 없음';
+  const bad = s.answers.map((a, i) => (/^([1-9]{1,5}(\/[1-9]{1,5})*|-)$/.test(a) ? null : (i + 1))).filter(Boolean);
+  return bad.length ? ('확인 필요: ' + bad.slice(0, 6).join(', ') + '번') : '';
+}
+function updateRow(tr, s) {
+  const issue = rowIssue(s), subj = s.answers.filter(a => a === '-').length;
+  tr.querySelectorAll('.bk-c input').forEach(inp => { const a = s.answers[+inp.dataset.k]; inp.classList.toggle('bk-bad', !/^([1-9]{1,5}(\/[1-9]{1,5})*|-)$/.test(a)); inp.classList.toggle('bk-sub', a === '-'); });
+  tr.querySelector('.bk-n').textContent = s.answers.length;
+  tr.querySelector('.bk-st').innerHTML = issue ? '<span class="bk-st-bad">' + issue + '</span>' : (subj ? '<span class="bk-st-warn">서술형 ' + subj + '개</span>' : '<span class="bk-st-ok">OK</span>');
+}
+
+// ── 3단계: 등록하고 QR 합본 만들기 ──
+$('go-btn').addEventListener('click', async () => {
+  const err = $('error-banner'); err.innerHTML = '';
+  const chosen = sections.filter(s => s.on);
+  if (!chosen.length) { alert('등록할 단원을 선택해 주세요.'); return; }
+  const bad = chosen.filter(s => rowIssue(s));
+  if (bad.length) { alert('정답을 확인해야 하는 단원이 있어요:\n' + bad.slice(0, 8).map(s => '· ' + secTitle(s) + ' (' + rowIssue(s) + ')').join('\n') + '\n\n표의 정답 칸에서 고치거나, 그 단원은 선택을 빼 주세요.'); return; }
+  if (!confirm(chosen.length + '개 단원을 시험으로 등록하고 QR 합본 PDF를 만들까요?\n(이미 같은 이름으로 등록된 단원은 새로 만들지 않고 그 시험의 QR을 써요)')) return;
+  $('go-btn').disabled = true;
+  const msg = t => { $('go-msg').textContent = t; };
+  try {
+    msg('등록된 시험 목록을 확인하는 중...');
+    const ex = await callApi('listExams', { password: getTeacherPassword() });
+    if (!ex.ok) throw new Error(ex.error || '시험 목록을 불러오지 못했어요');
+    const byTitle = {}; (ex.exams || []).forEach(e => { byTitle[String(e.title).trim()] = e.id; });
+    let made = 0, reused = 0, next = 0, fail = null, bankQ = 0;
+    const ids = {}, bankWarn = [];
+    const toBank = $('to-bank').checked;
+    msg('교재 PDF를 여는 중...');
+    const pdf = await PDFLib.PDFDocument.load(bookBytes.slice(0), { ignoreEncryption: true, updateMetadata: false });
+    const gradeG = gradeFromText($('book-name').value + ' ' + bookFileName);
+    const toc = toBank ? await ensureToc() : [];
+    const bookName = $('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '');
+    // 한 단원의 문제를 잘라 문제은행에 저장하고 문항 id 목록(번호 순서)을 돌려준다. 문항 수가 정답 수와 다르면 null.
+    const bankSection = async (s, title) => {
+      const sub = await PDFLib.PDFDocument.create();
+      const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1); for (let p = s.aa; p <= s.ab; p++) idx.push(p - 1);
+      (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
+      const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
+      const scan = await BankCore.scanPdf(doc);
+      const qs = scan.questions;
+      if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) { bankWarn.push(title + ' (문항 ' + qs.length + '개 ≠ 정답 ' + s.answers.length + '개)'); return null; }
+      const tu = tocUnitByNo(toc, gradeG, s.unit);
+      const unit = tu ? tu.unit : (s.unit + '. ' + s.unitName), grade = tu ? tu.grade : gradeG;
+      const items = [];
+      for (const q of qs) {
+        const canvas = await BankCore.renderQuestion(doc, q, BankCore.CROP_SCALE, true);
+        const ex = scan.explanations && scan.explanations[q.num];
+        let explCanvas = null;
+        if (ex) { try { explCanvas = await BankCore.renderExplanation(doc, ex, 2.2); } catch (e) {} }
+        items.push({
+          id: 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), unit: unit, sub: '', grade: grade, kind: '교재', school: '', year: '',
+          answer: s.answers[q.num - 1], source: bookName + ' ' + s.name + ' ' + s.tag, textPreview: await BankCore.textPreviewQ(doc, q, 240), num: q.num, head: '',
+          imageBase64: BankCore.canvasToBase64(canvas), explBase64: explCanvas ? BankCore.canvasToBase64(explCanvas) : '',
+          numRect: relNum(q, canvas),
+          explNumRect: (ex && ex.numRect && ex.segments.length) ? relRect(ex.numRect, ex.segments[0].rect) : null,
+        });
+      }
+      const chunks = []; for (let i = 0; i < items.length; i += 2) chunks.push(items.slice(i, i + 2));
+      let cn = 0, ferr = null;
+      await Promise.all(Array.from({ length: Math.min(6, chunks.length) }, async () => {
+        while (!ferr) { const k = cn++; if (k >= chunks.length) return; const r = await callApi('saveQuestions', { password: getTeacherPassword(), questions: chunks[k] }); if (!r.ok) ferr = new Error(r.error || '문제 저장 실패'); }
+      }));
+      if (ferr) throw ferr;
+      bankQ += items.length;
+      return items.map(x => ({ id: x.id, text: x.textPreview }));
+    };
+    const worker = async () => {
+      while (!fail) {
+        const k = next++; if (k >= chosen.length) return;
+        const s = chosen[k], title = secTitle(s);
+        if (byTitle[title]) { ids[s.order] = byTitle[title]; reused++; continue; }
+        const id = genExamId();
+        let saved = null;
+        if (toBank) { msg('문제 저장 중... ' + secTitle(s) + ' (' + (made + reused) + '/' + chosen.length + '개 단원 등록됨)'); try { saved = await bankSection(s, title); } catch (e) { fail = new Error(title + ': ' + e.message); return; } }
+        const res = await callApi('createExam', {
+          password: getTeacherPassword(), id: id, title: title, answers: s.answers, filename: title,
+          sourceQuestionIds: saved ? saved.map(x => x.id) : undefined, questionTexts: saved ? saved.map(x => x.text) : undefined,
+          composeRecipe: { book: bookId, bookTitle: ($('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '')), unit: s.unit, unitName: s.unitName, tag: s.tag, label: s.name + ' ' + s.tag, order: s.order },
+        });
+        if (!res.ok) { fail = new Error(title + ': ' + (res.error || '등록 실패')); return; }
+        ids[s.order] = id; made++;
+        msg('시험 등록 중... ' + (made + reused) + '/' + chosen.length);
+      }
+    };
+    await Promise.all(Array.from({ length: toBank ? 2 : 3 }, worker));
+    if (fail) throw fail;
+
+    msg('교재 PDF에 QR을 찍는 중... (파일이 커서 1~2분 걸릴 수 있어요)');
+    const size = parseInt($('qr-size').value, 10), corner = $('qr-corner').value;
+    let i = 0;
+    for (const s of chosen) {
+      msg('QR 찍는 중... ' + (++i) + '/' + chosen.length);
+      await stampQrOnPage(pdf, s.qa - 1, studentLinkFor(ids[s.order]), { size: size, corner: corner, margin: 8, caption: 'QR코드로 답안 입력하세요' });
+    }
+    if ($('multi-qr').checked && tocPage) {
+      const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+      await stampQrOnPage(pdf, tocPage - 1, base + 'student_multi.html?book=' + bookId, { size: 56, corner: 'top-right', margin: 8, caption: '여러 단원 한꺼번에 채점 → QR' });
+    }
+    msg('PDF를 저장하는 중...');
+    const out = await pdf.save();
+    const url = URL.createObjectURL(new Blob([out], { type: 'application/pdf' }));
+    const a = document.createElement('a'); a.href = url; a.download = bookFileName.replace(/\.pdf$/i, '') + ' (QR).pdf';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
+    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. QR 합본 PDF가 내려받아졌어요.<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
+  } catch (e) {
+    err.innerHTML = '<div class="banner error">' + escapeHtml(e.message) + '</div>';
+    $('go-msg').textContent = '';
+  }
+  $('go-btn').disabled = false;
+});
+</script>
+</body>
+</html>

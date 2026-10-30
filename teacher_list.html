@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>시험지 목록 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#95D1DB">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>등록된 시험지</h1>
+  <div id="filter-bar" class="card" style="display:none; padding:12px 14px; margin-bottom:10px;">
+    <div id="kind-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+    <div id="grade-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <select id="unit-sel" style="flex:1 1 180px; min-width:150px;"><option value="">단원 전체</option></select>
+      <select id="sort-sel" style="flex:0 1 150px;">
+        <option value="new">최근 등록순</option>
+        <option value="old">오래된 순</option>
+        <option value="unit">학년·단원순</option>
+        <option value="name">이름순</option>
+        <option value="sub">제출 많은 순</option>
+      </select>
+      <input type="search" id="q-inp" placeholder="이름 검색 (학교·연도…)" style="flex:1 1 150px; min-width:120px;">
+    </div>
+    <div class="hint" id="filter-msg" style="margin:8px 0 0;"></div>
+  </div>
+  <div id="bulk-bar" class="card" style="display:none; padding:10px 14px; margin-bottom:10px; align-items:center; gap:10px; flex-wrap:wrap;">
+    <label class="bank-include-label" style="margin:0;"><input type="checkbox" id="sel-all"> 전체 선택</label>
+    <span class="hint" id="sel-count" style="margin:0;">0개 선택</span>
+    <button type="button" class="btn danger" id="bulk-del" style="padding:8px 14px;" disabled>선택 삭제</button>
+  </div>
+  <div id="list-container" class="muted">불러오는 중...</div>
+</template>
+
+<script src="js/config.js?v=202610150082"></script>
+<script src="js/api.js?v=202610150082"></script>
+<script src="js/common.js?v=202610150082"></script>
+<script src="js/bankcore.js?v=202610150082"></script>
+<script src="js/pdfui.js?v=202610150082"></script>
+<script>
+requireLogin();
+renderHeader();
+
+(async function () {
+  const container = document.getElementById('list-container');
+  try {
+    const res = await callApi('listExams', { password: getTeacherPassword() });
+    if (!res.ok) { container.innerHTML = '<div class="banner error">' + res.error + '</div>'; return; }
+    if (res.exams.length === 0) {
+      container.innerHTML = '<div class="card center muted">아직 등록된 시험지가 없어요.</div>';
+      return;
+    }
+    // ── 시험지 이름에서 학년·단원을 읽는다: "… 중2-1,5단원 +중1 3단원" ──
+    function parseMeta(title) {
+      const t = String(title || ''), units = [], grades = [];
+      let m;
+      const reA = /중\s*([123])\s*[-－]\s*(\d{1,2}(?:\s*[,，·]\s*\d{1,2})*)\s*단원/g;
+      const reB = /\+\s*중\s*([123])\s*(\d{1,2}(?:\s*[,，·]\s*\d{1,2})*)\s*단원/g;
+      const add = (g, list) => { const gr = '중' + g; if (grades.indexOf(gr) < 0) grades.push(gr); list.split(/[,，·]/).forEach(x => { const n = parseInt(x, 10); if (n && !units.some(u => u.grade === gr && u.no === n)) units.push({ grade: gr, no: n }); }); };
+      while ((m = reA.exec(t))) add(m[1], m[2]);
+      while ((m = reB.exec(t))) add(m[1], m[2]);
+      if (!grades.length) { const g = t.match(/중\s*([123])(?!\d)/) || t.match(/([123])\s*학년/) || t.match(/(?:^|[^\d])([123])\s*-\s*[12]\s*(?:학기)?/); if (g) grades.push('중' + g[1]); }
+      return { grade: grades[0] || '', grades: grades, units: units };
+    }
+    let toc = [];
+    try { toc = await ensureToc(); } catch (e) { toc = []; }
+    const unitName = (g, n) => { const t = toc.find(x => x.grade === g && x.no === n); return t ? t.unit : (n + '단원'); };
+    const unitKey = u => u.grade + '|' + u.no;
+    const exams = res.exams.map(ex => Object.assign({ meta: parseMeta(ex.title), ts: Date.parse(ex.createdAt) || 0 }, ex));
+    const st = { kind: '', grade: '', unit: '', sort: 'new', q: '' };
+    const isBank = ex => !!ex.hasRecipe;      // 문제은행에서 골라 출제한 시험지
+    try { const sv = JSON.parse(sessionStorage.getItem('list_filter') || '{}'); if (sv && typeof sv === 'object') Object.assign(st, sv); } catch (e) {}
+    const gradeChips = document.getElementById('grade-chips'), unitSel = document.getElementById('unit-sel'), sortSel = document.getElementById('sort-sel'), qInp = document.getElementById('q-inp');
+    const GR = ['', '중1', '중2', '중3', '기타'];
+    const kindChips = document.getElementById('kind-chips');
+    const KINDS = [['', '전체'], ['plain', '📄 일반 시험지 (PDF 등록)'], ['bank', '🧩 문제은행 출제']];
+    const kindOk = ex => !st.kind || (st.kind === 'bank' ? isBank(ex) : !isBank(ex));
+    function drawKinds() {
+      kindChips.innerHTML = KINDS.map(k => '<button type="button" class="btn ' + (st.kind === k[0] ? '' : 'outline') + '" data-k="' + k[0] + '" style="padding:6px 12px; font-size:13px;">' + k[1] + ' <span style="opacity:.7;">' + exams.filter(ex => !k[0] || (k[0] === 'bank' ? isBank(ex) : !isBank(ex))).length + '</span></button>').join('');
+    }
+    const gradeOf = ex => ex.meta.grade || '기타';
+    function drawChips() {
+      gradeChips.innerHTML = GR.map(g => {
+        const n = exams.filter(ex => kindOk(ex) && (!g || gradeOf(ex) === g || ex.meta.grades.indexOf(g) >= 0)).length;
+        return '<button type="button" class="btn ' + (st.grade === g ? '' : 'outline') + '" data-g="' + g + '" style="padding:6px 12px; font-size:13px;">' + (g || '전체') + ' <span style="opacity:.7;">' + n + '</span></button>';
+      }).join('');
+    }
+    function drawUnitOptions() {
+      const inGrade = exams.filter(ex => kindOk(ex) && (!st.grade || gradeOf(ex) === st.grade || ex.meta.grades.indexOf(st.grade) >= 0));
+      const map = {};
+      inGrade.forEach(ex => ex.meta.units.forEach(u => { if (!st.grade || u.grade === st.grade) map[unitKey(u)] = u; }));
+      const us = Object.keys(map).map(k => map[k]).sort((a, b) => a.grade.localeCompare(b.grade) || a.no - b.no);
+      unitSel.innerHTML = '<option value="">단원 전체</option>' + us.map(u => {
+        const cnt = inGrade.filter(ex => ex.meta.units.some(x => unitKey(x) === unitKey(u))).length;
+        return '<option value="' + unitKey(u) + '">' + (st.grade ? '' : u.grade + ' · ') + escapeHtml(unitName(u.grade, u.no)) + ' (' + cnt + ')</option>';
+      }).join('') + (inGrade.some(ex => !ex.meta.units.length) ? '<option value="none">단원 표시 없음 (' + inGrade.filter(ex => !ex.meta.units.length).length + ')</option>' : '');
+      if (st.unit && !Array.from(unitSel.options).some(o => o.value === st.unit)) st.unit = '';
+      unitSel.value = st.unit;
+    }
+    function visible() {
+      const q = st.q.replace(/\s+/g, '').toLowerCase();
+      let list = exams.filter(ex => {
+        if (!kindOk(ex)) return false;
+        if (st.grade && gradeOf(ex) !== st.grade && ex.meta.grades.indexOf(st.grade) < 0) return false;
+        if (st.unit === 'none') { if (ex.meta.units.length) return false; }
+        else if (st.unit && !ex.meta.units.some(u => unitKey(u) === st.unit)) return false;
+        if (q && String(ex.title).replace(/\s+/g, '').toLowerCase().indexOf(q) < 0) return false;
+        return true;
+      });
+      const firstUnit = ex => ex.meta.units.length ? ex.meta.units[0].no : 99;
+      const by = {
+        new: (a, b) => b.ts - a.ts, old: (a, b) => a.ts - b.ts,
+        unit: (a, b) => gradeOf(a).localeCompare(gradeOf(b)) || firstUnit(a) - firstUnit(b) || b.ts - a.ts,
+        name: (a, b) => String(a.title).localeCompare(String(b.title), 'ko'),
+        sub: (a, b) => (b.submissionCount || 0) - (a.submissionCount || 0) || b.ts - a.ts
+      };
+      return list.sort(by[st.sort] || by.new);
+    }
+    function render() {
+      try { sessionStorage.setItem('list_filter', JSON.stringify(st)); } catch (e) {}
+      drawKinds(); drawChips(); drawUnitOptions(); sortSel.value = st.sort; qInp.value = st.q;
+      const list = visible();
+      document.getElementById('filter-msg').textContent = list.length + '개 시험지' + (list.length !== exams.length ? ' (전체 ' + exams.length + '개 중)' : '');
+      const badges = ex => ex.meta.units.length
+        ? ex.meta.units.map(u => '<span class="chip" style="display:inline-block; background:#EEF2FF; color:#3730A3; border-radius:10px; padding:1px 8px; font-size:12px; margin:0 4px 4px 0;">' + u.grade + ' ' + escapeHtml(unitName(u.grade, u.no)) + '</span>').join('')
+        : (ex.meta.grade ? '<span style="display:inline-block; background:#EEF2FF; color:#3730A3; border-radius:10px; padding:1px 8px; font-size:12px;">' + ex.meta.grade + '</span>' : '');
+      container.innerHTML = list.length ? list.map(ex => `
+      <div class="exam-list-item">
+        <label style="display:flex; align-items:center; gap:6px; margin:0 0 6px; font-size:13px; cursor:pointer;"><input type="checkbox" class="exsel" data-id="${ex.id}"> 선택</label>
+        <a href="teacher_exam.html?id=${ex.id}" style="text-decoration:none; color:inherit; display:block;">
+          <div class="title">${isBank(ex) ? '<span style="font-size:12px; background:#FEF3C7; color:#92400E; border-radius:10px; padding:1px 8px; margin-right:6px;">🧩 문제은행 출제</span>' : ''}${escapeHtml(ex.title)}</div>
+          <div style="margin:4px 0 2px;">${badges(ex)}</div>
+          <div class="meta">${ex.answerCount}문항${ex.subjectiveCount ? ' (주관식 ' + ex.subjectiveCount + ')' : ''} · 제출 ${ex.submissionCount}건 · ${formatDate(ex.createdAt)}</div>
+        </a>
+        <button type="button" class="btn danger del-exam-btn" data-id="${ex.id}" data-title="${escapeHtml(ex.title)}" style="margin-top:8px; padding:7px 12px; font-size:13px;">삭제</button>
+      </div>`).join('') : '<div class="card center muted">조건에 맞는 시험지가 없어요.</div>';
+      bindRows(); upd();
+    }
+    kindChips.addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (!b) return; st.kind = b.dataset.k; st.unit = ''; render(); });
+    gradeChips.addEventListener('click', e => { const b = e.target.closest('button[data-g]'); if (!b) return; st.grade = b.dataset.g; st.unit = ''; render(); });
+    unitSel.addEventListener('change', () => { st.unit = unitSel.value; render(); });
+    sortSel.addEventListener('change', () => { st.sort = sortSel.value; render(); });
+    qInp.addEventListener('input', () => { st.q = qInp.value; render(); qInp.focus(); });
+    document.getElementById('filter-bar').style.display = 'block';
+    const bar = document.getElementById('bulk-bar'); bar.style.display = 'flex';
+    const sels = () => Array.from(container.querySelectorAll('.exsel'));
+    function upd() {
+      const on = sels().filter(c => c.checked);
+      document.getElementById('sel-count').textContent = on.length + '개 선택';
+      document.getElementById('bulk-del').disabled = !on.length;
+      document.getElementById('sel-all').checked = sels().length > 0 && on.length === sels().length;
+    }
+    container.addEventListener('change', e => { if (e.target.classList.contains('exsel')) upd(); });
+    document.getElementById('sel-all').addEventListener('change', e => { sels().forEach(c => { c.checked = e.target.checked; }); upd(); });
+    document.getElementById('bulk-del').addEventListener('click', async () => {
+      const on = sels().filter(c => c.checked), ids = on.map(c => c.dataset.id);
+      if (!ids.length) return;
+      const ch = await askDeleteExams(ids.map(id => exams.find(x => String(x.id) === String(id))).filter(Boolean), exams);
+      if (!ch) return;
+      const alsoScores = ch.scores, bankDel = ch.bankDel;
+      const btn = document.getElementById('bulk-del'); btn.disabled = true; btn.textContent = '삭제 중...';
+      let done = 0;
+      try {
+        for (let i = 0; i < ids.length; i += 15) {
+          const chunk = ids.slice(i, i + 15);
+          const res = await callApi('deleteExams', { password: getTeacherPassword(), ids: chunk, deleteSubmissions: alsoScores });
+          if (!res.ok) throw new Error(res.error || '삭제 실패');
+          chunk.forEach(id => { const k = exams.findIndex(x => String(x.id) === String(id)); if (k >= 0) exams.splice(k, 1); });
+          done += chunk.length; btn.textContent = '삭제 중... ' + done + '/' + ids.length;
+        }
+      } catch (err) { alert('삭제 중 오류 (' + done + '개는 지워졌어요): ' + err.message); }
+      if (bankDel && done === ids.length) { btn.textContent = '문제은행 정리 중...'; try { await bankDel(); } catch (e) { alert('시험지는 지웠지만 문제은행 삭제 중 오류가 났어요: ' + e.message); } }
+      btn.textContent = '선택 삭제'; render();
+      if (!exams.length) { container.innerHTML = '<div class="card center muted">남은 시험지가 없어요.</div>'; bar.style.display = 'none'; document.getElementById('filter-bar').style.display = 'none'; }
+    });
+    function bindRows() { container.querySelectorAll('.del-exam-btn').forEach(b => b.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const id = b.dataset.id, title = b.dataset.title;
+      const ch = await askDeleteExams([exams.find(x => String(x.id) === String(id))].filter(Boolean), exams);
+      if (!ch) return;
+      const alsoScores = ch.scores, bankDel = ch.bankDel;
+      b.disabled = true; b.textContent = '삭제 중...';
+      try {
+        const res = await callApi('deleteExam', { password: getTeacherPassword(), id: id, deleteSubmissions: alsoScores });
+        if (!res.ok) throw new Error(res.error || '삭제 실패');
+        if (bankDel) { b.textContent = '문제은행 정리 중...'; try { await bankDel(); } catch (e) { alert('시험지는 지웠지만 문제은행 삭제 중 오류가 났어요: ' + e.message); } }
+        const k = exams.findIndex(x => String(x.id) === String(id)); if (k >= 0) exams.splice(k, 1); render();
+      } catch (err) { alert('삭제 중 오류: ' + err.message); b.disabled = false; b.textContent = '삭제'; }
+    })); }
+    render();
+  } catch (err) {
+    container.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
+  }
+})();
+</script>
+</body>
+</html>

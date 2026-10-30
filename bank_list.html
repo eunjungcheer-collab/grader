@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>문제은행 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202610150082">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#95D1DB">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>문제은행</h1>
+  <p class="muted"><span id="total-text">불러오는 중...</span> <a href="#" id="reload-bank" style="margin-left:8px;">↻ 새로 불러오기</a></p>
+  <div class="actions">
+    <a class="btn primary" href="bank_upload.html">📄 PDF에서 문항 가져오기</a>
+    <a class="btn outline" href="bank_compose.html">🧩 시험 조합하기</a>
+  </div>
+  <div class="search-bar">
+    <input type="text" id="q" placeholder="단원·학교·문항 내용으로 검색">
+  </div>
+  <div id="bulk-bar" class="bulk-bar">
+    <label class="bank-include-label" style="margin:0;"><input type="checkbox" id="select-all-page"> 이 페이지 전체 선택</label>
+    <button type="button" class="btn ghost" id="select-all-filtered" style="padding:8px 12px;">검색·필터된 전체 선택</button>
+    <span class="hint" id="select-count" style="margin:0;">0개 선택</span>
+    <button type="button" class="btn outline" id="bulk-classify-btn" style="padding:8px 14px;" disabled>📚 선택한 문항 분류 바꾸기</button>
+    <button type="button" class="btn danger" id="bulk-delete-btn" style="padding:8px 14px;" disabled>선택 삭제</button>
+  </div>
+  <div id="bulk-classify" class="card" style="display:none; padding:12px 14px;">
+    <b id="bc-title">선택한 문항의 분류</b>
+    <p class="hint" style="margin:2px 0 8px;">바꾸고 싶은 칸만 채우세요. 비워둔 칸은 그대로 둬요.</p>
+    <div class="cls-form">
+      <div class="cls-field"><label>학년</label><select id="bc-grade"><option value="">(바꾸지 않음)</option><option value="__clear__">(학년 비우기)</option></select></div>
+      <div class="cls-field cls-wide"><label>단원</label><input type="text" id="bc-unit" list="dl-units" placeholder="예: 1. 물질의 특성"></div>
+      <div class="cls-field cls-wide"><label>소단원 (선택한 문항이 같은 단원일 때)</label><select id="bc-sub"><option value="">(바꾸지 않음)</option></select></div>
+      <div class="cls-field"><label>구분</label><select id="bc-kind"><option value="">(바꾸지 않음)</option><option value="일반">일반 문제</option><option value="기출">기출문제</option><option value="교재">내신교재</option></select></div>
+      <div class="cls-field"><label>출제년도 (기출)</label><input type="text" id="bc-year" inputmode="numeric" maxlength="4" placeholder="예: 2025" style="max-width:90px;"></div>
+      <div class="cls-field cls-wide"><label>학교·시험 이름 (기출)</label><input type="text" id="bc-school" list="dl-schools" placeholder="예: ○○중 2025 1학기 중간"></div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+      <button type="button" class="btn primary" id="bc-apply" style="padding:8px 14px;">선택한 문항에 적용</button>
+      <button type="button" class="btn ghost" id="bc-cancel" style="padding:8px 14px;">닫기</button>
+      <span class="hint" id="bc-msg" style="margin:0;"></span>
+    </div>
+  </div>
+  <div class="quick-filters"><span class="muted chip-label">빠른 필터</span><label><input type="checkbox" id="only-noans"> 정답 비어있음</label><label><input type="checkbox" id="only-nounit"> 단원 미지정</label><label><input type="checkbox" id="only-nosub"> 소단원 비어있음</label><label><input type="checkbox" id="only-auto"> 🤖 자동 분류(확인 전)</label></div>
+  <details class="tools-box"><summary>🛠 정리 · 자동 채우기 도구 <span class="hint" style="margin:0;">(필요할 때만 펼치세요)</span></summary>
+    <div class="tools-body">
+  <div style="margin:8px 0;"><button type="button" class="btn outline" id="dedupe" style="padding:8px 14px;">🧹 중복 문항 정리 (같은 PDF를 여러 번 올린 경우)</button> <span class="hint" id="dedupe-msg"></span></div>
+  <div style="margin:8px 0;"><button type="button" class="btn outline" id="fix-class" style="padding:8px 14px;">🔧 학년·단원 바로잡기 (파일 이름·단원 이름 기준)</button> <span class="hint" id="fix-class-msg"></span>
+    <div class="hint" style="margin:2px 0 0;">선택한 문항이 있으면 그것만, 없으면 전체를 점검해요. 파일 이름의 학년(중1…)과 단원 이름(예: 물리변화와 화학변화 → 중3)을 목차와 맞춰 학년을 고치고, 단원 이름을 목차 이름(예: 4단원 물질의 상태 변화)으로 통일해요.</div></div>
+  <div style="margin:8px 0;"><button type="button" class="btn outline" id="auto-grade" style="padding:8px 14px;">🤖 학년·단원 자동 채우기 (분류 안 된 문항)</button> <span class="hint" id="auto-grade-msg"></span></div>
+  <details style="margin:8px 0;"><summary style="cursor:pointer;">📚 과학 목차 등록 (단원 추정의 기준)</summary>
+    <p class="hint">학년 줄은 <b>[중1]</b>처럼, 그 아래에 단원을 한 줄씩 적어요. 단원 뒤에 <b>:</b>를 쓰고 키워드를 적으면 더 정확해져요.<br>예) 물질의 상태 변화: 융해, 응고, 기화, 액화, 승화, 끓는점</p>
+    <textarea id="toc-text" rows="10" style="width:100%;" placeholder="[중2]&#10;지권의 변화: 암석, 광물, 화성암, 퇴적암, 변성암&#10;  01 지권의 구성: 광물, 지각, 맨틀   ← 두 칸 들여쓰면 소단원이에요&#10;  02 암석의 종류와 순환: 화성암, 퇴적암, 변성암&#10;[중3]&#10;..."></textarea>
+    <button type="button" class="btn outline" id="toc-save" style="padding:6px 12px;">목차 저장</button> <span class="hint" id="toc-msg"></span>
+  </details>
+  <div style="margin:8px 0;"><button type="button" class="btn outline" id="auto-unit" style="padding:8px 14px;">🤖 문제 내용으로 단원 추정 (단원 미지정 문항)</button>
+    <label class="bank-include-label" style="margin:0 8px; font-size:12px; display:inline-flex;"><input type="checkbox" id="auto-unit-low"> 확신이 낮은 것도</label>
+    <span class="hint" id="auto-unit-msg"></span></div>
+  <div style="margin:8px 0;"><button type="button" class="btn outline" id="auto-sub" style="padding:8px 14px;">🤖 소단원 자동 채우기 (소단원이 비어 있는 문항)</button>
+    <span class="hint" id="auto-sub-msg"></span></div>
+  <div style="margin:8px 0;"><button type="button" class="btn outline" id="auto-classify" style="padding:8px 14px;">🤖 난이도 미정 문항 자동 분류 (문제집별 상대평가)</button> <span class="hint" id="auto-msg"></span></div>
+    </div>
+  </details>
+  <div id="diff-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0;"></div>
+  <div id="kind-chips2" class="chip-row"></div>
+  <div id="grade-chips" class="chip-row"></div>
+  <div id="unit-chips" class="chip-row"></div>
+  <p class="hint">💡 문항 밑의 붉은 점선 칸이 저장된 해설의 맨 윗부분이에요(정답 표시가 보여요). 클릭하면 해설 전체가 펼쳐져요. 정답칸에 숫자를 치면 자동 저장되고 다음 문항으로 넘어가요.</p>
+  <div id="list" class="qcard-grid"></div>
+  <div id="save-status" class="save-status" style="display:none;"></div>
+  <div id="pager" class="sort-bar" style="justify-content:center;"></div>
+</template>
+
+<script src="js/config.js?v=202610150082"></script>
+<script src="js/api.js?v=202610150082"></script>
+<script src="js/common.js?v=202610150082"></script>
+<script src="js/bankcore.js?v=202610150082"></script>
+<script src="js/pdfui.js?v=202610150082"></script>
+<script>
+requireLogin();
+renderHeader({ wide: true });
+const $ = id => document.getElementById(id);
+const PER_PAGE = 12;
+let all = [], unitFilter = '', gradeFilter = '', kindFilter = '', diffFilter = '', page = 1;
+const selected = new Set();
+const dKey = q => q.difficulty || '미정';
+
+async function load() {
+  try {
+    const res = await callApi('listQuestions', { password: getTeacherPassword() });
+    if (!res.ok) { $('total-text').textContent = res.error; return; }
+    all = res.questions.slice().reverse();
+    try { await ensureToc(); } catch (e) {}
+    render();
+  } catch (e) { $('total-text').textContent = '서버에 연결할 수 없어요.'; }
+}
+
+
+// ───────── 저장 대기열 ─────────
+// 정답·난이도를 바꿀 때마다 서버(구글시트)를 부르고 기다리면 한 칸마다 1~3초씩 멈춰요.
+// 그래서 화면은 바로 다음으로 넘어가고, 바뀐 것들을 모아서 뒤에서 한 번에 저장해요.
+const pending = {};            // id -> {answer?, difficulty?}
+let flushTimer = null, inflight = 0, lastFail = false;
+const pendingCount = () => Object.keys(pending).length;
+function paintStatus() {
+  const el = $('save-status'), n = pendingCount() + inflight;
+  if (lastFail) { el.style.display = 'block'; el.className = 'save-status fail'; el.textContent = '⚠️ 저장이 안 됐어요. 다시 시도하는 중... (' + n + '건)'; }
+  else if (n) { el.style.display = 'block'; el.className = 'save-status'; el.textContent = '💾 저장 중... ' + n + '건'; }
+  else { el.style.display = 'block'; el.className = 'save-status ok'; el.textContent = '✓ 모두 저장됨'; setTimeout(() => { if (!pendingCount() && !inflight) el.style.display = 'none'; }, 2500); }
+}
+function markCard(id, text) {
+  const el = document.querySelector('.qcard[data-id="' + id + '"] .saved-flash');
+  if (el) el.textContent = text;
+}
+function queueUpdate(id, patch) {
+  pending[id] = Object.assign(pending[id] || {}, patch);
+  markCard(id, '저장 대기…');
+  paintStatus();
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, 600);            // 입력이 0.6초 멈추면 모아서 보냄
+}
+async function flush() {
+  clearTimeout(flushTimer);
+  if (inflight) { flushTimer = setTimeout(flush, 300); return; }     // 한 번에 하나씩만 보내서 순서가 꼬이지 않게
+  const ids = Object.keys(pending);
+  if (!ids.length) return;
+  const updates = ids.map(id => Object.assign({ id: id }, pending[id]));
+  ids.forEach(id => delete pending[id]);
+  inflight = updates.length;
+  paintStatus();
+  try {
+    const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: updates });
+    if (!r.ok) throw new Error(r.error || '저장 실패');
+    lastFail = false;
+    updates.forEach(u => markCard(u.id, '저장됨 ✓'));
+  } catch (e) {
+    lastFail = true;
+    updates.forEach(u => { const p = Object.assign({}, u); delete p.id; pending[u.id] = Object.assign(p, pending[u.id] || {}); markCard(u.id, '저장 실패…'); });
+    flushTimer = setTimeout(flush, 3000);
+  }
+  inflight = 0;
+  paintStatus();
+  if (pendingCount() && !lastFail) flushTimer = setTimeout(flush, 300);
+}
+window.addEventListener('beforeunload', e => { if (pendingCount() || inflight) { e.preventDefault(); e.returnValue = ''; } });
+document.addEventListener('visibilitychange', () => { if (document.hidden && pendingCount()) flush(); });
+
+const gradeOf = x => x.grade || '__none__';
+function filtered() {
+  const q = $('q').value.trim().toLowerCase();
+  const onlyNo = $('only-noans').checked, onlyNoSub = $('only-nosub').checked, onlyNoUnit = $('only-nounit').checked, onlyAuto = $('only-auto').checked;
+  return all.filter(x => (!kindFilter || x.kind === kindFilter) && (!gradeFilter || gradeOf(x) === gradeFilter) && (!unitFilter || unitKey(x) === unitFilter) && (!diffFilter || dKey(x) === diffFilter) &&
+    (!onlyNo || !String(x.answer).trim()) && (!onlyNoSub || !x.sub) && (!onlyNoUnit || !x.unit || x.unit === '(단원 미지정)') && (!onlyAuto || x.auto) &&
+    (!q || [x.unit, x.grade, x.school, x.kind, x.textPreview].some(v => String(v || '').toLowerCase().includes(q))));
+}
+
+function render() {
+  const noAnsTotal = all.filter(x => !String(x.answer).trim()).length;
+  $('total-text').textContent = '총 ' + all.length + '문항이 저장되어 있어요.' + (noAnsTotal ? ' (정답이 비어있는 문항 ' + noAnsTotal + '개)' : '');
+  // 구분 → 학년 → 단원 순으로 좁혀 간다 (앞 칸을 고르면 뒤 칸 목록이 거기에 맞게 줄어든다)
+  const chip = (cls, label, on, data) => '<button class="sort-btn ' + (on ? 'active' : '') + '" ' + data + '>' + escapeHtml(label) + '</button>';
+  const nPast = all.filter(isPastExam).length, nBook = all.filter(isBookQ).length;
+  $('kind-chips2').innerHTML = '<span class="muted chip-label">구분</span>' +
+    chip('', '전체 (' + all.length + ')', !kindFilter, 'data-k=""') + chip('', '일반 문제 (' + (all.length - nPast - nBook) + ')', kindFilter === '일반', 'data-k="일반"') + chip('', '기출문제 (' + nPast + ')', kindFilter === '기출', 'data-k="기출"') + (nBook ? chip('', '내신교재 (' + nBook + ')', kindFilter === '교재', 'data-k="교재"') : '');
+  $('kind-chips2').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { kindFilter = b.dataset.k; gradeFilter = ''; unitFilter = ''; page = 1; render(); }));
+  const byKind = all.filter(x => !kindFilter || x.kind === kindFilter);
+  const gc = {};
+  byKind.forEach(x => { gc[gradeOf(x)] = (gc[gradeOf(x)] || 0) + 1; });
+  const gradeKeys = Object.keys(gc).sort((a, b) => gradeRank(a === '__none__' ? '' : a) - gradeRank(b === '__none__' ? '' : b));
+  $('grade-chips').innerHTML = '<span class="muted chip-label">학년</span>' + chip('', '전체', !gradeFilter, 'data-g=""') +
+    gradeKeys.map(g => chip('', (g === '__none__' ? '미분류' : g) + ' (' + gc[g] + ')', gradeFilter === g, 'data-g="' + escapeHtml(g) + '"')).join('');
+  $('grade-chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { gradeFilter = b.dataset.g; unitFilter = ''; page = 1; render(); }));
+  const byGrade = byKind.filter(x => !gradeFilter || gradeOf(x) === gradeFilter);
+  const counts = {}, meta = {};
+  byGrade.forEach(x => { const k = unitKey(x); counts[k] = (counts[k] || 0) + 1; meta[k] = { grade: x.grade || '', unit: String(x.unit) }; });
+  const units = Object.keys(counts).sort((a, b) => (gradeRank(meta[a].grade) - gradeRank(meta[b].grade)) || naturalCompare(meta[a].unit, meta[b].unit));
+  $('unit-chips').innerHTML = '<span class="muted chip-label">단원</span>' + chip('', '전체', !unitFilter, 'data-u=""') +
+    units.map(u => chip('', (gradeFilter ? meta[u].unit : u) + ' (' + counts[u] + ')', unitFilter === u, 'data-u="' + escapeHtml(u) + '"')).join('');
+  $('unit-chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { unitFilter = b.dataset.u; page = 1; render(); }));
+
+  const dc = { '상': 0, '중': 0, '하': 0, '미정': 0 };
+  byGrade.filter(x => !unitFilter || unitKey(x) === unitFilter).forEach(x => dc[dKey(x)]++);
+  $('diff-chips').innerHTML = '<span class="muted" style="align-self:center; font-weight:700;">난이도</span>' +
+    '<button class="sort-btn ' + (diffFilter ? '' : 'active') + '" data-d="">전체</button>' +
+    ['상', '중', '하', '미정'].map(d => '<button class="sort-btn ' + (diffFilter === d ? 'active' : '') + '" data-d="' + d + '">' + d + ' (' + dc[d] + ')</button>').join('');
+  $('diff-chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { diffFilter = b.dataset.d; page = 1; render(); }));
+
+  const list = filtered();
+  const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
+  page = Math.min(page, pages);
+  const slice = list.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  $('list').innerHTML = slice.length ? slice.map(x => `
+    <div class="qcard" data-id="${x.id}">
+      <label class="qcard-select"><input type="checkbox" class="qsel" data-id="${x.id}"> <span class="hint">선택</span></label>
+      <img class="qimg" src="${driveThumb(x.fileId, 900)}" data-full="${driveThumb(x.fileId, 1600)}" loading="lazy" title="누르면 크게 보여요">
+      ${x.explFileId ? '<div class="expl-peek"><span class="peek-tag">해설 · 클릭해서 펼치기</span><img src="' + driveThumb(x.explFileId, 900) + '" loading="lazy"></div>' : ''}
+      <div class="diffrow"><b style="font-size:13px;">난이도</b>
+        <div class="seg" data-id="${x.id}">${['상', '중', '하'].map(d => '<button type="button" data-d="' + d + '" class="' + (x.difficulty === d ? 'on' : '') + '">' + d + '</button>').join('')}</div>
+        <span class="saved-flash dflash"></span></div>
+      <div class="cls-tags">${classTagsHtml(x)}${(x.auto & 2) ? '<span class="auto-badge" title="단원을 자동으로 추정해 넣었어요. 단원을 직접 저장하면 확인한 것으로 바뀌어요." style="font-size:12px; font-weight:700; color:#B45309;">🤖 단원 자동 추정</span>' : ''}${(x.auto & 1) ? '<span class="auto-badge" title="소단원을 자동으로 추정해 넣었어요. 소단원 칸을 직접 고르면 확인한 것으로 바뀌어요." style="font-size:12px; font-weight:700; color:#B45309;">🤖 소단원 자동 추정</span>' : ''}</div>
+      <div class="qclass">
+        <select class="g" title="학년"><option value="">학년 없음</option>${GRADE_ORDER.map(g => '<option value="' + g + '"' + (x.grade === g ? ' selected' : '') + '>' + g + '</option>').join('')}</select>
+        <select class="k" title="구분"><option value="일반"${x.kind === '기출' || x.kind === '교재' ? '' : ' selected'}>일반</option><option value="기출"${x.kind === '기출' ? ' selected' : ''}>기출</option><option value="교재"${x.kind === '교재' ? ' selected' : ''}>내신교재</option></select>
+        <input type="text" class="yr" inputmode="numeric" maxlength="4" placeholder="연도" value="${escapeHtml(x.year || '')}" style="width:58px;${x.kind === '기출' ? '' : 'display:none;'}">
+        <input type="text" class="sch" list="dl-schools" placeholder="학교·시험" value="${escapeHtml(x.school || '')}" style="${x.kind === '기출' ? '' : 'display:none;'}">
+      </div>
+      <div class="qunit-row">
+        <span class="muted" style="font-weight:700;">단원</span>
+        <select class="u" title="단원 — 목록에서 고르면 바로 저장돼요">${unitSelectOptions(x.grade, x.unit, x.grade)}</select>
+      </div>
+      <div class="qedit">
+        <span class="sub-wrap"><select class="subsel" title="소단원 (비워 두면 대단원 전체)"></select></span>
+        <span class="muted" style="font-weight:700;">정답</span>
+        <input type="text" class="a big-ans ${String(x.answer).trim() ? '' : 'empty'}" value="${escapeHtml(x.answer)}" inputmode="numeric">
+        <label class="sub-chk" title="정답이 2개 이상이면 체크 (예: 3번과 5번 모두) — 칸에 3 → 5 순서로 치면 35로 들어가요"><input type="checkbox" class="multichk"> 복수</label>
+        <label class="sub-chk" title="주관식이면 체크 — 자동 채점에서 빠져요"><input type="checkbox" class="subchk"> 주관식</label>
+        <span class="saved-flash"></span>
+      </div>
+      <div class="qbtns">
+        <button class="btn ghost save">단원 저장</button>
+        <button class="btn danger del">삭제</button>
+      </div>
+    </div>`).join('') : '<div class="card center muted">해당하는 문항이 없어요.</div>';
+
+  const cards = Array.from($('list').querySelectorAll('.qcard'));
+  cards.forEach((el, idx) => {
+    const id = el.dataset.id;
+    const flash = el.querySelector('.saved-flash');
+    const ansInput = el.querySelector('.a');
+    el.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+      const q = all.find(z => z.id === id);
+      const nd = q.difficulty === b.dataset.d ? '' : b.dataset.d;
+      q.difficulty = nd;
+      el.querySelectorAll('.seg button').forEach(x => x.classList.toggle('on', x.dataset.d === nd));
+      queueUpdate(id, { difficulty: nd });
+    }));
+    el.querySelectorAll('.qimg').forEach(im => im.addEventListener('click', () => zoomImg(im.dataset.full)));
+    el.querySelectorAll('.expl-peek').forEach(pk => pk.addEventListener('click', () => pk.classList.toggle('open')));
+
+    const subchk = el.querySelector('.subchk');
+    const nextInput = (from, dir) => { for (let j = from + dir; j >= 0 && j < cards.length; j += dir) { const c = cards[j].querySelector('.a'); if (c && !c.disabled) return c; } return null; };
+    const saveAnswer = (val) => { const q = all.find(z => z.id === id); q.answer = val; queueUpdate(id, { answer: val }); };
+    const mchk = el.querySelector('.multichk');
+    const curAns = all.find(z => z.id === id).answer;
+    if (String(curAns) === '-') { setSubjective(ansInput, true, el); subchk.checked = true; ansInput.classList.remove('empty'); }
+    else if (normAnswer(curAns).length > 1) setMulti(ansInput, true, el);      // 정답이 여러 개로 저장된 문항
+    subchk.addEventListener('change', () => {
+      setSubjective(ansInput, subchk.checked, el);
+      ansInput.classList.toggle('empty', !subchk.checked);
+      saveAnswer(subchk.checked ? '-' : '');
+      if (!subchk.checked) ansInput.focus();
+    });
+    mchk.addEventListener('change', () => {
+      if (ansInput.disabled) { setSubjective(ansInput, false, el); subchk.checked = false; }
+      setMulti(ansInput, mchk.checked, el);
+      ansInput.focus(); const k = ansInput.value.length; try { ansInput.setSelectionRange(k, k); } catch (e) {}
+      if (!mchk.checked && ansInput.value) saveAnswer(ansInput.value);            // 복수를 끄면 첫 숫자만 남는다
+    });
+    ansInput.addEventListener('focus', () => ansInput.select());
+    const goNext = () => { const next = nextInput(idx, 1); if (next) { next.focus(); next.scrollIntoView({ block: 'center', behavior: 'smooth' }); } };
+    ansInput.addEventListener('input', (e) => {
+      const multi = ansInput.dataset.multi === '1';
+      const raw = ansInput.value.replace(/[①-⑨]/g, c => String(c.charCodeAt(0) - 0x2460 + 1));
+      if (raw.indexOf('-') >= 0) {                                              // '-' = 주관식
+        if (multi) setMulti(ansInput, false, el);
+        ansInput.value = '-';
+        flashBigNumber('-');
+        setSubjective(ansInput, true, el); subchk.checked = true;
+        ansInput.classList.remove('empty');
+        saveAnswer('-');
+        goNext();
+        return;
+      }
+      const digits = raw.replace(/[^0-9]/g, '');
+      const pasted = !!(e && e.inputType && /Paste|Drop/.test(e.inputType));
+      if (multi || (pasted && digits.length > 1)) {                             // 복수정답: 이어붙이고 정리, 자동으로 안 넘어감
+        if (!multi) setMulti(ansInput, true, el);
+        ansInput.value = typedAnswer(raw.replace(/[^0-9\/]/g, ''));
+        if (!ansInput.value) return;
+        flashBigNumber(ansInput.value);
+        ansInput.classList.remove('empty');
+        saveAnswer(ansInput.value);
+        return;
+      }
+      ansInput.value = digits.slice(-1);
+      if (!ansInput.value) return;
+      flashBigNumber(ansInput.value);
+      ansInput.classList.remove('empty');
+      saveAnswer(ansInput.value);                       // 서버 응답을 기다리지 않고 바로 다음 칸으로
+      goNext();
+    });
+    ansInput.addEventListener('keydown', e => {
+      if (e.key === '/' && slashInsertsOr(ansInput)) { e.preventDefault(); ansInput.value += '/'; return; }   // 1/2 = 둘 중 하나만 맞아도 정답
+      if (e.key === '+' || e.key === ',' || e.key === '/') {                     // 이 칸을 복수정답 칸으로 켜고 끄는 단축키
+        e.preventDefault();
+        setMulti(ansInput, ansInput.dataset.multi !== '1', el);
+        const k = ansInput.value.length; try { ansInput.setSelectionRange(k, k); } catch (err) {}
+        return;
+      }
+      if (ansInput.dataset.multi === '1' && e.key === ' ') { e.preventDefault(); const n = nextInput(idx, 1); if (n) n.focus(); return; }
+      if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); const n = nextInput(idx, 1); if (n) n.focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); const n = nextInput(idx, -1); if (n) n.focus(); }
+    });
+    const gSel = el.querySelector('.g'), kSel = el.querySelector('.k'), schIn = el.querySelector('.sch'), yrIn = el.querySelector('.yr');
+    const classChanged = () => {          // 학년·구분·학교는 바꾸는 즉시 저장 대기열로 (정답·난이도와 같은 방식)
+      const q = all.find(z => z.id === id);
+      q.grade = gSel.value; q.kind = kSel.value === '기출' ? '기출' : (kSel.value === '교재' ? '교재' : '일반'); q.school = q.kind === '기출' ? schIn.value.trim() : '';
+      q.year = q.kind === '기출' ? ((yrIn.value.match(/20\d\d/) || [''])[0]) : '';
+      schIn.style.display = yrIn.style.display = q.kind === '기출' ? '' : 'none';
+      el.querySelector('.cls-tags').innerHTML = classTagsHtml(q);
+      queueUpdate(id, { grade: q.grade, kind: q.kind, school: q.school, year: q.year });
+    };
+    gSel.addEventListener('change', classChanged); kSel.addEventListener('change', classChanged); schIn.addEventListener('input', classChanged); yrIn.addEventListener('input', classChanged);
+    { // 소단원 선택칸
+      const q0 = all.find(x => x.id === id), ss = el.querySelector('.subsel');
+      refreshSubSelect(ss, tocEntryFor(q0.grade, q0.unit), q0.sub || '');
+      ss.addEventListener('change', () => { const q = all.find(x => x.id === id); q.sub = ss.value; q.auto = (q.auto || 0) & ~1; queueUpdate(id, { sub: ss.value, auto: q.auto }); const t = el.querySelector('.auto-badge'); if (t) t.remove(); });
+    }
+    el.querySelector('.u').addEventListener('change', e => {      // 단원을 고르면 바로 저장 (다른 학년 단원을 고르면 학년도 같이 바꾼다)
+      const o = e.target.selectedOptions[0], q0 = all.find(z => z.id === id);
+      if (o && o.dataset.g && q0 && q0.grade !== o.dataset.g) { gSel.value = o.dataset.g; gSel.dispatchEvent(new Event('change')); }
+      el.querySelector('.save').click();
+    });
+    el.querySelector('.save').addEventListener('click', async () => {
+      const unit = el.querySelector('.u').value.trim();
+      const q1 = all.find(x => x.id === id), ent = tocEntryFor(q1.grade, unit);
+      const keepSub = ent && (ent.subs || []).some(sb => sb.name === q1.sub) ? q1.sub : '';      // 단원을 바꾸면 소단원은 비운다(새 단원에 없으면)
+      const newAuto = (q1.unit === unit ? (q1.auto || 0) : (q1.auto || 0) & ~2) & (keepSub ? 3 : 2);      // 단원을 바꿨으면 단원 🤖 해제, 소단원이 비면 소단원 🤖도 해제
+      const res = await callApi('updateQuestion', { password: getTeacherPassword(), id: id, unit: unit, sub: keepSub, auto: newAuto });
+      if (res.ok) { const q = all.find(x => x.id === id); q.unit = unit; q.sub = keepSub; q.auto = newAuto; render(); } else alert(res.error);
+    });
+    el.querySelector('.del').addEventListener('click', async () => {
+      if (!confirm('이 문항을 삭제할까요?')) return;
+      const res = await callApi('deleteQuestion', { password: getTeacherPassword(), id: id });
+      if (res.ok) { all = all.filter(x => x.id !== id); selected.delete(id); render(); } else alert(res.error);
+    });
+  });
+
+  // ── 일괄 선택/삭제 ──
+  document.querySelectorAll('.qsel').forEach(cb => {
+    cb.checked = selected.has(cb.dataset.id);
+    cb.addEventListener('change', () => {
+      if (cb.checked) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id);
+      updateBulkBar();
+    });
+  });
+  updateBulkBar();
+
+  $('pager').innerHTML = pages > 1 ?
+    (page > 1 ? '<button class="sort-btn" id="prev">← 이전</button>' : '') +
+    '<span class="sort-btn active">' + page + ' / ' + pages + '</span>' +
+    (page < pages ? '<button class="sort-btn" id="next">다음 →</button>' : '') : '';
+  if ($('prev')) $('prev').addEventListener('click', () => { page--; render(); window.scrollTo(0, 0); });
+  if ($('next')) $('next').addEventListener('click', () => { page++; render(); window.scrollTo(0, 0); });
+}
+
+
+function updateBulkBar() {
+  const onPage = Array.from(document.querySelectorAll('.qsel'));
+  const checkedOnPage = onPage.filter(cb => selected.has(cb.dataset.id));
+  $('select-all-page').checked = onPage.length > 0 && checkedOnPage.length === onPage.length;
+  $('select-count').textContent = selected.size + '개 선택';
+  $('bulk-delete-btn').disabled = selected.size === 0;
+  $('bulk-classify-btn').disabled = selected.size === 0;
+  $('bc-title').textContent = '선택한 ' + selected.size + '개 문항의 분류';
+  // 소단원 칸: 선택한 문항이 모두 같은 학년·단원일 때만 그 단원의 소단원 목록을 보여준다
+  const sel = $('bc-sub'), cur = sel.value, picked = all.filter(x => selected.has(x.id));
+  const keys = new Set(picked.map(x => (x.grade || '') + '|' + x.unit));
+  let ent = null;
+  if (picked.length && keys.size === 1) ent = tocEntryFor(picked[0].grade, picked[0].unit);
+  const subs = (ent && ent.subs) || [];
+  sel.innerHTML = '<option value="">(바꾸지 않음)</option>' + (subs.length ? '<option value="__clear__">(소단원 비우기)</option>' + subs.map(sb => '<option value="' + escapeHtml(sb.name) + '">' + escapeHtml(sb.name) + '</option>').join('') : '');
+  sel.disabled = !subs.length;
+  sel.title = subs.length ? '' : (picked.length ? '같은 단원의 문항만 선택했을 때 고를 수 있어요 (소단원이 있는 단원만)' : '');
+  if (subs.some(sb => sb.name === cur)) sel.value = cur;
+}
+$('select-all-filtered').addEventListener('click', () => {
+  const list = filtered();
+  const allIn = list.length > 0 && list.every(x => selected.has(x.id));
+  list.forEach(x => { if (allIn) selected.delete(x.id); else selected.add(x.id); });
+  document.querySelectorAll('.qsel').forEach(cb => { cb.checked = selected.has(cb.dataset.id); });
+  $('select-all-filtered').textContent = allIn ? '검색·필터된 전체 선택' : '검색·필터된 ' + list.length + '개 선택 해제';
+  updateBulkBar();
+});
+$('select-all-page').addEventListener('change', () => {
+  const onPage = Array.from(document.querySelectorAll('.qsel'));
+  onPage.forEach(cb => { cb.checked = $('select-all-page').checked; if (cb.checked) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id); });
+  updateBulkBar();
+});
+$('bulk-delete-btn').addEventListener('click', async () => {
+  const ids = Array.from(selected);
+  if (!ids.length) return;
+  if (!confirm(ids.length + '개 문항을 한꺼번에 삭제할까요? 되돌릴 수 없어요.' + (ids.length > 50 ? '\n\n(' + ids.length + '개는 많아요. 정말 맞는지 한 번 더 확인하세요.)' : ''))) return;
+  $('bulk-delete-btn').disabled = true;
+  $('bulk-delete-btn').textContent = '삭제 중...';
+  try {
+    let done = 0;
+    try {
+      for (let i = 0; i < ids.length; i += 40) {          // 많이 지울 때 서버 시간 제한에 걸리지 않게 나눠서 지운다
+        const chunk = ids.slice(i, i + 40);
+        const res = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: chunk });
+        if (!res.ok) throw new Error(res.error || '삭제 실패');
+        const gone = new Set(chunk); all = all.filter(x => !gone.has(x.id)); chunk.forEach(id => selected.delete(id));
+        done += chunk.length; $('bulk-delete-btn').textContent = '삭제 중... ' + done + '/' + ids.length;
+      }
+    } finally { render(); }
+  } catch (e) { alert('삭제 중 오류: ' + e.message); }
+  $('bulk-delete-btn').textContent = '선택 삭제';
+});
+
+
+// ── 선택한 문항의 학년·단원·구분·학교를 한꺼번에 바꾸기 ──
+$('bc-grade').insertAdjacentHTML('beforeend', GRADE_ORDER.map(g => '<option value="' + g + '">' + g + '</option>').join(''));
+$('bulk-classify-btn').addEventListener('click', () => { $('bulk-classify').style.display = $('bulk-classify').style.display === 'none' ? 'block' : 'none'; loadTocText().then(t => { $('toc-text').value = t; });
+$('toc-save').addEventListener('click', async () => {
+  const t = $('toc-text').value;
+  try { await saveTocText(t); $('toc-msg').textContent = '✅ 단원 ' + BankCore.parseToc(t).length + '개를 저장했어요.'; }
+  catch (e) { $('toc-msg').textContent = e.message + ' (이 브라우저에는 저장됨)'; }
+});
+loadTaxonomyDatalists(); });
+$('bc-cancel').addEventListener('click', () => { $('bulk-classify').style.display = 'none'; });
+async function sendClassUpdates(updates) {
+  for (let i = 0; i < updates.length; i += 40) {
+    const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: updates.slice(i, i + 40) });
+    if (!r.ok) throw new Error(r.error || '저장 실패');
+  }
+}
+$('bc-apply').addEventListener('click', async () => {
+  const ids = Array.from(selected);
+  const g = $('bc-grade').value, u = $('bc-unit').value.trim(), k = $('bc-kind').value, sc = $('bc-school').value.trim(), yr = (($('bc-year').value.match(/20\d\d/)) || [''])[0];
+  if (!ids.length) { $('bc-msg').textContent = '먼저 문항을 선택하세요.'; return; }
+  const sb = $('bc-sub').value;
+  if (!g && !u && !k && !sc && !yr && !sb) { $('bc-msg').textContent = '바꿀 칸을 하나 이상 채워주세요.'; return; }
+  const patch = {};
+  if (g) patch.grade = g === '__clear__' ? '' : g;
+  if (u) { patch.unit = u; patch.sub = ''; }
+  if (sb && !u) { patch.sub = sb === '__clear__' ? '' : sb; }
+  const autoFor = x => u ? 0 : (sb ? ((x.auto || 0) & ~1) : undefined);          // 대단원을 바꾸면 소단원은 비운다
+  if (k) { patch.kind = k; if (k === '일반' || k === '교재') { patch.school = ''; patch.year = ''; } }
+  if (yr && k === '기출') patch.year = yr;
+  if (sc && k === '기출') patch.school = sc;
+  if (!confirm(ids.length + '개 문항의 분류를 바꿀까요?\n' + Object.keys(patch).filter(f => f !== 'auto').map(f => '· ' + ({ sub: '소단원', grade: '학년', unit: '단원', kind: '구분', school: '학교·시험', year: '출제년도' })[f] + ' → ' + (patch[f] === '' ? '(비움)' : patch[f])).join('\n'))) return;
+  $('bc-apply').disabled = true; $('bc-msg').textContent = '저장 중...';
+  try {
+    await sendClassUpdates(ids.map(id => { const x = all.find(z => z.id === id), o = Object.assign({ id: id }, patch), a = autoFor(x); if (a !== undefined) o.auto = a; return o; }));
+    all.forEach(x => { if (selected.has(x.id)) { const a = autoFor(x); Object.assign(x, patch); if (a !== undefined) x.auto = a; } });
+    $('bc-msg').textContent = '✅ ' + ids.length + '개 문항에 적용했어요.';
+    render();
+  } catch (e) { $('bc-msg').textContent = '저장 중 오류: ' + e.message; }
+  $('bc-apply').disabled = false;
+});
+
+// ── 예전에 저장한 문항(분류 없음)의 제목에서 학년·단원 추정해서 채우기 ──
+$('dedupe').addEventListener('click', async () => {
+  const msg = $('dedupe-msg');
+  const groups = {};
+  // 내신교재 문항은 단원마다 같은 문제가 다시 나오고, 시험지가 문항 번호로 이 문제를 쓰고 있어서 지우면 시험지의 오답노트가 깨진다 → 중복 정리에서 뺀다
+  all.forEach(x => { if (x.kind === '교재') return; const k = dupKey(x.textPreview); if (k.length >= 25) (groups[k] = groups[k] || []).push(x); });
+  // 같은 글자의 문항이 여러 개면 가장 정보가 많은 1개(학교·연도·학년·단원·해설·정답)를 남기고 나머지를 지운다
+  const rich = x => (x.school ? 3 : 0) + (x.year ? 1 : 0) + (x.grade ? 1 : 0) + (x.unit && x.unit !== '(단원 미지정)' ? 1 : 0) + (x.explFileId ? 2 : 0) + (x.answer ? 1 : 0);
+  const del = [];
+  Object.values(groups).forEach(g => { if (g.length < 2) return; g.sort((a, b) => rich(b) - rich(a) || String(b.createdAt).localeCompare(String(a.createdAt))); g.slice(1).forEach(x => del.push(x.id)); });
+  if (!del.length) { msg.textContent = '중복된 문항이 없어요.'; return; }
+  if (!confirm('같은 글자의 문항이 겹쳐 있어요. 가장 정보가 많은 것 하나씩만 남기고 ' + del.length + '개를 지울까요? 되돌릴 수 없어요.')) return;
+  msg.textContent = '지우는 중...';
+  try {
+    for (let i = 0; i < del.length; i += 40) {
+      const r = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: del.slice(i, i + 40) });
+      if (!r.ok) throw new Error(r.error || '삭제 실패');
+    }
+    const gone = new Set(del);
+    for (let i = all.length - 1; i >= 0; i--) if (gone.has(all[i].id)) all.splice(i, 1);
+    selected.clear();
+    msg.textContent = '✅ 중복 ' + del.length + '개를 지웠어요.';
+    render();
+  } catch (e) { msg.textContent = '오류가 났어요: ' + e.message; }
+});
+$('fix-class').addEventListener('click', async () => {
+  const msg = $('fix-class-msg');
+  msg.textContent = '점검 중...';
+  await ensureToc();
+  const toc = _tocParsed || [];
+  const list = selected.size ? all.filter(x => selected.has(x.id)) : all;
+  const updates = []; let nG = 0, nU = 0, nS = 0, nY = 0; const sample = [];
+  list.forEach(x => {
+    const gm = guessMeta(x.source || '');
+    const patch = {};
+    const unitTxt = String(x.unit || '');
+    const hint = gm.grade || '';
+    let m = BankCore.matchUnitName(unitTxt, toc, hint) || BankCore.matchUnitName(unitTxt, toc);
+    const newGrade = hint || (m ? m.grade : '') || x.grade;
+    if (newGrade && newGrade !== x.grade) { patch.grade = newGrade; nG++; }
+    if (m && m.grade === (patch.grade || x.grade) && m.unit !== unitTxt) { patch.unit = m.unit; nU++; }
+    if (gm.kind === '기출') {
+      if (x.kind !== '기출') patch.kind = '기출';
+      if (gm.school && (!x.school || (gm.school.indexOf(x.school) >= 0 && gm.school.length > x.school.length))) { patch.school = gm.school; nS++; }
+      if (!x.year && gm.year) { patch.year = gm.year; nY++; }
+    }
+    if (Object.keys(patch).length) { updates.push(Object.assign({ id: x.id }, patch)); if (sample.length < 4) sample.push('· ' + (x.grade || '학년없음') + ' / ' + unitTxt.slice(0, 22) + '  →  ' + (patch.grade || x.grade || '') + ' / ' + (patch.unit || unitTxt).slice(0, 22) + (patch.school ? ' / ' + patch.school : '')); }
+  });
+  if (!updates.length) { msg.textContent = '바로잡을 문항이 없어요 (이미 맞거나, 근거가 될 파일 이름·단원 이름이 없어요).'; return; }
+  if (!confirm(updates.length + '개 문항을 바로잡을까요?\n학년 ' + nG + '개 · 단원 이름 ' + nU + '개 · 학교 ' + nS + '개 · 출제년도 ' + nY + '개\n\n예시:\n' + sample.join('\n'))) { msg.textContent = ''; return; }
+  msg.textContent = '저장 중...';
+  try {
+    await sendClassUpdates(updates);
+    updates.forEach(u => { const q = all.find(z => z.id === u.id); if (q) Object.assign(q, u); });
+    msg.textContent = '✅ ' + updates.length + '개 문항을 바로잡았어요.';
+    render();
+  } catch (e) { msg.textContent = '저장 중 오류가 났어요: ' + e.message; }
+});
+$('auto-grade').addEventListener('click', async () => {
+  const pool = selected.size ? all.filter(x => selected.has(x.id)) : all;
+  const targets = pool.filter(x => !x.grade);
+  if (!targets.length) { $('auto-grade-msg').textContent = '학년이 비어있는 문항이 없어요.'; return; }
+  const updates = [];
+  let skipped = 0;
+  targets.forEach(x => {
+    const m = guessMeta(x.source || x.unit);
+    if (!m.grade) { skipped++; return; }                 // 학년을 못 찾으면 건드리지 않는다(잘못 바꾸는 것 방지)
+    const patch = { id: x.id, grade: m.grade };
+    if (m.kind === '기출') {
+      // 학교 기출은 파일 이름에 단원이 없다 → 단원은 건드리지 않고, 구분·학교·시험 이름만 채운다 (단원은 문항별로 따로 정해야 해요)
+      if (x.kind !== '기출') patch.kind = '기출';
+      if (!x.school && m.school) patch.school = m.school;
+      if (!x.year && m.year) patch.year = m.year;
+    } else if (m.unit) patch.unit = m.unit;
+    updates.push(patch);
+  });
+  if (!updates.length) { $('auto-grade-msg').textContent = '제목에서 학년(중1·중2·중3…)을 찾지 못해서 채울 수 없었어요. 문항을 선택해서 「분류 바꾸기」로 직접 정해주세요.'; return; }
+  const sample = updates.slice(0, 3).map(u => '· ' + u.grade + ' / ' + (u.unit || '(단원 그대로)')).join('\n');
+  if (!confirm(updates.length + '개 문항의 학년·단원을 문제집 이름에서 추정해서 채울까요?' + (skipped ? '\n(학년을 못 찾은 ' + skipped + '개는 건드리지 않아요)' : '') + '\n\n예시:\n' + sample + '\n\n틀린 건 나중에 고칠 수 있어요.')) return;
+  $('auto-grade-msg').textContent = '저장 중...';
+  try {
+    await sendClassUpdates(updates);
+    updates.forEach(u => { const q = all.find(x => x.id === u.id); if (q) Object.assign(q, u); });
+    $('auto-grade-msg').textContent = '✅ ' + updates.length + '개 문항을 채웠어요.' + (skipped ? ' (' + skipped + '개는 학년을 못 찾아 건너뜀)' : '');
+    render();
+  } catch (e) { $('auto-grade-msg').textContent = '저장 중 오류가 났어요: ' + e.message; }
+});
+// ── 문제 내용으로 단원 추정: 단원이 「(단원 미지정)」이거나 비어 있는 문항(선택했으면 선택한 문항)을 대상으로 ──
+$('auto-unit').addEventListener('click', async () => {
+  const msg = $('auto-unit-msg'), low = $('auto-unit-low').checked;
+  // 선택한 문항이 있으면 그것들, 없으면 단원이 비어 있거나 「(단원 미지정)」인 문항
+  const realTargets = selected.size ? all.filter(x => selected.has(x.id)) : all.filter(x => !String(x.unit || '').trim() || x.unit === BankCore.NO_UNIT);
+  if (!realTargets.length) { msg.textContent = '단원이 비어 있거나 「(단원 미지정)」인 문항이 없어요. (다시 추정하고 싶은 문항은 체크해서 선택하세요)'; return; }
+  const tid = new Set(realTargets.map(x => x.id));
+  const train = trainableQuestions(all.filter(x => !tid.has(x.id)));
+  const seeds = await tocSeeds();
+  const updates = []; let unreadable = 0, lowN = 0, noBase = 0;
+  const byGrade = {};
+  realTargets.forEach(x => { (byGrade[x.grade || ''] = byGrade[x.grade || ''] || []).push(x); });
+  Object.keys(byGrade).forEach(g => {
+    const list = byGrade[g];
+    const out = BankCore.estimateUnits(list.map(x => ({ text: x.textPreview })), train, { grade: g, seeds: seeds.filter(t => !t.grade || !g || t.grade === g) });
+    if (out.info.trainCount < 2) { noBase += list.length; return; }
+    out.results.forEach((r, k) => {
+      if (!r.unit) { unreadable++; return; }
+      if (!r.confident && !low) { lowN++; return; }
+      updates.push({ id: list[k].id, unit: r.unit, grade: list[k].grade ? undefined : (r.grade || undefined), _low: !r.confident });
+    });
+  });
+  if (!updates.length) {
+    msg.textContent = noBase ? '비교할 문제가 아직 없어요. 단원이 정해진 문제를 먼저 올려주세요.' : '추정할 수 있는 문항이 없었어요. (단원을 알 만한 글자가 없는 문제 ' + unreadable + '개' + (lowN ? ', 확신 낮음 ' + lowN + '개' : '') + ')';
+    return;
+  }
+  const sample = updates.slice(0, 3).map(u => '· ' + (all.find(x => x.id === u.id).textPreview || '').slice(0, 24) + '… → ' + u.unit).join('\n');
+  if (!confirm(updates.length + '개 문항의 단원을 문제 내용으로 추정해서 바꿀까요?\n(예전에 저장한 문제는 글자가 60자까지만 저장돼 있어서 새로 올린 문제보다 덜 정확해요)\n\n예시:\n' + sample + '\n\n틀린 건 나중에 고칠 수 있어요.')) return;
+  msg.textContent = '저장 중...';
+  try {
+    await sendClassUpdates(updates.map(u => { const q0 = all.find(x => x.id === u.id), o = { id: u.id, unit: u.unit, auto: ((q0 && q0.auto) || 0) | 2 }; if (u.grade) o.grade = u.grade; return o; }));
+    updates.forEach(u => { const q = all.find(x => x.id === u.id); if (q) { q.unit = u.unit; q.auto = (q.auto || 0) | 2; if (u.grade) q.grade = u.grade; } });
+    msg.textContent = '✅ ' + updates.length + '개 문항의 단원을 채웠어요.' + (unreadable ? ' (단원을 알 만한 글자가 없는 ' + unreadable + '개는 건너뜀)' : '') + (lowN ? ' (확신이 낮은 ' + lowN + '개는 비워 둠)' : '');
+    render();
+  } catch (e) { msg.textContent = '저장 중 오류가 났어요: ' + e.message; }
+});
+
+loadTaxonomyDatalists();
+
+$('auto-classify').addEventListener('click', async () => {
+  const targets = all.filter(x => !x.difficulty && x.diffScore !== null && x.diffScore !== undefined);
+  if (!targets.length) { $('auto-msg').textContent = '자동 분류할 문항이 없어요. (난이도 점수가 저장된 미정 문항만 분류돼요. 예전에 저장한 문항은 PDF를 다시 가져와야 해요.)'; return; }
+  if (!confirm('난이도가 비어있는 ' + targets.length + '문항을 문제집(파일)별로 상 30% · 중 40% · 하 30%로 나눠서 채울까요?\n(이미 난이도를 정한 문항은 건드리지 않아요)')) return;
+  const bySrc = {};
+  all.forEach(x => { if (x.diffScore !== null && x.diffScore !== undefined) (bySrc[x.source] = bySrc[x.source] || []).push(x); });
+  const updates = [];
+  Object.values(bySrc).forEach(list => {
+    if (list.length < 3) return;
+    const res = list.map(x => x.diffScore);
+    const sorted = res.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]);
+    const n = list.length, lo = Math.round(n * 0.3), hi = n - Math.round(n * 0.3);
+    sorted.forEach((pair, r) => {
+      const q = list[pair[1]];
+      if (q.difficulty) return;
+      q.difficulty = r < lo ? '하' : (r >= hi ? '상' : '중');
+      updates.push({ id: q.id, difficulty: q.difficulty });
+    });
+  });
+  $('auto-msg').textContent = '저장 중...';
+  try {
+    for (let i = 0; i < updates.length; i += 40) await callApi('updateQuestions', { password: getTeacherPassword(), updates: updates.slice(i, i + 40) });
+    $('auto-msg').textContent = '✅ ' + updates.length + '문항에 난이도를 채웠어요.';
+  } catch (e) { $('auto-msg').textContent = '저장 중 오류가 났어요.'; }
+  render();
+});
+$('auto-sub').addEventListener('click', async () => {
+  const msg = $('auto-sub-msg');
+  await ensureToc();
+  const groups = new Map();
+  all.forEach(q => {
+    if (q.sub || !q.unit) return;
+    const e = tocEntryFor(q.grade, q.unit); if (!e || !(e.subs || []).length) return;
+    if (!groups.has(e.id)) groups.set(e.id, { e: e, list: [] }); groups.get(e.id).list.push(q);
+  });
+  const updates = [];
+  groups.forEach(g => {
+    const res = BankCore.estimateSubs(g.list.map(q => ({ text: q.textPreview })), g.e);
+    g.list.forEach((q, k) => { if (res[k]) updates.push({ id: q.id, sub: res[k], q: q }); });
+  });
+  if (!updates.length) { msg.textContent = '채울 수 있는 문항이 없어요. (목차에 소단원이 있는 대단원의 문항만, 문제 글자가 충분해야 해요)'; return; }
+  if (!confirm(updates.length + '개 문항의 소단원을 추정해서 채울까요?\n(예전에 저장한 문제는 글자가 60자까지만 저장돼 있어서 덜 정확할 수 있어요. 틀린 건 문항 카드에서 고칠 수 있어요.)')) return;
+  msg.textContent = '저장 중...';
+  try {
+    await sendClassUpdates(updates.map(u => ({ id: u.id, sub: u.sub, auto: (u.q.auto || 0) | 1 })));
+    updates.forEach(u => { u.q.sub = u.sub; u.q.auto = (u.q.auto || 0) | 1; });
+    msg.textContent = '✅ ' + updates.length + '개 문항의 소단원을 채웠어요.'; render();
+  } catch (e) { msg.textContent = '저장 중 오류가 났어요: ' + e.message; }
+});
+$('q').addEventListener('input', () => { page = 1; render(); });
+$('only-noans').addEventListener('change', () => { page = 1; render(); });
+$('only-nosub').addEventListener('change', () => { page = 1; render(); });
+$('only-nounit').addEventListener('change', () => { page = 1; render(); });
+if (new URLSearchParams(location.search).get('unassigned')) $('only-nounit').checked = true;
+if (new URLSearchParams(location.search).get('auto')) $('only-auto').checked = true;
+$('only-auto').addEventListener('change', () => { page = 1; render(); });
+load();
+$('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuestionCache(); $('total-text').textContent = '불러오는 중...'; load(); });
+</script>
+</body>
+</html>
