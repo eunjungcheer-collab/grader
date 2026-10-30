@@ -861,7 +861,7 @@
       eraseTopRemnants(c, scale);
       if (!markHeads) return;
       const ctx = c.getContext('2d'); ctx.fillStyle = 'rgb(253,254,255)';
-      (q.headMarks || []).forEach(m => { if (m.page === page && m.r[0] >= rect[0] - 2 && m.r[2] <= rect[2] + 2 && m.r[1] >= rect[1] - 2 && m.r[3] <= rect[3] + 2) ctx.fillRect(Math.floor((m.r[0] - rect[0]) * scale), Math.floor((m.r[1] - rect[1]) * scale), Math.ceil((m.r[2] - m.r[0]) * scale) + 1, Math.ceil((m.r[3] - m.r[1]) * scale) + 1); });
+      (q.headMarks || []).forEach(m => { if (m.page === page && m.r[0] >= rect[0] - 2 && m.r[2] <= rect[2] + 2 && m.r[1] >= rect[1] - 2 && m.r[3] <= rect[3] + 2) (c._p = true), ctx.fillRect(Math.floor((m.r[0] - rect[0]) * scale), Math.floor((m.r[1] - rect[1]) * scale), Math.ceil((m.r[2] - m.r[0]) * scale) + 1, Math.ceil((m.r[3] - m.r[1]) * scale) + 1); });
     };
     for (const pr of (q.pre || [])) { try { const c = await renderRect(doc, pr.page, pr.rect, scale, trimBottom); paint(c, pr.page, pr.rect); parts.push(c); } catch (e) {} }
     const nPre = parts.length;
@@ -873,7 +873,7 @@
     const canvas = createCanvas(w, h);
     const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
     let y = 0, mainTop = 0; parts.forEach((c, k) => { if (k === nPre) mainTop = y; ctx.drawImage(c, 0, y); y += c.height + gap; });
-    canvas.mainTop = mainTop;
+    canvas.mainTop = mainTop; canvas._p = parts.some(c => c._p);        // _p: 연관 문제 머리글을 가린 적이 있는지 (없으면 강사용 시험지에도 같은 그림을 그대로 쓸 수 있다)
     return canvas;
   }
 

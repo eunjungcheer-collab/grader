@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150088">
+<link rel="stylesheet" href="css/style.css?v=202610150090">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -156,15 +156,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150088"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150088"></script>
-<script src="js/vendor/pdf.min.js?v=202610150088"></script>
-<script src="js/config.js?v=202610150088"></script>
-<script src="js/api.js?v=202610150088"></script>
-<script src="js/common.js?v=202610150088"></script>
-<script src="js/bankcore.js?v=202610150088"></script>
-<script src="js/pdfui.js?v=202610150088"></script>
-<script src="js/pdfview.js?v=202610150088"></script>
+<script src="js/vendor/qrcode.min.js?v=202610150090"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150090"></script>
+<script src="js/vendor/pdf.min.js?v=202610150090"></script>
+<script src="js/config.js?v=202610150090"></script>
+<script src="js/api.js?v=202610150090"></script>
+<script src="js/common.js?v=202610150090"></script>
+<script src="js/bankcore.js?v=202610150090"></script>
+<script src="js/pdfui.js?v=202610150090"></script>
+<script src="js/pdfview.js?v=202610150090"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -252,13 +252,23 @@ function unitSumHtml(x) {
   q.forEach(o => { const u = o.unit || '(단원 미지정)'; if (!g[u]) { g[u] = {}; order.push(u); } const sb = o.sub || '(소단원 미지정)'; g[u][sb] = (g[u][sb] || 0) + 1; });
   return order.map(u => '<b>' + escapeHtml(u) + '</b> — ' + Object.keys(g[u]).map(sb => '<span style="' + (/미지정/.test(sb) ? 'color:#B45309;' : '') + '">' + escapeHtml(sb) + ' ' + g[u][sb] + '문항</span>').join(' · ')).join('<br>');
 }
+// 문제은행 저장과 강사용 시험지가 같은 문항·해설 그림을 따로따로 두 번 만들던 것을, 한 번만 만들어 나눠 쓴다 (먼저 부른 쪽이 만들고 나중 쪽은 그 결과를 기다린다)
+const RC = {};
+const rcBankQ = q => RC['q' + q.num] || (RC['q' + q.num] = BankCore.renderQuestion(pdfInfo.doc, q, BankCore.CROP_SCALE, true, true));
+const rcExpl = (num, ex) => {
+  if (RC['e' + num]) return RC['e' + num];
+  if (ex) return (RC['e' + num] = BankCore.renderExplanation(pdfInfo.doc, ex, 2.2));
+  if (ansExtra && ansExtra.scan.explanations && ansExtra.scan.explanations[num]) return (RC['e' + num] = BankCore.renderExplanation(ansExtra.doc, ansExtra.scan.explanations[num], 2.2));
+  return Promise.resolve(null);
+};
+const rcClear = () => { Object.keys(RC).forEach(k => { delete RC[k]; }); };
 const TM = {}; const mark = k => { TM[k] = Math.round(performance.now()); };
 async function loadExamFile(file, ansOverride) {
   mark('load0');
   showQueueNote();
   const mySeq = ++loadSeq, stale = () => mySeq !== loadSeq;
   $('error-banner').innerHTML = ''; $('qunit-hint-msg').innerHTML = '';
-  ansExtra = null; mergedAnsName = ''; appendedPages = 0;
+  rcClear(); ansExtra = null; mergedAnsName = ''; appendedPages = 0;
   curQFile = file;
   { const af0 = ansOverride || (queueTotal <= 1 ? $('pdf-answer-file').files[0] : null);
     if (af0) {
@@ -693,6 +703,8 @@ async function autoRegisterMaybe(stale) {
   try { await autoSubsNew(); } catch (e) {}
   const missing = answerInputs.map((a, i) => (a.value ? null : i + 1)).filter(Boolean);
   if (answerInputs.length && missing.length && IS_CHILD) { window.__unreadImg = {}; for (const n of missing.slice(0, 40)) { try { window.__unreadImg[n] = await answerSnap(n); } catch (e) {} } }
+  // 못 읽은 게 아니라 「주관식(-)」으로 읽은 문항도, 맞게 읽었는지 선생님이 볼 수 있게 정답 부분 그림을 남긴다
+  if (answerInputs.length && IS_CHILD) { window.__dashImg = {}; const ds = answerInputs.map((a, i) => (String(a.value).trim() === '-' && missing.indexOf(i + 1) < 0 ? i + 1 : null)).filter(Boolean); window.__dash = ds.slice(); for (const n of ds.slice(0, 30)) { try { window.__dashImg[n] = await answerSnap(n); } catch (e) {} } }
   if (answerInputs.length && missing.length && IS_CHILD) { window.__unread = missing.slice(); missing.forEach(n => { answerInputs[n - 1].value = '-'; }); missing.length = 0; }
   if (!answerInputs.length || missing.length) {
     if (IS_CHILD) { childReport({ type: 'stuck', title: $('title').value, reason: answerInputs.length ? '정답을 못 읽은 문항 ' + missing.slice(0, 10).join(', ') + (missing.length > 10 ? ' …' : '') + '번' : '정답 칸을 만들지 못함' }); return; }
@@ -719,7 +731,7 @@ async function runParallelAuto(pairs) {
     const onMsg = ev => {
       if (ev.source !== fr.contentWindow || !ev.data || ev.data.kind !== 'teacher-new-child') return;
       const d = ev.data;
-      if (d.type === 'done') done('완료', () => { ok++; unassigned += d.unassigned || 0; autoUnits += d.autoUnits || 0; reg.push({ title: d.title, id: d.examId, answers: (d.answers || []).slice(), units: d.units || [], unread: d.unread || [], bankIds: d.bankIds || {}, unreadImg: d.unreadImg || {}, qinfo: d.qinfo || [], tm: d.tm || {}, qthumb: d.qthumb || {} }); if (d.warning) notes.push(state[idx].name + ': ' + d.warning); });
+      if (d.type === 'done') done('완료', () => { ok++; unassigned += d.unassigned || 0; autoUnits += d.autoUnits || 0; reg.push({ title: d.title, id: d.examId, answers: (d.answers || []).slice(), units: d.units || [], unread: d.unread || [], dash: d.dash || [], dashImg: d.dashImg || {}, bankIds: d.bankIds || {}, unreadImg: d.unreadImg || {}, qinfo: d.qinfo || [], tm: d.tm || {}, qthumb: d.qthumb || {} }); if (d.warning) notes.push(state[idx].name + ': ' + d.warning); });
       else if (d.type === 'skip') done('건너뜀 (' + d.note + ')', () => skipped.push(state[idx].name + ' — ' + d.note));
       else if (d.type === 'stuck') done('멈춤: ' + d.reason, () => stuck.push({ name: state[idx].name, reason: d.reason, pair: pairs[idx] }));
       else if (d.type === 'error') done('오류: ' + d.msg, () => stuck.push({ name: state[idx].name, reason: '오류: ' + d.msg, pair: pairs[idx] }));
@@ -756,7 +768,7 @@ function showAutoReview(R) {
   if (nNeed) h += '<div class="card" style="border-color:#C1392B;"><b style="color:#C1392B;">✏️ 정답을 못 읽은 시험지 ' + nNeed + '개</b><div class="hint" style="margin:4px 0;">시험지는 등록됐지만, 아래 <b>빨간 칸</b>은 정답을 못 읽어 비워 뒀어요. 원본 PDF를 보고 채운 뒤 「저장」을 누르세요. 채우기 전에는 그 문항이 채점되지 않아요.</div></div>';
   if (R.reg.length) {
     h += '<div class="card"><b>📋 등록된 시험지 — 정답을 훑어보세요</b><div class="hint" style="margin:4px 0 10px;">칸 위 숫자가 문항 번호예요. 이상하면 고치고 「저장」을 누르세요. 빨간 칸은 형식이 이상한 값이에요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4로 쓰세요.</div>';
-    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
+    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
     h += '</div>';
   }
   { const T = R.reg.filter(x => x.tm && x.tm.end);
@@ -1203,12 +1215,11 @@ async function saveToBank(cls, source, onProgress, ranges) {
       try {
         for (const p of chunks[k]) {
           const q = p._q;
-          const canvas = await BankCore.renderQuestion(pdfInfo.doc, q, BankCore.CROP_SCALE, true, true);
+          const canvas = await rcBankQ(q);
           if (IS_CHILD) { try { (window.__qthumb = window.__qthumb || {})[q.num] = thumbOf(canvas); } catch (e) {} }       // 결과 화면에서 단원을 확인할 때 문제를 보여 주려고 작은 그림을 남긴다
           const ex = scanned.explanations && scanned.explanations[q.num];
           let explCanvas = null;
-          if (ex) { try { explCanvas = await BankCore.renderExplanation(pdfInfo.doc, ex, 2.2); } catch (e) {} }
-          else if (ansExtra && ansExtra.scan.explanations && ansExtra.scan.explanations[q.num]) { try { explCanvas = await BankCore.renderExplanation(ansExtra.doc, ansExtra.scan.explanations[q.num], 2.2); } catch (e) {} }
+          try { explCanvas = await rcExpl(q.num, ex); } catch (e) {}
           p.imageBase64 = BankCore.canvasToBase64(canvas);
           p.explBase64 = explCanvas ? BankCore.canvasToBase64(explCanvas) : '';
           p.numRect = relNum(q, canvas);
@@ -1252,13 +1263,12 @@ async function buildTeacherBytes(title, answers) {
   const tag = cls.kind === '기출' ? BankCore.pastTagText({ kind: '기출', school: cls.school, year: cls.year, grade: cls.grade, source: title }) : '';
   const qs = scanned.questions.slice().sort((a, b) => a.num - b.num);
   for (const q of qs) {
-    const canvas = await BankCore.renderQuestion(pdfInfo.doc, q, BankCore.CROP_SCALE, true);
+    let canvas;
+    try { const bq = await rcBankQ(q); canvas = bq._p ? await BankCore.renderQuestion(pdfInfo.doc, q, BankCore.CROP_SCALE, true) : bq; }      // 문제은행에 저장하려고 이미 만든 그림을 다시 만들지 않고 쓴다 (연관 문제 머리글을 가린 문항만 새로 만든다)
+    catch (e) { canvas = await BankCore.renderQuestion(pdfInfo.doc, q, BankCore.CROP_SCALE, true); }
     const ex = scanned.explanations && scanned.explanations[q.num];
     let ec = null;
-    try {
-      if (ex) ec = await BankCore.renderExplanation(pdfInfo.doc, ex, 2.2);
-      else if (ansExtra && ansExtra.scan.explanations && ansExtra.scan.explanations[q.num]) ec = await BankCore.renderExplanation(ansExtra.doc, ansExtra.scan.explanations[q.num], 2.2);
-    } catch (e) {}
+    try { ec = await rcExpl(q.num, ex); } catch (e) {}
     const it = { base64: BankCore.canvasToBase64(canvas), width: canvas.width, height: canvas.height, naturalW: canvas.width / BankCore.CROP_SCALE, num: q.num, noBadge: true, answer: answers[q.num - 1] || '', tag: tag };
     if (ec) { it.explBase64 = BankCore.canvasToBase64(ec); it.explW = ec.width; it.explH = ec.height; it.explNumRect = (ex && ex.numRect && ex.segments && ex.segments[0]) ? relRect(ex.numRect, ex.segments[0].rect) : null; }
     items.push(it);
@@ -1283,7 +1293,7 @@ async function buildTeacherBytes(title, answers) {
   return { bytes: await merged.save(), fallback: false };
 }
 async function downloadTeacherPdf(title, answers) {
-  const r = await buildTeacherBytes(title, answers);
+  let r; try { r = await buildTeacherBytes(title, answers); } finally { rcClear(); }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([r.bytes], { type: 'application/pdf' }));
   a.download = title.replace(/[\\/:*?"<>|]/g, '_') + ' 강사용.pdf';
@@ -1443,7 +1453,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
         bankWarning = '';
       }
     }
-    mark('end'); hideSpinner();
+    mark('end'); rcClear(); hideSpinner();
     if (res.ok && queueTotal > 1) {
       if (bankWarning) { if (window.__auto) queueNotes.push(title + ': ' + bankWarning); else alert(bankWarning); }
       queueDoneTitles.push(title); queueDoneIds.push(examId);
@@ -1457,11 +1467,11 @@ $('new-exam-form').addEventListener('submit', async function (e) {
         location.href = 'teacher_list.html';
       }
     }
-    else if (res.ok && IS_CHILD) { childReport({ type: 'done', title: title, examId: examId, answers: answers.slice(), unread: (window.__unread || []).slice(), bankIds: window.__bankIds || {}, warning: bankWarning, unassigned: unassignedCount, units: Array.from(new Set(Array.from(document.querySelectorAll('.qunit-sel')).map(x => x.value || '(단원 미지정)'))), autoUnits: document.querySelectorAll('.qunit-sel[data-auto="1"]').length, tm: Object.assign({}, TM, { bs: window.__bankStat || null }), qthumb: window.__qthumb || {}, unreadImg: window.__unreadImg || {}, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) }); }
+    else if (res.ok && IS_CHILD) { childReport({ type: 'done', title: title, examId: examId, answers: answers.slice(), unread: (window.__unread || []).slice(), dash: (window.__dash || []).slice(), dashImg: window.__dashImg || {}, bankIds: window.__bankIds || {}, warning: bankWarning, unassigned: unassignedCount, units: Array.from(new Set(Array.from(document.querySelectorAll('.qunit-sel')).map(x => x.value || '(단원 미지정)'))), autoUnits: document.querySelectorAll('.qunit-sel[data-auto="1"]').length, tm: Object.assign({}, TM, { bs: window.__bankStat || null }), qthumb: window.__qthumb || {}, unreadImg: window.__unreadImg || {}, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) }); }
     else if (res.ok) { if (bankWarning) alert(bankWarning); location.href = (window.__auto && unassignedCount && confirm('단원을 못 정한 문항이 ' + unassignedCount + '개 있어요. 「확인」을 누르면 그 문항만 문제은행에서 바로 열어요.')) ? 'bank_list.html?unassigned=1' : 'teacher_exam.html?id=' + examId; }
     else { window.__auto = false; if (IS_CHILD) childReport({ type: 'error', title: title, msg: res.error || '등록 실패' }); errorBox.innerHTML = '<div class="banner error">' + escapeHtml(res.error || '등록에 실패했어요.') + '</div>'; $('submit-btn').disabled = false; window.scrollTo(0, 0); }
   } catch (err) {
-    hideSpinner(); window.__auto = false; if (IS_CHILD) childReport({ type: 'error', title: title, msg: err.message });
+    rcClear(); hideSpinner(); window.__auto = false; if (IS_CHILD) childReport({ type: 'error', title: title, msg: err.message });
     errorBox.innerHTML = '<div class="banner error">오류가 발생했어요: ' + escapeHtml(err.message) + '</div>';
     $('submit-btn').disabled = false;
     window.scrollTo(0, 0);
