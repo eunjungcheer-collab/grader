@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150085">
+<link rel="stylesheet" href="css/style.css?v=202610150086">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -156,15 +156,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150085"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150085"></script>
-<script src="js/vendor/pdf.min.js?v=202610150085"></script>
-<script src="js/config.js?v=202610150085"></script>
-<script src="js/api.js?v=202610150085"></script>
-<script src="js/common.js?v=202610150085"></script>
-<script src="js/bankcore.js?v=202610150085"></script>
-<script src="js/pdfui.js?v=202610150085"></script>
-<script src="js/pdfview.js?v=202610150085"></script>
+<script src="js/vendor/qrcode.min.js?v=202610150086"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150086"></script>
+<script src="js/vendor/pdf.min.js?v=202610150086"></script>
+<script src="js/config.js?v=202610150086"></script>
+<script src="js/api.js?v=202610150086"></script>
+<script src="js/common.js?v=202610150086"></script>
+<script src="js/bankcore.js?v=202610150086"></script>
+<script src="js/pdfui.js?v=202610150086"></script>
+<script src="js/pdfview.js?v=202610150086"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -245,6 +245,13 @@ async function mergeQuestionAnswer(qFile, aFile) {
 }
 let curQFile = null, mergedAnsName = '', appendedPages = 0;
 // 등록이 어느 단계에서 오래 걸리는지 알 수 있도록 단계별 시각을 적어 둔다 (자동 등록 결과 화면에 표시)
+// 시험지 한 개의 단원·소단원 요약: "2단원 생물의 구성과 다양성 — 01 생물의 구성 12문항 · 02 생물다양성과 분류 13문항"
+function unitSumHtml(x) {
+  const q = x.qinfo || []; if (!q.length) return '';
+  const g = {}, order = [];
+  q.forEach(o => { const u = o.unit || '(단원 미지정)'; if (!g[u]) { g[u] = {}; order.push(u); } const sb = o.sub || '(소단원 미지정)'; g[u][sb] = (g[u][sb] || 0) + 1; });
+  return order.map(u => '<b>' + escapeHtml(u) + '</b> — ' + Object.keys(g[u]).map(sb => '<span style="' + (/미지정/.test(sb) ? 'color:#B45309;' : '') + '">' + escapeHtml(sb) + ' ' + g[u][sb] + '문항</span>').join(' · ')).join('<br>');
+}
 const TM = {}; const mark = k => { TM[k] = Math.round(performance.now()); };
 async function loadExamFile(file, ansOverride) {
   mark('load0');
@@ -749,7 +756,7 @@ function showAutoReview(R) {
   if (nNeed) h += '<div class="card" style="border-color:#C1392B;"><b style="color:#C1392B;">✏️ 정답을 못 읽은 시험지 ' + nNeed + '개</b><div class="hint" style="margin:4px 0;">시험지는 등록됐지만, 아래 <b>빨간 칸</b>은 정답을 못 읽어 비워 뒀어요. 원본 PDF를 보고 채운 뒤 「저장」을 누르세요. 채우기 전에는 그 문항이 채점되지 않아요.</div></div>';
   if (R.reg.length) {
     h += '<div class="card"><b>📋 등록된 시험지 — 정답을 훑어보세요</b><div class="hint" style="margin:4px 0 10px;">칸 위 숫자가 문항 번호예요. 이상하면 고치고 「저장」을 누르세요. 빨간 칸은 형식이 이상한 값이에요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4로 쓰세요.</div>';
-    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
+    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
     h += '</div>';
   }
   { const T = R.reg.filter(x => x.tm && x.tm.end);
@@ -782,7 +789,8 @@ function showAutoReview(R) {
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
       refreshSubSelect(alls, null, ''); alls.closest('.sub-wrap').style.display = 'none';
       allu.addEventListener('change', () => { const v = unitSelectValue(allu); refreshSubSelect(alls, tocEntryFor(v.grade, v.unit), ''); });
-      const save = async (items) => { umsg.textContent = '저장 중...'; try { for (let i = 0; i < items.length; i += 40) { const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: items.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '저장 실패'); } umsg.textContent = '✅ 저장했어요'; } catch (err) { umsg.textContent = '⚠️ ' + err.message; } };
+      const upSum = () => { const d = row.querySelector('.rv-usum'); if (d) d.innerHTML = unitSumHtml(x); };
+      const save = async (items) => { upSum(); umsg.textContent = '저장 중...'; try { for (let i = 0; i < items.length; i += 40) { const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: items.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '저장 실패'); } umsg.textContent = '✅ 저장했어요'; } catch (err) { umsg.textContent = '⚠️ ' + err.message; } };
       body.querySelectorAll('.rv-u').forEach(us => {
         const n = +us.dataset.n, ss = body.querySelector('.rv-s[data-n="' + n + '"]'), o = q.find(z => z.n === n);
         refreshSubSelect(ss, tocEntryFor(o.grade, o.unit), o.sub);
