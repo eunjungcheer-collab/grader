@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150090">
+<link rel="stylesheet" href="css/style.css?v=202610150091">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -156,15 +156,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150090"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150090"></script>
-<script src="js/vendor/pdf.min.js?v=202610150090"></script>
-<script src="js/config.js?v=202610150090"></script>
-<script src="js/api.js?v=202610150090"></script>
-<script src="js/common.js?v=202610150090"></script>
-<script src="js/bankcore.js?v=202610150090"></script>
-<script src="js/pdfui.js?v=202610150090"></script>
-<script src="js/pdfview.js?v=202610150090"></script>
+<script src="js/vendor/qrcode.min.js?v=202610150091"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150091"></script>
+<script src="js/vendor/pdf.min.js?v=202610150091"></script>
+<script src="js/config.js?v=202610150091"></script>
+<script src="js/api.js?v=202610150091"></script>
+<script src="js/common.js?v=202610150091"></script>
+<script src="js/bankcore.js?v=202610150091"></script>
+<script src="js/pdfui.js?v=202610150091"></script>
+<script src="js/pdfview.js?v=202610150091"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -369,6 +369,7 @@ async function loadExamFile(file, ansOverride) {
     if (stale()) return;
     await buildBoxes();
     if (stale()) return;
+    if (IS_PEEK) { await peekAnswers(); return; }
     drawQrPreview();
     try { await addTitleFromContent(pdfInfo.doc); } catch (e) {}
     renderQUnits().then(() => { if (!stale()) return autoFillUnits(); }).then(() => { if (!stale()) return autoRegisterMaybe(stale); }).catch(() => {});
@@ -674,6 +675,7 @@ async function autoFillUnits() {
 // 여러 시험지를 자동 등록할 때는 시험지마다 보이지 않는 작은 창(이 페이지를 한 번 더 연 것)을 띄워서 동시에 처리한다.
 // 서버 저장을 기다리는 동안 다른 시험지가 같이 진행되니, 한 개씩 할 때보다 훨씬 빠르다.
 const IS_CHILD = new URLSearchParams(location.search).get('child') === '1';
+const IS_PEEK = IS_CHILD && new URLSearchParams(location.search).get('peek') === '1';       // 정답 이미지만 만들어 돌려주는 숨은 창 (등록은 하지 않는다)
 function childReport(o) { try { parent.postMessage(Object.assign({ kind: 'teacher-new-child' }, o), location.origin); } catch (e) {} }
 let queueSkipped = [], queueNotes = [], unassignedCount = 0;
 const autoOn = () => !!($('auto-reg') && $('auto-reg').checked);
@@ -696,6 +698,23 @@ async function answerSnap(n) {
   const g = o.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, o.width, o.height); g.drawImage(c, 0, 0, o.width, o.height);
   return o.toDataURL('image/jpeg', 0.7);
 }
+// 정답 이미지 확인용: 문항마다 정답이 적힌 부분(정답표 그림 → 해설)을 작은 그림으로 만들어 부모 화면에 돌려준다
+async function peekSnap(n) {
+  let c = null;
+  const a = scanned.answers && scanned.answers[n];
+  if (snipUrls && snipUrls[n]) return snipUrls[n];
+  if (a && a.rect && a.page) { try { c = await BankCore.renderRect(pdfInfo.doc, a.page, a.rect, 3, false); } catch (e) {} }
+  if (!c) { const ex = scanned.explanations && scanned.explanations[n]; if (ex) { try { c = await BankCore.renderExplanation(pdfInfo.doc, ex, 1.6); } catch (e) {} } }
+  if (!c) return '';
+  const k = Math.min(1, 520 / c.width), o = document.createElement('canvas'); o.width = Math.max(1, Math.round(c.width * k)); o.height = Math.max(1, Math.round(c.height * k));
+  const g = o.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, o.width, o.height); g.drawImage(c, 0, 0, o.width, o.height);
+  return o.toDataURL('image/jpeg', 0.7);
+}
+async function peekAnswers() {
+  const imgs = {};
+  for (let n = 1; n <= answerInputs.length; n++) { try { imgs[n] = await peekSnap(n); } catch (e) { imgs[n] = ''; } }
+  childReport({ type: 'peek', imgs: imgs });
+}
 async function autoRegisterMaybe(stale) {
   if (!IS_CHILD || !autoOn() || !scanned) return;
   for (let i = 0; i < 180 && $('bank-guess-btn').disabled; i++) await new Promise(r => setTimeout(r, 500));   // 단원 추정이 끝날 때까지
@@ -716,6 +735,28 @@ async function autoRegisterMaybe(stale) {
   $('pdf-file').required = false;                 // 작은 창(자동 등록)에서는 파일 칸이 비어 있어 폼 검사에 걸리니 끈다
   $('new-exam-form').dispatchEvent(new Event('submit', { cancelable: true }));
 }
+// 시험지 한 개의 정답 그림을 만든다: 보이지 않는 창을 하나 열어 PDF를 읽고(등록은 하지 않음) 문항별 그림을 받아 온다
+function peekImages(pair) {
+  return new Promise((resolve, reject) => {
+    const fr = document.createElement('iframe');
+    fr.src = 'teacher_new.html?child=1&peek=1';
+    fr.style.cssText = 'position:fixed; left:0; top:0; width:1300px; height:900px; border:0; opacity:0; pointer-events:none; z-index:-1;';
+    let finished = false;
+    const end = (fn, v) => { if (finished) return; finished = true; clearTimeout(tm); window.removeEventListener('message', onMsg); setTimeout(() => fr.remove(), 300); fn(v); };
+    const onMsg = ev => {
+      if (ev.source !== fr.contentWindow || !ev.data || ev.data.kind !== 'teacher-new-child') return;
+      if (ev.data.type === 'peek') end(resolve, ev.data.imgs || {});
+      else if (ev.data.type === 'stuck' || ev.data.type === 'error') end(reject, new Error(ev.data.reason || ev.data.msg || '읽지 못했어요'));
+    };
+    window.addEventListener('message', onMsg);
+    const tm = setTimeout(() => end(reject, new Error('2분 안에 끝나지 않았어요')), 120000);
+    fr.addEventListener('load', async () => {
+      try { const w = fr.contentWindow; await new Promise(r => setTimeout(r, 400)); await w.loadExamFile(pair.file, pair.ans); }
+      catch (e) { end(reject, e); }
+    }, { once: true });
+    document.body.appendChild(fr);
+  });
+}
 async function runParallelAuto(pairs) {
   const POOL = Math.max(1, parseInt($('auto-pool').value, 10) || 3), results = [], note = $('queue-note');
   const state = pairs.map(p => ({ name: p.file.name, st: '대기' }));
@@ -731,7 +772,7 @@ async function runParallelAuto(pairs) {
     const onMsg = ev => {
       if (ev.source !== fr.contentWindow || !ev.data || ev.data.kind !== 'teacher-new-child') return;
       const d = ev.data;
-      if (d.type === 'done') done('완료', () => { ok++; unassigned += d.unassigned || 0; autoUnits += d.autoUnits || 0; reg.push({ title: d.title, id: d.examId, answers: (d.answers || []).slice(), units: d.units || [], unread: d.unread || [], dash: d.dash || [], dashImg: d.dashImg || {}, bankIds: d.bankIds || {}, unreadImg: d.unreadImg || {}, qinfo: d.qinfo || [], tm: d.tm || {}, qthumb: d.qthumb || {} }); if (d.warning) notes.push(state[idx].name + ': ' + d.warning); });
+      if (d.type === 'done') done('완료', () => { ok++; unassigned += d.unassigned || 0; autoUnits += d.autoUnits || 0; reg.push({ title: d.title, id: d.examId, answers: (d.answers || []).slice(), units: d.units || [], unread: d.unread || [], dash: d.dash || [], dashImg: d.dashImg || {}, pair: pairs[idx], bankIds: d.bankIds || {}, unreadImg: d.unreadImg || {}, qinfo: d.qinfo || [], tm: d.tm || {}, qthumb: d.qthumb || {} }); if (d.warning) notes.push(state[idx].name + ': ' + d.warning); });
       else if (d.type === 'skip') done('건너뜀 (' + d.note + ')', () => skipped.push(state[idx].name + ' — ' + d.note));
       else if (d.type === 'stuck') done('멈춤: ' + d.reason, () => stuck.push({ name: state[idx].name, reason: d.reason, pair: pairs[idx] }));
       else if (d.type === 'error') done('오류: ' + d.msg, () => stuck.push({ name: state[idx].name, reason: '오류: ' + d.msg, pair: pairs[idx] }));
@@ -768,7 +809,7 @@ function showAutoReview(R) {
   if (nNeed) h += '<div class="card" style="border-color:#C1392B;"><b style="color:#C1392B;">✏️ 정답을 못 읽은 시험지 ' + nNeed + '개</b><div class="hint" style="margin:4px 0;">시험지는 등록됐지만, 아래 <b>빨간 칸</b>은 정답을 못 읽어 비워 뒀어요. 원본 PDF를 보고 채운 뒤 「저장」을 누르세요. 채우기 전에는 그 문항이 채점되지 않아요.</div></div>';
   if (R.reg.length) {
     h += '<div class="card"><b>📋 등록된 시험지 — 정답을 훑어보세요</b><div class="hint" style="margin:4px 0 10px;">칸 위 숫자가 문항 번호예요. 이상하면 고치고 「저장」을 누르세요. 빨간 칸은 형식이 이상한 값이에요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4로 쓰세요.</div>';
-    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
+    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span> <button type="button" class="btn ghost rv-peekbtn" style="padding:5px 12px;">🔎 정답 이미지로 확인</button></div><div class="rv-peekbox" style="display:none;"></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
     h += '</div>';
   }
   { const T = R.reg.filter(x => x.tm && x.tm.end);
@@ -792,6 +833,24 @@ function showAutoReview(R) {
     buildAnswerGrid(row.querySelector('.rv-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; });
     if (x.unread.length) { btn.disabled = false; row.style.background = '#FFF7F5'; }
     const det = row.querySelector('.rv-units');
+    { // 🔎 정답 이미지로 확인: 누를 때만 그 시험지를 다시 읽어 문항별 정답 그림을 만든다 (등록 속도에는 영향이 없다)
+      const pb = row.querySelector('.rv-peekbtn'), box = row.querySelector('.rv-peekbox');
+      const paintPeek = () => {
+        const imgs = x.peekImgs || {}, cur = x.answers;
+        box.innerHTML = '<div class="hint" style="margin:4px 0;">문항마다 정답이 적힌 부분이에요. 오른쪽 숫자가 지금 입력된 정답이고, 다르면 위쪽 칸에서 고치고 「저장」을 누르세요.</div><div class="rv-imgs">' +
+          cur.map((a, i) => '<div class="rv-img"><b>' + (i + 1) + '번 → <span style="color:#0B1F5C;">' + escapeHtml(a || '(비어 있음)') + '</span></b>' + (imgs[i + 1] ? '<img src="' + imgs[i + 1] + '" alt="' + (i + 1) + '번 정답 부분">' : '<span class="hint">그림 없음 — 정답표 글자에서 읽은 문항</span>') + '</div>').join('') + '</div>';
+      };
+      pb.addEventListener('click', async () => {
+        if (box.style.display !== 'none') { box.style.display = 'none'; pb.textContent = '🔎 정답 이미지로 확인'; return; }
+        box.style.display = '';
+        if (x.peekImgs) { paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; return; }
+        if (!x.pair) { box.innerHTML = '<span class="hint">원본 PDF를 다시 찾지 못했어요.</span>'; return; }
+        pb.disabled = true; box.innerHTML = '<span class="hint">⏳ PDF를 다시 읽어서 정답 그림을 만드는 중... (몇 초 걸려요)</span>';
+        try { x.peekImgs = await peekImages(x.pair); paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; }
+        catch (err) { box.innerHTML = '<span class="hint" style="color:#C1392B;">정답 그림을 만들지 못했어요: ' + escapeHtml(err.message) + '</span>'; }
+        pb.disabled = false;
+      });
+    }
     det.addEventListener('toggle', async () => {
       if (!det.open || det.dataset.built) return; det.dataset.built = '1';
       const body = det.querySelector('.rv-ubody'); await ensureToc();
