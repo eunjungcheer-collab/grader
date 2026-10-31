@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150094">
+<link rel="stylesheet" href="css/style.css?v=202610150102">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -47,13 +47,13 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202610150094"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150094"></script>
-<script src="js/config.js?v=202610150094"></script>
-<script src="js/api.js?v=202610150094"></script>
-<script src="js/common.js?v=202610150094"></script>
-<script src="js/bankcore.js?v=202610150094"></script>
-<script src="js/pdfui.js?v=202610150094"></script>
+<script src="js/vendor/pdf.min.js?v=202610150102"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150102"></script>
+<script src="js/config.js?v=202610150102"></script>
+<script src="js/api.js?v=202610150102"></script>
+<script src="js/common.js?v=202610150102"></script>
+<script src="js/bankcore.js?v=202610150102"></script>
+<script src="js/pdfui.js?v=202610150102"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -151,6 +151,30 @@ function wrongCountNoSource(s) {
     if (!isSkipAns(given[i]) && !answerMatches(given[i], correct[i])) n++;
   }
   return n;
+}
+
+// 유사오답(문제은행에서 만든 시험): 틀린 문항마다 문제은행에서 같은 단원의, 글자 내용이 가장 비슷한 문항을 하나씩 자동으로 고른다.
+// 이미 낸 문항·틀린 문항 자신은 빼고, 글자가 거의 같은(복사본) 문항도 뺀다. 비슷한 게 없으면 같은 단원·같은 난이도에서 고른다.
+async function autoPicksFromBank(s) {
+  const bankRes = await callApi('listQuestions', { password: getTeacherPassword() });
+  if (!bankRes.ok) throw new Error('문제은행을 불러오지 못했어요.');
+  const bank = bankRes.questions, byId = {}; bank.forEach(q => { byId[q.id] = q; });
+  const correct = s.correctAnswers || [], ids = s.sourceQuestionIds || [], given = String(s.answers || '').split(',');
+  if (!ids.length || ids.length !== correct.length) return { picks: [], tried: 0 };
+  const used = new Set(ids), picks = [];
+  let tried = 0;
+  for (let i = 0; i < correct.length; i++) {
+    if (correct[i] === '-' || isSkipAns(given[i]) || answerMatches(given[i], correct[i])) continue;
+    const wq = byId[ids[i]]; if (!wq) continue;
+    tried++;
+    const k = unitKey(wq);
+    const same = bank.filter(q => !used.has(q.id) && unitKey(q) === k && q.answer !== '-');
+    let best = null, bestScore = 0.04;
+    same.forEach(q => { const sc = BankCore.textSimilarity(wq.textPreview || '', q.textPreview || ''); if (sc > bestScore && sc < 0.92) { best = q; bestScore = sc; } });
+    if (!best) { const sd = same.filter(q => (q.difficulty || '') === (wq.difficulty || '')); const pool = sd.length ? sd : same; if (pool.length) best = pool[Math.floor(Math.random() * pool.length)]; }
+    if (best) { picks.push(best); used.add(best.id); }
+  }
+  return { picks: picks, tried: tried };
 }
 
 // 유사오답: 틀린 문항의 글자를 뽑고(등록할 때 저장해 둔 글자, 없으면 PDF를 다시 읽어서), 문제은행에서 내용이 비슷한 문항을 찾는다.
@@ -395,10 +419,20 @@ function render() {
       });
     }
     const wrongBtn = document.querySelector('.wrong-btn[data-i="' + i + '"]');
-    if (wrongBtn) wrongBtn.addEventListener('click', () => {
+    if (wrongBtn) wrongBtn.addEventListener('click', async () => {
       const wu = wrongUnits(s);
       delete wu.byUnit['__unknown__'];
       if (!Object.keys(wu.byUnit).length) { alert('틀린 문항의 단원 정보를 찾을 수 없어요. (문제은행에서 지워진 문항일 수 있어요)'); return; }
+      const orig = wrongBtn.textContent; wrongBtn.disabled = true; wrongBtn.textContent = '비슷한 문제 찾는 중...';
+      try {
+        const { picks, tried } = await autoPicksFromBank(s);
+        if (picks.length) {
+          if (picks.length < tried) alert('틀린 ' + tried + '문항 중 ' + picks.length + '문항에 대해서만 비슷한 문제를 찾았어요.');
+          location.href = 'bank_compose.html?directIds=' + encodeURIComponent(JSON.stringify(picks.map(p => p.id))) + '&title=' + encodeURIComponent(s.examTitle + ' - ' + s.studentName + ' 유사오답') + '&who=' + encodeURIComponent(s.studentName) + '&auto=1';
+          return;
+        }
+      } catch (e) { /* 자동으로 못 고르면 아래의 단원 선택 화면으로 간다 */ }
+      finally { wrongBtn.disabled = false; wrongBtn.textContent = orig; }
       const param = encodeURIComponent(JSON.stringify(wu.byUnit));
       location.href = 'bank_compose.html?units=' + param + '&excludeExam=' + encodeURIComponent(s.examId) + '&who=' + encodeURIComponent(s.studentName);
     });
@@ -411,7 +445,7 @@ function render() {
         if (picks.length < tried) alert('틀린 ' + tried + '문항 중 ' + picks.length + '문항에 대해서만 유사오답을 찾았어요.');
         const ids = encodeURIComponent(JSON.stringify(picks.map(p => p.id)));
         const title = encodeURIComponent(s.examTitle + ' - ' + s.studentName + ' 유사오답');
-        location.href = 'bank_compose.html?directIds=' + ids + '&title=' + title;
+        location.href = 'bank_compose.html?directIds=' + ids + '&title=' + title + '&auto=1';
       } catch (e) { alert('유사오답을 만드는 중 오류가 났어요: ' + e.message); }
       finally { textBtn.disabled = false; textBtn.textContent = origText; }
     });

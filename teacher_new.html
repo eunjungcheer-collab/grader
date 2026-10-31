@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150094">
+<link rel="stylesheet" href="css/style.css?v=202610150102">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -156,15 +156,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150094"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150094"></script>
-<script src="js/vendor/pdf.min.js?v=202610150094"></script>
-<script src="js/config.js?v=202610150094"></script>
-<script src="js/api.js?v=202610150094"></script>
-<script src="js/common.js?v=202610150094"></script>
-<script src="js/bankcore.js?v=202610150094"></script>
-<script src="js/pdfui.js?v=202610150094"></script>
-<script src="js/pdfview.js?v=202610150094"></script>
+<script src="js/vendor/qrcode.min.js?v=202610150102"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150102"></script>
+<script src="js/vendor/pdf.min.js?v=202610150102"></script>
+<script src="js/config.js?v=202610150102"></script>
+<script src="js/api.js?v=202610150102"></script>
+<script src="js/common.js?v=202610150102"></script>
+<script src="js/bankcore.js?v=202610150102"></script>
+<script src="js/pdfui.js?v=202610150102"></script>
+<script src="js/pdfview.js?v=202610150102"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -713,7 +713,21 @@ async function peekSnap(n) {
 async function peekAnswers() {
   const imgs = {};
   for (let n = 1; n <= answerInputs.length; n++) { try { imgs[n] = await peekSnap(n); } catch (e) { imgs[n] = ''; } }
-  childReport({ type: 'peek', imgs: imgs });
+  // 문항별 그림이 없는 시험지도 볼 수 있게, 원본 PDF의 쪽 전체 그림도 같이 돌려준다 (정답·해설이 적힌 쪽을 앞에)
+  const pages = [];
+  try {
+    const doc = pdfInfo.doc, N = doc.numPages;
+    for (let i = 1; i <= Math.min(N, 16); i++) {
+      let hit = false;
+      try { const pg = await doc.getPage(i), tc = await pg.getTextContent(); hit = /정\s*답|해\s*설/.test(tc.items.map(t => t.str).join('')); } catch (e) {}
+      const pg2 = await doc.getPage(i), vp = pg2.getViewport({ scale: 1.3 }), c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      await pg2.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      const k = Math.min(1, 900 / c.width), o = document.createElement('canvas'); o.width = Math.round(c.width * k); o.height = Math.round(c.height * k);
+      const g = o.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, o.width, o.height); g.drawImage(c, 0, 0, o.width, o.height);
+      pages.push({ n: i, hit: hit || i >= N - 1, url: o.toDataURL('image/jpeg', 0.65) });
+    }
+  } catch (e) {}
+  childReport({ type: 'peek', imgs: imgs, pages: pages });
 }
 async function autoRegisterMaybe(stale) {
   if (!IS_CHILD || !autoOn() || !scanned) return;
@@ -745,7 +759,7 @@ function peekImages(pair) {
     const end = (fn, v) => { if (finished) return; finished = true; clearTimeout(tm); window.removeEventListener('message', onMsg); setTimeout(() => fr.remove(), 300); fn(v); };
     const onMsg = ev => {
       if (ev.source !== fr.contentWindow || !ev.data || ev.data.kind !== 'teacher-new-child') return;
-      if (ev.data.type === 'peek') end(resolve, ev.data.imgs || {});
+      if (ev.data.type === 'peek') end(resolve, { imgs: ev.data.imgs || {}, pages: ev.data.pages || [] });
       else if (ev.data.type === 'stuck' || ev.data.type === 'error') end(reject, new Error(ev.data.reason || ev.data.msg || '읽지 못했어요'));
     };
     window.addEventListener('message', onMsg);
@@ -809,7 +823,7 @@ function showAutoReview(R) {
   if (nNeed) h += '<div class="card" style="border-color:#C1392B;"><b style="color:#C1392B;">✏️ 정답을 못 읽은 시험지 ' + nNeed + '개</b><div class="hint" style="margin:4px 0;">시험지는 등록됐지만, 아래 <b>빨간 칸</b>은 정답을 못 읽어 비워 뒀어요. 원본 PDF를 보고 채운 뒤 「저장」을 누르세요. 채우기 전에는 그 문항이 채점되지 않아요.</div></div>';
   if (R.reg.length) {
     h += '<div class="card"><b>📋 등록된 시험지 — 정답을 훑어보세요</b><div class="hint" style="margin:4px 0 10px;">칸 위 숫자가 문항 번호예요. 이상하면 고치고 「저장」을 누르세요. 빨간 칸은 형식이 이상한 값이에요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4로 쓰세요.</div>';
-    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span> <button type="button" class="btn ghost rv-peekbtn" style="padding:5px 12px;">🔎 정답 이미지로 확인</button></div><div class="rv-peekbox" style="display:none;"></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
+    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span> <button type="button" class="btn ghost rv-peekbtn" style="padding:5px 12px;">🔎 정답 이미지로 확인</button> <button type="button" class="btn primary rv-splitbtn" style="padding:5px 12px;">🖥 정답 쪽 보면서 입력 (좌우 화면)</button></div><div class="rv-peekbox" style="display:none;"></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
     h += '</div>';
   }
   { const T = R.reg.filter(x => x.tm && x.tm.end);
@@ -821,7 +835,7 @@ function showAutoReview(R) {
         rows.map(r => '<tr style="border-top:1px solid var(--line);"><td>' + e(r.name).slice(0, 28) + '</td><td>' + f(r.read) + '</td><td>' + f(r.build) + '</td><td>' + f(r.srv) + '</td><td>' + f(r.bank) + '</td><td><b>' + f(r.all) + '</b></td></tr>').join('') +
         '<tr style="border-top:2px solid var(--line);"><td><b>평균</b></td><td>' + f(avg('read')) + '</td><td>' + f(avg('build')) + '</td><td>' + f(avg('srv')) + '</td><td>' + f(avg('bank')) + '</td><td><b>' + f(avg('all')) + '</b></td></tr></table>' +
         (() => { const B = T.map(x => x.tm.bs).filter(Boolean); if (!B.length) return ''; const m = k => B.reduce((a, o) => a + (o[k] || 0), 0) / B.length / 1000, mb = B.reduce((a, o) => a + (o.kb || 0), 0) / B.length / 1024;
-          return '<div class="hint" style="margin:8px 0 2px;"><b>문제은행 저장 내역</b> (시험지 1개 평균 · 문항을 5개씩 묶어 4묶음씩 동시에 보내서, 아래 시간은 묶음별 시간을 더한 값이에요)<br>그림 만들기 ' + m('rend').toFixed(0) + '초 · 서버로 보내고 답 받기 ' + m('req').toFixed(0) + '초 · 보낸 그림 ' + mb.toFixed(1) + 'MB' +
+          return '<div class="hint" style="margin:8px 0 2px;"><b>문제은행 저장 내역</b> (시험지 1개 평균 · 문항을 5개씩 묶어 4묶음씩 동시에 보내서, 아래 시간은 묶음별 시간을 더한 값이에요)<br>그림 만들기 ' + m('rend').toFixed(0) + '초 · 서버로 보내고 답 받기 ' + m('req').toFixed(0) + '초 · 보낸 그림 ' + mb.toFixed(1) + 'MB' + '<br>가장 오래 걸린 요청 1번: ' + (Math.max.apply(null, B.map(o => o.max || 0)) / 1000).toFixed(0) + '초 · 30초 넘은 요청 ' + B.reduce((a, o) => a + (o.n30 || 0), 0) + '번 (시험지 전체 합)' +
             (B.some(o => o.srv) ? '<br>서버 안에서: 드라이브에 그림 올리기 ' + m('up').toFixed(0) + '초 · 시트 쓸 차례 기다리기 ' + m('lock').toFixed(0) + '초 · 시트에 쓰기 ' + m('sheet').toFixed(0) + '초<br>드라이브 올리기 방식: 빠른 방식 ' + B.reduce((a, o) => a + (o.fast || 0), 0) + '개 · 느린 방식 ' + B.reduce((a, o) => a + (o.slow || 0), 0) + '개' + (B.some(o => o.code) ? ' · 빠른 방식이 막힌 이유: ' + e((B.filter(o => o.code).pop() || {}).code) + ' ' + e((B.filter(o => o.msg).pop() || {}).msg || '') : '') : '<br>(서버 안의 시간은 Apps Script를 새 버전으로 배포하면 같이 나와요)') + '</div>'; })() + '</details>';
     } }
   if (R.notes.length) h += '<div class="card"><b>알림</b><div style="font-size:13px; margin-top:6px;">' + R.notes.map(e).join('<br>') + '</div></div>';
@@ -837,7 +851,9 @@ function showAutoReview(R) {
       const pb = row.querySelector('.rv-peekbtn'), box = row.querySelector('.rv-peekbox');
       const paintPeek = () => {
         const imgs = x.peekImgs || {}, cur = x.answers;
-        box.innerHTML = '<div class="hint" style="margin:4px 0;">문항마다 정답이 적힌 부분이에요. 오른쪽 숫자가 지금 입력된 정답이고, 다르면 위쪽 칸에서 고치고 「저장」을 누르세요.</div><div class="rv-imgs">' +
+        const pgs = x.peekPages || [], hitP = pgs.filter(p => p.hit), restP = pgs.filter(p => !p.hit);
+        const pageHtml = pgs.length ? '<div style="margin:8px 0;"><b style="font-size:13px;">📄 원본 PDF 정답·해설 쪽 (' + hitP.map(p => p.n + '쪽').join(', ') + ')</b><div class="hint" style="margin:2px 0 6px;">그림을 누르면 크게 보여요.</div>' + hitP.map(p => '<img src="' + p.url + '" alt="' + p.n + '쪽" style="width:min(520px,100%); border:1px solid var(--line); border-radius:6px; margin:0 8px 8px 0; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(520px,100%)\':\'100%\'">').join('') + (restP.length ? '<details><summary style="cursor:pointer; font-size:13px;">나머지 쪽 보기 (' + restP.length + '쪽)</summary>' + restP.map(p => '<img src="' + p.url + '" alt="' + p.n + '쪽" style="width:min(520px,100%); border:1px solid var(--line); border-radius:6px; margin:6px 8px 0 0; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(520px,100%)\':\'100%\'">').join('') + '</details>' : '') + '</div>' : '';
+        box.innerHTML = pageHtml + '<div class="hint" style="margin:4px 0;">문항마다 정답이 적힌 부분이에요. 오른쪽 숫자가 지금 입력된 정답이고, 다르면 위쪽 칸에서 고치고 「저장」을 누르세요.</div><div class="rv-imgs">' +
           cur.map((a, i) => '<div class="rv-img"><b>' + (i + 1) + '번 → <span style="color:#0B1F5C;">' + escapeHtml(a || '(비어 있음)') + '</span></b>' + (imgs[i + 1] ? '<img src="' + imgs[i + 1] + '" alt="' + (i + 1) + '번 정답 부분">' : '<span class="hint">그림 없음 — 정답표 글자에서 읽은 문항</span>') + '</div>').join('') + '</div>';
       };
       pb.addEventListener('click', async () => {
@@ -846,9 +862,37 @@ function showAutoReview(R) {
         if (x.peekImgs) { paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; return; }
         if (!x.pair) { box.innerHTML = '<span class="hint">원본 PDF를 다시 찾지 못했어요.</span>'; return; }
         pb.disabled = true; box.innerHTML = '<span class="hint">⏳ PDF를 다시 읽어서 정답 그림을 만드는 중... (몇 초 걸려요)</span>';
-        try { x.peekImgs = await peekImages(x.pair); paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; }
+        try { { const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; } paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; }
         catch (err) { box.innerHTML = '<span class="hint" style="color:#C1392B;">정답 그림을 만들지 못했어요: ' + escapeHtml(err.message) + '</span>'; }
         pb.disabled = false;
+      });
+    }
+    { // 🖥 좌우 화면: 왼쪽에 원본 PDF 쪽 그림, 오른쪽에 정답 입력 칸
+      const sb = row.querySelector('.rv-splitbtn');
+      sb.addEventListener('click', async () => {
+        if (!x.peekPages) {
+          if (!x.pair) { msg.textContent = '원본 PDF를 다시 찾지 못했어요.'; return; }
+          sb.disabled = true; const old = sb.textContent; sb.textContent = '⏳ PDF 읽는 중...';
+          try { const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; }
+          catch (err) { msg.textContent = '⚠️ 정답 쪽 그림을 만들지 못했어요: ' + err.message; sb.disabled = false; sb.textContent = old; return; }
+          sb.disabled = false; sb.textContent = old;
+        }
+        const pgs = (x.peekPages || []).slice().sort((a, b) => (b.hit - a.hit) || (b.hit ? b.n - a.n : a.n - b.n));
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed; inset:0; z-index:9999; background:#fff; display:flex; flex-direction:column;';
+        ov.innerHTML = '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid #cbd5e1; background:#F1F5F9;"><b style="flex:1 1 200px;">' + escapeHtml(x.title) + '</b><label style="font-size:12px;">확대 <input type="range" class="sp-zoom" min="40" max="200" value="100" style="vertical-align:middle;"></label><span class="sp-msg hint" style="margin:0;"></span><button type="button" class="btn primary sp-save" style="padding:6px 16px;">저장</button><button type="button" class="btn outline sp-close" style="padding:6px 16px;">닫기</button></div>' +
+          '<div style="flex:1; display:flex; min-height:0; flex-wrap:wrap;"><div class="sp-left" style="flex:1 1 55%; min-width:300px; overflow:auto; padding:8px; background:#E2E8F0;">' + (pgs.length ? pgs.map(p => '<div style="font-size:12px; margin:4px 0 2px;"><b>' + p.n + '쪽</b>' + (p.hit ? ' <span style="color:#C1392B;">(정답·해설이 있을 만한 쪽)</span>' : '') + '</div><img class="sp-img" src="' + p.url + '" style="width:100%; display:block; border:1px solid #94A3B8; background:#fff; margin-bottom:10px;">').join('') : '<div class="hint">쪽 그림을 만들지 못했어요.</div>') + '</div>' +
+          '<div style="flex:1 1 40%; min-width:260px; overflow:auto; padding:10px;"><div class="hint" style="margin:0 0 8px;">왼쪽 그림을 보면서 정답을 적고 「저장」을 누르세요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4, 주관식은 - 로 써요.</div><div class="sp-grid"></div></div></div>';
+        document.body.appendChild(ov); document.body.style.overflow = 'hidden';
+        const spm = ov.querySelector('.sp-msg'), spb = ov.querySelector('.sp-save');
+        buildAnswerGrid(ov.querySelector('.sp-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; spm.textContent = ''; });
+        ov.querySelector('.sp-zoom').addEventListener('input', e => { ov.querySelectorAll('.sp-img').forEach(im => { im.style.width = e.target.value + '%'; }); });
+        const mo = new MutationObserver(() => { spm.textContent = msg.textContent; }); mo.observe(msg, { childList: true, characterData: true, subtree: true });
+        spb.addEventListener('click', () => { if (btn.disabled) btn.disabled = false; btn.click(); });
+        ov.querySelector('.sp-close').addEventListener('click', () => {
+          mo.disconnect(); ov.remove(); document.body.style.overflow = '';
+          buildAnswerGrid(row.querySelector('.rv-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; });
+        });
       });
     }
     det.addEventListener('toggle', async () => {
@@ -1290,7 +1334,7 @@ async function saveToBank(cls, source, onProgress, ranges) {
         BS.kb += Math.round(payload.reduce((a, o) => a + (o.imageBase64 || '').length + (o.explBase64 || '').length, 0) * 0.75 / 1024);
         const tReq = performance.now();
         const res = await callApi('saveQuestions', { password: getTeacherPassword(), questions: payload });
-        BS.req += Math.round(performance.now() - tReq); BS.chunks++;
+        { const dt = Math.round(performance.now() - tReq); BS.req += dt; BS.chunks++; if (dt > (BS.max || 0)) BS.max = dt; if (dt > 30000) BS.n30 = (BS.n30 || 0) + 1; }
         if (res && res.ms) { BS.srv = true; BS.fast = (BS.fast || 0) + (res.ms.fast || 0); BS.slow = (BS.slow || 0) + (res.ms.slow || 0); if (res.ms.code) { BS.code = res.ms.code; BS.msg = res.ms.msg || BS.msg || ''; } BS.up += res.ms.up || 0; BS.lock += res.ms.lock || 0; BS.sheet += res.ms.sheet || 0; }
         if (!res.ok) { failure = new Error(res.error || '저장 실패'); return; }
         chunks[k].forEach(p => { p.imageBase64 = p.explBase64 = ''; });          // 보낸 그림은 메모리에서 비운다

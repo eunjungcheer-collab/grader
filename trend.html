@@ -5,11 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>학생별 성적 추이 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150094">
+<link rel="stylesheet" href="css/style.css?v=202610150102">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#95D1DB">
+<style>
+#tr-list-card { overflow: hidden; }
+@media (max-width: 640px) {
+  #tr-list, #tr-list tbody { display: block; width: 100%; }
+  #tr-list tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 0; border-top: 1px solid var(--line); align-items: center; }
+  #tr-list tr:has(th) { display: none; }
+  #tr-list td { display: block; padding: 0; border: 0; text-align: left; }
+  #tr-list td.tr-d { grid-column: 1; grid-row: 1; font-size: 13px; color: #475569; }
+  #tr-list td.tr-score { grid-column: 2; grid-row: 1; text-align: right; }
+  #tr-list td.tr-t { grid-column: 1 / -1; grid-row: 2; max-width: none !important; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; font-size: 14px; }
+  #tr-list td.tr-b { grid-column: 1 / -1; grid-row: 3; text-align: right; margin-top: 4px; }
+  #tr-list td.hint { grid-column: 1 / -1; }
+}
+</style>
 </head>
 <body>
 <template id="page-content">
@@ -46,15 +60,15 @@
     <table class="rs-table" id="tr-table" style="width:100%; margin-top:4px;"></table>
   </div>
   <div class="card" id="tr-list-card" style="display:none;">
-    <b>시험마다 기록</b> <span class="hint" style="margin:0;">— 잘못 입력된 점수는 「수정」, 필요 없는 기록은 「삭제」</span>
+    <b>시험마다 기록</b> <span class="hint" style="margin:0;">— 잘못 입력된 점수는 「수정」, 너무 낮게 나온 점수 등은 「그래프에서 빼기」 (기록은 지워지지 않고, 그래프·평균·공유 이미지에서만 빠져요)</span>
     <table class="rs-table" id="tr-list" style="width:100%;"></table>
   </div>
-  <p class="hint">점수는 <b>객관식만 100점으로 환산</b>한 값이에요. 지난 학기 기록을 정리(새 학기 시작)한 뒤에도 월별 요약이 남아 있어서 그래프가 이어져요. 지난 학기는 월 평균 요약만 남아서 시험마다의 점은 이번 학기 기록만 나오고, 수정·삭제도 이번 학기 기록만 돼요.</p>
+  <p class="hint">점수는 <b>객관식만 100점으로 환산</b>한 값이에요. 지난 학기 기록을 정리(새 학기 시작)한 뒤에도 월별 요약이 남아 있어서 그래프가 이어져요. 지난 학기는 월 평균 요약만 남아서 시험마다의 점은 이번 학기 기록만 나오고, 수정·그래프에서 빼기도 이번 학기 기록만 돼요. 「그래프에서 빼기」는 이 기기(브라우저)에만 저장돼요.</p>
 </template>
 
-<script src="js/config.js?v=202610150094"></script>
-<script src="js/api.js?v=202610150094"></script>
-<script src="js/common.js?v=202610150094"></script>
+<script src="js/config.js?v=202610150102"></script>
+<script src="js/api.js?v=202610150102"></script>
+<script src="js/common.js?v=202610150102"></script>
 <style>
 .rs-table { border-collapse:collapse; margin-top:10px; font-size:14px; }
 .rs-table th, .rs-table td { border-bottom:1px solid var(--line); padding:5px 10px; text-align:center; }
@@ -71,6 +85,10 @@ const monthOf = d => { const t = new Date(d); if (isNaN(t.getTime())) return '';
 const dayText = d => { const t = new Date(new Date(d).getTime() + KST); return (t.getUTCMonth() + 1) + '/' + t.getUTCDate(); };
 const monthStart = mo => { const [y, m] = mo.split('-').map(Number); return Date.UTC(y, m - 1, 1) - KST; };       // 그 달 1일 0시(한국 시간)
 let lastDraw = null;
+// 그래프에서 뺄 기록 (진짜 기록은 그대로 두고, 이 기기에만 표시를 남긴다)
+const hideKey = s => [s.examId, nameKey(s.name), s.at].join('|');
+let HID = new Set(); try { HID = new Set(JSON.parse(localStorage.getItem('trendHide') || '[]')); } catch (e) {}
+const saveHid = () => { try { localStorage.setItem('trendHide', JSON.stringify(Array.from(HID))); } catch (e) {} };
 let stu = {}, order = [];      // stu[key] = { shown, subs: [{examId, examTitle, name, at, t, score, total, s100}], hist: { 'yyyy-MM': {sum, n} } }
 
 async function load() {
@@ -83,13 +101,14 @@ async function load() {
       if (!k || k === '이름없음' || !mo || !Number(s.total)) return;
       const sc = Number(s.score100); if (!isFinite(sc)) return;
       const o = stu[k] || (stu[k] = { shown: String(s.studentName).trim(), subs: [], hist: {} });
-      o.subs.push({ examId: s.examId, examTitle: s.examTitle || '', name: s.studentName, at: s.submittedAt, t: new Date(s.submittedAt).getTime(), score: Number(s.score), total: Number(s.total), s100: sc });
+      o.subs.push({ hide: false, examId: s.examId, examTitle: s.examTitle || '', name: s.studentName, at: s.submittedAt, t: new Date(s.submittedAt).getTime(), score: Number(s.score), total: Number(s.total), s100: sc });
     });
     ((hist && hist.ok) ? (hist.history || []) : []).forEach(h => {
       const k = nameKey(h.name); if (!k || !h.month || !h.count) return;
       const o = stu[k] || (stu[k] = { shown: h.shown || h.name, subs: [], hist: {} });
       const m = o.hist[h.month] || (o.hist[h.month] = { sum: 0, n: 0 }); m.sum += h.sum; m.n += h.count;
     });
+    Object.keys(stu).forEach(k => stu[k].subs.forEach(z => { z.hide = HID.has(hideKey(z)); }));
     order = Object.keys(stu).sort((a, b) => stu[a].shown.localeCompare(stu[b].shown, 'ko'));
     $('tr-status').textContent = order.length ? '학생 ' + order.length + '명 · 이름을 고르면 시험 점수와 월 평균이 그래프로 나와요.' : '아직 점수가 있는 제출 기록이 없어요.';
     fillList();
@@ -99,7 +118,7 @@ async function load() {
 function monthMap(o) {
   const m = {};
   Object.keys(o.hist).forEach(mo => { m[mo] = { sum: o.hist[mo].sum, n: o.hist[mo].n }; });
-  o.subs.forEach(s => { const mo = monthOf(s.at); const x = m[mo] || (m[mo] = { sum: 0, n: 0 }); x.sum += s.s100; x.n++; });
+  o.subs.forEach(s => { if (s.hide) return; const mo = monthOf(s.at); const x = m[mo] || (m[mo] = { sum: 0, n: 0 }); x.sum += s.s100; x.n++; });
   return m;
 }
 function avgMap() {
@@ -148,9 +167,10 @@ function draw() {
   if (showAvg) svg += path(avgAll, '#9CA3AF', true, 2);
   svg += path(mm, '#0B1F5C', false, 3);
   const inRange = o.subs.filter(s => s.t >= t0 && s.t < t1).sort((a, b) => a.t - b.t);
+  const vis = inRange.filter(s => !s.hide);
   if (showPts) {
-    const lab = inRange.length <= 30;
-    inRange.forEach(s => {
+    const lab = vis.length <= 30;
+    vis.forEach(s => {
       const cx = x(s.t).toFixed(1), cy = y(s.s100).toFixed(1);
       svg += '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="#fff" stroke="#2563EB" stroke-width="2"><title>' + dayText(s.at) + ' ' + esc(s.examTitle) + ' — ' + Math.round(s.s100) + '점 (' + s.score + '/' + s.total + ')</title></circle>' +
         (lab ? '<text x="' + cx + '" y="' + (y(s.s100) + 17).toFixed(1) + '" font-size="10" text-anchor="middle" fill="#2563EB">' + Math.round(s.s100) + '</text>' : '');
@@ -175,25 +195,22 @@ function draw() {
     const v = val(mm, mo), a = val(avgAll, mo);
     return '<tr><td>' + mo + '</td><td><b>' + Math.round(v) + '</b></td><td>' + mm[mo].n + '</td>' + (showAvg ? '<td style="color:#6B7280;">' + (a === null ? '-' : Math.round(a)) + '</td>' : '') + '</tr>';
   }).join('');
-  lastDraw = { o: o, months: months, svg: svg, mm: mm, avgAll: avgAll, showAvg: showAvg, showPts: showPts, rows: inRange.slice().reverse(), note: note, val: val };
+  lastDraw = { o: o, months: months, svg: svg, mm: mm, avgAll: avgAll, showAvg: showAvg, showPts: showPts, rows: vis.slice().reverse(), note: note, val: val };
   // 시험마다 기록 표 (수정·삭제)
   const olds = months.filter(mo => o.hist[mo] && !o.subs.some(s => monthOf(s.at) === mo));
   $('tr-list-card').style.display = '';
   const rows = inRange.slice().reverse();
   $('tr-list').innerHTML = rows.length ? '<tr><th>날짜</th><th style="text-align:left;">시험</th><th>점수</th><th></th></tr>' + rows.map((s, idx) =>
-    '<tr data-i="' + idx + '"><td>' + dayText(s.at) + '</td><td style="text-align:left; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + esc(s.examTitle) + '">' + esc(s.examTitle || '(삭제된 시험)') + '</td>' +
-    '<td class="tr-score"><b>' + Math.round(s.s100) + '점</b> <span class="hint" style="margin:0;">(' + s.score + '/' + s.total + ')</span></td>' +
-    '<td style="white-space:nowrap;"><button type="button" class="btn ghost tr-edit" style="padding:3px 10px; font-size:12px;">수정</button> <button type="button" class="btn ghost tr-del" style="padding:3px 10px; font-size:12px; color:#C1392B;">삭제</button></td></tr>').join('')
+    '<tr data-i="' + idx + '"' + (s.hide ? ' style="opacity:.55;"' : '') + '><td class="tr-d">' + dayText(s.at) + '</td><td class="tr-t" style="text-align:left; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + esc(s.examTitle) + '">' + esc(s.examTitle || '(삭제된 시험)') + '</td>' +
+    '<td class="tr-score"><b>' + Math.round(s.s100) + '점</b> <span class="hint" style="margin:0;">(' + s.score + '/' + s.total + ')' + (s.hide ? ' · 그래프 제외' : '') + '</span></td>' +
+    '<td class="tr-b" style="white-space:nowrap;"><button type="button" class="btn ghost tr-edit" style="padding:3px 10px; font-size:12px;">수정</button> <button type="button" class="btn ghost tr-del" style="padding:3px 10px; font-size:12px; color:#C1392B;">' + (s.hide ? '그래프에 다시 넣기' : '그래프에서 빼기') + '</button></td></tr>').join('')
     : '<tr><td class="hint">이 기간에 시험 기록이 없어요.' + (olds.length ? ' (지난 학기는 월 평균 요약만 남아 있어요.)' : '') + '</td></tr>';
   $('tr-list').querySelectorAll('tr[data-i]').forEach(tr => {
     const s = rows[+tr.dataset.i];
-    tr.querySelector('.tr-del').addEventListener('click', async () => {
-      if (!confirm('이 기록을 삭제할까요?\n\n' + dayText(s.at) + ' · ' + (s.examTitle || '') + ' · ' + Math.round(s.s100) + '점\n\n삭제하면 되돌릴 수 없어요.')) return;
-      try {
-        const r = await callApi('deleteSubmission', { password: getTeacherPassword(), examId: s.examId, studentName: s.name, submittedAt: s.at });
-        if (!r.ok) throw new Error(r.error || '삭제하지 못했어요');
-        o.subs = o.subs.filter(z => z !== s); draw();
-      } catch (e) { alert(e.message); }
+    tr.querySelector('.tr-del').addEventListener('click', () => {
+      const kk = hideKey(s);
+      if (s.hide) { HID.delete(kk); s.hide = false; } else { HID.add(kk); s.hide = true; }
+      saveHid(); draw();
     });
     tr.querySelector('.tr-edit').addEventListener('click', () => {
       const cell = tr.querySelector('.tr-score'), btns = tr.lastElementChild;

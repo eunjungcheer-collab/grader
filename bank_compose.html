@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150094">
+<link rel="stylesheet" href="css/style.css?v=202610150102">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150094"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150094"></script>
-<script src="js/config.js?v=202610150094"></script>
-<script src="js/api.js?v=202610150094"></script>
-<script src="js/common.js?v=202610150094"></script>
-<script src="js/bankcore.js?v=202610150094"></script>
-<script src="js/pdfui.js?v=202610150094"></script>
+<script src="js/vendor/qrcode.min.js?v=202610150102"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202610150102"></script>
+<script src="js/config.js?v=202610150102"></script>
+<script src="js/api.js?v=202610150102"></script>
+<script src="js/common.js?v=202610150102"></script>
+<script src="js/bankcore.js?v=202610150102"></script>
+<script src="js/pdfui.js?v=202610150102"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -305,6 +305,7 @@ async function loadRegenParams() {
         $('content').innerHTML = '<div class="card center muted">유사오답 문항을 찾지 못했어요. 문제은행에 아직 관련 문항이 없을 수 있어요.</div>';
         return;
       }
+      if (directParams.get('auto') === '1') { showReview(title, picks, null); return; }      // 자동으로 고른 유사오답은 선택 화면 없이 바로 검토 화면으로
       // 검토 화면으로 가기 전에, 어느 단원 문항을 넣을지 고를 수 있게 한다 (기본은 전부 선택)
       const pg = {};
       picks.forEach(q => { const k = unitKey(q); (pg[k] = pg[k] || []).push(q); });
