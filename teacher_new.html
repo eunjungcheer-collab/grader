@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150103">
+<link rel="stylesheet" href="css/style.css?v=202611011600">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -24,6 +24,7 @@
       <input type="file" id="pdf-file" accept="application/pdf" multiple required>
       <div id="queue-note" class="banner" style="display:none; margin:8px 0 0;"></div>
       <label class="bank-include-label" style="margin-top:10px;"><input type="checkbox" id="auto-reg" checked> ⚡ <b>확인 없이 자동 등록</b> — 여러 시험지를 한꺼번에 고르면 기다릴 필요 없이 정답 읽기·단원 추정·QR 찍기·등록·문제은행 저장까지 알아서 해요. 못 읽은 정답은 비워 두고 등록한 뒤, 끝나면 나오는 결과 화면에서 문제 있는 것만 모아서 고치면 돼요. 같은 이름·내용의 시험지는 건너뛰어요. (시험지를 1개만 고르면 이 설정과 상관없이 하나씩 확인하며 등록해요) (단원·소단원은 확신 있는 것만 채우고 🤖 표시가 붙어요)</label>
+      <div style="margin-top:8px;"><button type="button" class="btn outline" id="open-saved-review" style="padding:8px 14px;">🕘 최근 등록한 시험지 다시 확인 (정답·단원 · 다른 기기에서 등록한 것도)</button></div>
       <div style="margin:4px 0 0 24px; font-size:13px;">동시에 처리할 시험지 수 <select id="auto-pool" style="width:auto; display:inline-block; margin:0; padding:4px 8px;"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select> <span class="hint" style="margin:0;">많을수록 서버 저장을 더 많이 겹치지만, 컴퓨터가 느려지고 구글 서버가 거부할 수 있어요. 막히면 줄이세요.</span></div>
       <label class="field-label-spaced">정답지 PDF <span class="muted" style="font-weight:400;">(문제지와 따로 있을 때만 · 없으면 비워두세요)</span></label>
       <input type="file" id="pdf-answer-file" accept="application/pdf">
@@ -156,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150103"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150103"></script>
-<script src="js/vendor/pdf.min.js?v=202610150103"></script>
-<script src="js/config.js?v=202610150103"></script>
-<script src="js/api.js?v=202610150103"></script>
-<script src="js/common.js?v=202610150103"></script>
-<script src="js/bankcore.js?v=202610150103"></script>
-<script src="js/pdfui.js?v=202610150103"></script>
-<script src="js/pdfview.js?v=202610150103"></script>
+<script src="js/vendor/qrcode.min.js?v=202611011600"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611011600"></script>
+<script src="js/vendor/pdf.min.js?v=202611011600"></script>
+<script src="js/config.js?v=202611011600"></script>
+<script src="js/api.js?v=202611011600"></script>
+<script src="js/common.js?v=202611011600"></script>
+<script src="js/bankcore.js?v=202611011600"></script>
+<script src="js/pdfui.js?v=202611011600"></script>
+<script src="js/pdfview.js?v=202611011600"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -280,6 +281,7 @@ async function loadExamFile(file, ansOverride) {
   $('title').value = baseNoExt(file.name);          // 새 파일을 고르면 시험지 이름도 새 파일 이름으로 (이전 이름이 남아 단원이 엉뚱하게 잡히는 것 방지)
   _qTextCache = {};
   { // 문제은행 저장용 분류(학년·단원·구분·학교): 파일 이름에서 추정해서 미리 채운다
+    try { await ensureToc(); } catch (e) {}
     const m = refineMeta(guessMeta(file.name));
     if (!m.unit && m.kind !== '기출') m.unit = '';       // 학교 기출은 단원이 섞여 있어서 파일 이름을 단원으로 쓰지 않는다
     $('bank-cls').innerHTML = classifyFormHtml('bk', m);
@@ -805,7 +807,74 @@ async function runParallelAuto(pairs) {
   });
   const worker = async () => { while (next < pairs.length) { const i = next++; await runOne(i); } };
   await Promise.all(Array.from({ length: Math.min(POOL, pairs.length) }, worker));
-  showAutoReview({ reg: reg, skipped: skipped, stuck: stuck, notes: notes, unassigned: unassigned, autoUnits: autoUnits });
+  const RR = { reg: reg, skipped: skipped, stuck: stuck, notes: notes, unassigned: unassigned, autoUnits: autoUnits };
+  showAutoReview(RR); persistReview(RR);
+  window.__RR = RR;
+}
+// ── 최근 등록한 시험지 결과(정답·단원 확인 화면)를 이 브라우저에 저장해 두고, 화면을 나갔다 와도 다시 열 수 있게 한다 ──
+const RV_MAX = 40;
+function rvDb() {
+  return new Promise((res, rej) => { const q = indexedDB.open('grader_review', 1); q.onupgradeneeded = () => q.result.createObjectStore('r'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+}
+async function rvGet() { try { const db = await rvDb(); return await new Promise(res => { const t = db.transaction('r').objectStore('r').get('list'); t.onsuccess = () => res(t.result || []); t.onerror = () => res([]); }); } catch (e) { return []; } }
+async function rvPut(list) { const db = await rvDb(); await new Promise((res, rej) => { const t = db.transaction('r', 'readwrite'); t.objectStore('r').put(list, 'list'); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+const rvClean = x => { const o = Object.assign({}, x); delete o.peekImgs; delete o.peekPages; return o; };
+let rvTimer = null;
+function persistReview(R) {
+  if (!R || !R.reg) return;
+  clearTimeout(rvTimer);
+  rvTimer = setTimeout(async () => {
+    try {
+      const old = await rvGet(), byId = {}; R.reg.forEach(x => { byId[x.id] = rvClean(x); });
+      const merged = R.reg.map(x => byId[x.id]).concat(old.filter(o => !byId[o.id])).slice(0, RV_MAX);
+      try { await rvPut(merged); }
+      catch (e) { await rvPut(merged.map(x => { const o = Object.assign({}, x); delete o.pair; return o; })); }       // 파일 보관이 안 되면 파일만 빼고 저장
+    } catch (e) { console.warn('결과 저장 실패', e); }
+  }, 300);
+}
+// 서버에만 있는 시험지(다른 기기에서 등록한 것)는 PDF를 누를 때 서버에서 받아 온다
+async function ensurePair(x) {
+  if (x.pair) return x.pair;
+  if (!x.srv) return null;
+  const pr = await callApi('getExamPdf', { password: getTeacherPassword(), id: x.id });
+  if (!pr.ok) throw new Error(pr.error || 'PDF를 불러오지 못했어요.');
+  const bin = atob(pr.base64), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  x.pair = { file: new File([bytes], x.title + '.pdf', { type: 'application/pdf' }), ans: null };
+  return x.pair;
+}
+async function openSavedReview() {
+  const local = await rvGet();
+  local.forEach(x => { x.unread = x.unread || []; x.answers = x.answers || []; x.units = x.units || []; });
+  const note = $('queue-note'); if (note) { note.style.display = ''; note.textContent = '⏳ 서버에서 최근 등록한 시험지를 불러오는 중...'; }
+  let server = [], err = '';
+  try {
+    const le = await callApi('listExams', { password: getTeacherPassword() });
+    if (!le.ok) throw new Error(le.error || '목록을 못 불러왔어요');
+    const have = {}; local.forEach(x => { have[x.id] = 1; });
+    const todo = (le.exams || []).slice(0, 30).filter(e => !have[e.id]).slice(0, 12);
+    if (todo.length) {
+      const lq = await callApi('listQuestions', { password: getTeacherPassword() });
+      const qs = (lq && lq.ok) ? lq.questions : [];
+      let k = 0;
+      const worker = async () => { while (k < todo.length) { const e = todo[k++];
+        try {
+          const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: e.id });
+          if (!d.ok) continue;
+          const ans = (d.answers || []).map(a => String(a));
+          const mine = qs.filter(q => q.source === d.title && q.num > 0).sort((a, b) => a.num - b.num);
+          const bankIds = {}, qinfo = [], units = [];
+          mine.forEach(q => { bankIds[q.num] = q.id; qinfo.push({ n: q.num, unit: q.unit === '(단원 미지정)' ? '' : q.unit, grade: q.grade || '', sub: q.sub || '' }); if (units.indexOf(q.unit) < 0) units.push(q.unit); });
+          server.push({ title: d.title, id: d.id, answers: ans, units: units, unread: [], dash: ans.map((a, i) => a === '-' ? i + 1 : 0).filter(Boolean), dashImg: {}, pair: null, srv: true, bankIds: bankIds, unreadImg: {}, qinfo: qinfo, tm: {}, qthumb: {}, at: e.createdAt });
+        } catch (e2) {} } };
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      server.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    }
+  } catch (e) { err = e.message; }
+  if (note) note.style.display = 'none';
+  const list = local.concat(server);
+  if (!list.length) { alert('최근 등록한 시험지를 찾지 못했어요.' + (err ? ' (' + err + ')' : '')); return; }
+  showAutoReview({ reg: list, skipped: [], stuck: [], notes: ['최근 등록한 시험지 ' + list.length + '개를 열었어요. 이 컴퓨터에서 등록한 ' + local.length + '개는 못 읽은 문항(빨간 칸)과 저장된 그림이 그대로 나와요. 다른 기기에서 등록한 ' + server.length + '개는 서버에서 불러왔고, 정답 그림은 「🔎 정답 이미지로 확인」을 누를 때 PDF를 받아 만들어요. 고치고 「저장」을 누르면 서버에 반영돼요.' + (err ? ' (서버 목록을 못 불러왔어요: ' + err + ')' : '')], unassigned: 0, autoUnits: 0, saved: true });
 }
 // 자동 등록이 끝나면 결과를 한 화면에 펼쳐 보여 준다: 직접 확인할 시험지, 단원 확인할 문항, 등록된 시험지의 정답 전체
 function showAutoReview(R) {
@@ -823,7 +892,7 @@ function showAutoReview(R) {
   if (nNeed) h += '<div class="card" style="border-color:#C1392B;"><b style="color:#C1392B;">✏️ 정답을 못 읽은 시험지 ' + nNeed + '개</b><div class="hint" style="margin:4px 0;">시험지는 등록됐지만, 아래 <b>빨간 칸</b>은 정답을 못 읽어 비워 뒀어요. 원본 PDF를 보고 채운 뒤 「저장」을 누르세요. 채우기 전에는 그 문항이 채점되지 않아요.</div></div>';
   if (R.reg.length) {
     h += '<div class="card"><b>📋 등록된 시험지 — 정답을 훑어보세요</b><div class="hint" style="margin:4px 0 10px;">칸 위 숫자가 문항 번호예요. 이상하면 고치고 「저장」을 누르세요. 빨간 칸은 형식이 이상한 값이에요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4로 쓰세요.</div>';
-    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span> <button type="button" class="btn ghost rv-peekbtn" style="padding:5px 12px;">🔎 정답 이미지로 확인</button> <button type="button" class="btn primary rv-splitbtn" style="padding:5px 12px;">🖥 정답 쪽 보면서 입력 (좌우 화면)</button></div><div class="rv-peekbox" style="display:none;"></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
+    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b>' + e(x.title) + '</b><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + unitSumHtml(x) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번 &nbsp;<input type="text" class="pk-in ag-in" data-n="' + n + '" value="' + escapeHtml(x.answers[n - 1] || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ghost rv-save" style="padding:5px 12px;" disabled>저장</button> <span class="hint rv-msg" style="margin:0;"></span> <button type="button" class="btn ghost rv-peekbtn" style="padding:5px 12px;">🔎 정답 이미지로 확인</button> <button type="button" class="btn primary rv-splitbtn" style="padding:5px 12px;">🖥 정답 쪽 보면서 입력 (좌우 화면)</button></div><div class="rv-peekbox" style="display:none;"></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
     h += '</div>';
   }
   { const T = R.reg.filter(x => x.tm && x.tm.end);
@@ -847,6 +916,17 @@ function showAutoReview(R) {
     buildAnswerGrid(row.querySelector('.rv-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; });
     if (x.unread.length) { btn.disabled = false; row.style.background = '#FFF7F5'; }
     const det = row.querySelector('.rv-units');
+    // 문제 옆 정답 그림 칸에서 바로 정답을 적으면, 위쪽 정답 칸에도 같이 반영된다
+    const bindPk = scope => scope.querySelectorAll('.pk-in').forEach(inp => {
+      paintAnswerCell(inp);
+      inp.addEventListener('focus', () => inp.select());
+      inp.addEventListener('input', () => {
+        const n = +inp.dataset.n, v = inp.value.trim();
+        x.answers[n - 1] = v; paintAnswerCell(inp); btn.disabled = false; msg.textContent = '';
+        const g = row.querySelectorAll('.rv-grid .ag-in')[n - 1]; if (g) { g.value = v; paintAnswerCell(g); }
+      });
+    });
+    bindPk(row);
     { // 🔎 정답 이미지로 확인: 누를 때만 그 시험지를 다시 읽어 문항별 정답 그림을 만든다 (등록 속도에는 영향이 없다)
       const pb = row.querySelector('.rv-peekbtn'), box = row.querySelector('.rv-peekbox');
       const paintPeek = () => {
@@ -854,15 +934,15 @@ function showAutoReview(R) {
         const pgs = x.peekPages || [], hitP = pgs.filter(p => p.hit), restP = pgs.filter(p => !p.hit);
         const pageHtml = pgs.length ? '<div style="margin:8px 0;"><b style="font-size:13px;">📄 원본 PDF 정답·해설 쪽 (' + hitP.map(p => p.n + '쪽').join(', ') + ')</b><div class="hint" style="margin:2px 0 6px;">그림을 누르면 크게 보여요.</div>' + hitP.map(p => '<img src="' + p.url + '" alt="' + p.n + '쪽" style="width:min(520px,100%); border:1px solid var(--line); border-radius:6px; margin:0 8px 8px 0; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(520px,100%)\':\'100%\'">').join('') + (restP.length ? '<details><summary style="cursor:pointer; font-size:13px;">나머지 쪽 보기 (' + restP.length + '쪽)</summary>' + restP.map(p => '<img src="' + p.url + '" alt="' + p.n + '쪽" style="width:min(520px,100%); border:1px solid var(--line); border-radius:6px; margin:6px 8px 0 0; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(520px,100%)\':\'100%\'">').join('') + '</details>' : '') + '</div>' : '';
         box.innerHTML = pageHtml + '<div class="hint" style="margin:4px 0;">문항마다 정답이 적힌 부분이에요. 오른쪽 숫자가 지금 입력된 정답이고, 다르면 위쪽 칸에서 고치고 「저장」을 누르세요.</div><div class="rv-imgs">' +
-          cur.map((a, i) => '<div class="rv-img"><b>' + (i + 1) + '번 → <span style="color:#0B1F5C;">' + escapeHtml(a || '(비어 있음)') + '</span></b>' + (imgs[i + 1] ? '<img src="' + imgs[i + 1] + '" alt="' + (i + 1) + '번 정답 부분">' : '<span class="hint">그림 없음 — 정답표 글자에서 읽은 문항</span>') + '</div>').join('') + '</div>';
+          cur.map((a, i) => '<div class="rv-img"><b>' + (i + 1) + '번 &nbsp;<input type="text" class="pk-in ag-in" data-n="' + (i + 1) + '" value="' + escapeHtml(a || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + (imgs[i + 1] ? '<img src="' + imgs[i + 1] + '" alt="' + (i + 1) + '번 정답 부분">' : (x.qthumb && x.qthumb[i + 1] ? '<img src="' + x.qthumb[i + 1] + '" alt="' + (i + 1) + '번 문제"><span class="hint">정답 그림이 없어서 문제 그림을 보여 줘요 — 「정답 쪽 보면서 입력」을 쓰세요</span>' : '<span class="hint">그림 없음 — 「정답 쪽 보면서 입력」으로 정답 쪽을 보세요</span>')) + '</div>').join('') + '</div>';
+        bindPk(box);
       };
       pb.addEventListener('click', async () => {
         if (box.style.display !== 'none') { box.style.display = 'none'; pb.textContent = '🔎 정답 이미지로 확인'; return; }
         box.style.display = '';
         if (x.peekImgs) { paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; return; }
-        if (!x.pair) { box.innerHTML = '<span class="hint">원본 PDF를 다시 찾지 못했어요.</span>'; return; }
         pb.disabled = true; box.innerHTML = '<span class="hint">⏳ PDF를 다시 읽어서 정답 그림을 만드는 중... (몇 초 걸려요)</span>';
-        try { { const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; } paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; }
+        try { if (!(await ensurePair(x))) { box.innerHTML = '<span class="hint">원본 PDF를 다시 찾지 못했어요.</span>'; pb.disabled = false; return; } { const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; } paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; }
         catch (err) { box.innerHTML = '<span class="hint" style="color:#C1392B;">정답 그림을 만들지 못했어요: ' + escapeHtml(err.message) + '</span>'; }
         pb.disabled = false;
       });
@@ -871,9 +951,8 @@ function showAutoReview(R) {
       const sb = row.querySelector('.rv-splitbtn');
       sb.addEventListener('click', async () => {
         if (!x.peekPages) {
-          if (!x.pair) { msg.textContent = '원본 PDF를 다시 찾지 못했어요.'; return; }
           sb.disabled = true; const old = sb.textContent; sb.textContent = '⏳ PDF 읽는 중...';
-          try { const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; }
+          try { if (!(await ensurePair(x))) throw new Error('원본 PDF를 다시 찾지 못했어요.'); const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; }
           catch (err) { msg.textContent = '⚠️ 정답 쪽 그림을 만들지 못했어요: ' + err.message; sb.disabled = false; sb.textContent = old; return; }
           sb.disabled = false; sb.textContent = old;
         }
@@ -881,8 +960,8 @@ function showAutoReview(R) {
         const ov = document.createElement('div');
         ov.style.cssText = 'position:fixed; inset:0; z-index:9999; background:#fff; display:flex; flex-direction:column;';
         ov.innerHTML = '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid #cbd5e1; background:#F1F5F9;"><b style="flex:1 1 200px;">' + escapeHtml(x.title) + '</b><label style="font-size:12px;">확대 <input type="range" class="sp-zoom" min="40" max="200" value="100" style="vertical-align:middle;"></label><span class="sp-msg hint" style="margin:0;"></span><button type="button" class="btn primary sp-save" style="padding:6px 16px;">저장</button><button type="button" class="btn outline sp-close" style="padding:6px 16px;">닫기</button></div>' +
-          '<div style="flex:1; display:flex; min-height:0; flex-wrap:wrap;"><div class="sp-left" style="flex:1 1 55%; min-width:300px; overflow:auto; padding:8px; background:#E2E8F0;">' + (pgs.length ? pgs.map(p => '<div style="font-size:12px; margin:4px 0 2px;"><b>' + p.n + '쪽</b>' + (p.hit ? ' <span style="color:#C1392B;">(정답·해설이 있을 만한 쪽)</span>' : '') + '</div><img class="sp-img" src="' + p.url + '" style="width:100%; display:block; border:1px solid #94A3B8; background:#fff; margin-bottom:10px;">').join('') : '<div class="hint">쪽 그림을 만들지 못했어요.</div>') + '</div>' +
-          '<div style="flex:1 1 40%; min-width:260px; overflow:auto; padding:10px;"><div class="hint" style="margin:0 0 8px;">왼쪽 그림을 보면서 정답을 적고 「저장」을 누르세요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4, 주관식은 - 로 써요.</div><div class="sp-grid"></div></div></div>';
+          '<style>.sp-body{flex:1; display:flex; min-height:0; overflow:hidden;} .sp-left{flex:1 1 56%; min-width:0; height:100%; overflow:auto; -webkit-overflow-scrolling:touch; padding:8px; background:#E2E8F0;} .sp-right{flex:1 1 44%; min-width:0; height:100%; overflow:auto; -webkit-overflow-scrolling:touch; padding:10px;} @media (max-width:760px){.sp-body{flex-direction:column;} .sp-left{flex:1 1 55%; height:auto; min-height:0;} .sp-right{flex:1 1 45%; height:auto; min-height:0;}}</style><div class="sp-body"><div class="sp-left">' + (pgs.length ? pgs.map(p => '<div style="font-size:12px; margin:4px 0 2px;"><b>' + p.n + '쪽</b>' + (p.hit ? ' <span style="color:#C1392B;">(정답·해설이 있을 만한 쪽)</span>' : '') + '</div><img class="sp-img" src="' + p.url + '" style="width:100%; display:block; border:1px solid #94A3B8; background:#fff; margin-bottom:10px;">').join('') : '<div class="hint">쪽 그림을 만들지 못했어요.</div>') + '</div>' +
+          '<div class="sp-right"><div class="hint" style="margin:0 0 8px;">왼쪽 그림을 보면서 정답을 적고 「저장」을 누르세요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4, 주관식은 - 로 써요.</div><div class="sp-grid"></div></div></div>';
         document.body.appendChild(ov); document.body.style.overflow = 'hidden';
         const spm = ov.querySelector('.sp-msg'), spb = ov.querySelector('.sp-save');
         buildAnswerGrid(ov.querySelector('.sp-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; spm.textContent = ''; });
@@ -905,7 +984,7 @@ function showAutoReview(R) {
       refreshSubSelect(alls, null, ''); alls.closest('.sub-wrap').style.display = 'none';
       allu.addEventListener('change', () => { const v = unitSelectValue(allu); refreshSubSelect(alls, tocEntryFor(v.grade, v.unit), ''); });
       const upSum = () => { const d = row.querySelector('.rv-usum'); if (d) d.innerHTML = unitSumHtml(x); };
-      const save = async (items) => { upSum(); umsg.textContent = '저장 중...'; try { for (let i = 0; i < items.length; i += 40) { const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: items.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '저장 실패'); } umsg.textContent = '✅ 저장했어요'; } catch (err) { umsg.textContent = '⚠️ ' + err.message; } };
+      const save = async (items) => { upSum(); umsg.textContent = '저장 중...'; try { for (let i = 0; i < items.length; i += 40) { const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: items.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '저장 실패'); } umsg.textContent = '✅ 저장했어요'; persistReview(R); } catch (err) { umsg.textContent = '⚠️ ' + err.message; } };
       body.querySelectorAll('.rv-u').forEach(us => {
         const n = +us.dataset.n, ss = body.querySelector('.rv-s[data-n="' + n + '"]'), o = q.find(z => z.n === n);
         refreshSubSelect(ss, tocEntryFor(o.grade, o.unit), o.sub);
@@ -924,7 +1003,7 @@ function showAutoReview(R) {
       btn.disabled = true; msg.textContent = '저장 중...';
       try { const r = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: x.id, answers: x.answers });
         if (r.ok) { for (const n of x.unread) { const qid = x.bankIds[n]; if (qid) { try { await callApi('updateQuestion', { password: getTeacherPassword(), id: qid, answer: x.answers[n - 1] }); } catch (e) {} } } x.unread = []; }
-        msg.textContent = r.ok ? '✅ 저장했어요' : '⚠️ ' + (r.error || '저장 실패'); if (!r.ok) btn.disabled = false; }
+        msg.textContent = r.ok ? '✅ 저장했어요' : '⚠️ ' + (r.error || '저장 실패'); if (r.ok) persistReview(R); if (!r.ok) btn.disabled = false; }
       catch (err) { msg.textContent = '⚠️ ' + err.message; btn.disabled = false; }
     });
   });
@@ -1581,6 +1660,9 @@ $('new-exam-form').addEventListener('submit', async function (e) {
   }
 });
 handoffInto('pdf-file', el => el.dispatchEvent(new Event('change')));       // 단원 판별 화면에서 넘어온 파일
+
+if ($('open-saved-review')) $('open-saved-review').addEventListener('click', openSavedReview);
+if (new URLSearchParams(location.search).get('review') === '1' && !IS_CHILD) setTimeout(openSavedReview, 50);
 </script>
 </body>
 </html>

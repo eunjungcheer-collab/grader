@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150103">
+<link rel="stylesheet" href="css/style.css?v=202611011600">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202610150103"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202610150103"></script>
-<script src="js/config.js?v=202610150103"></script>
-<script src="js/api.js?v=202610150103"></script>
-<script src="js/common.js?v=202610150103"></script>
-<script src="js/bankcore.js?v=202610150103"></script>
-<script src="js/pdfui.js?v=202610150103"></script>
+<script src="js/vendor/qrcode.min.js?v=202611011600"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611011600"></script>
+<script src="js/config.js?v=202611011600"></script>
+<script src="js/api.js?v=202611011600"></script>
+<script src="js/common.js?v=202611011600"></script>
+<script src="js/bankcore.js?v=202611011600"></script>
+<script src="js/pdfui.js?v=202611011600"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -339,8 +339,6 @@ async function loadRegenParams() {
           ${regenFrom.hadSource ? '<label class="bank-include-label" style="margin-top:6px;"><input type="checkbox" id="exclude-prev" checked> 기존 시험과 겹치지 않게 (이미 낸 문항은 빼고 고르기)</label>' : '<p class="hint" style="margin:4px 0 0;">이 시험은 예전 버전으로 만들어져서 "겹치지 않게" 옵션은 못 써요. 문항은 겹칠 수 있어요.</p>'}
         </div>` : ''}
       <div class="card">
-        <label>시험지 이름</label>
-        <input type="text" id="title" placeholder="예: 중3 과학 1단원 모음고사" value="${regenFrom ? escapeHtml(regenFrom.title) + (presetUnits ? ' - ' + (whoName ? escapeHtml(whoName) + ' ' : '') + '유사오답' : ' (유사)') : ''}">
         <label class="field-label-spaced">문제 종류</label>
         <div class="kind-chips" id="kind-chips"></div>
         <details id="past-filter" style="display:none; margin:6px 0;"><summary class="hint" style="cursor:pointer;">학교·연도로 좁히기 (선택 — 안 고르면 기출문제 전부)</summary>
@@ -390,6 +388,8 @@ async function loadRegenParams() {
         <label class="bank-include-label field-label-spaced"><input type="checkbox" id="easy-first" checked> 쉬운 문항부터 배치 (같은 단원 안에서 하 → 중 → 상 · 단원은 항상 순서대로 모아서 배치)</label>
         <label class="bank-include-label"><input type="checkbox" id="shuffle"> 문항 순서 섞기 (위 배치보다 우선)</label>
         <label class="bank-include-label" style="margin-top:8px;"><input type="checkbox" id="make-expl" checked> 정답·해설지도 함께 만들기 (시험지 뒤에 정답표 → 해설 순서로 이어붙여서 한 PDF로 · 양면 인쇄하면 정답이 시험지 바로 뒷면에 오지 않게 빈 쪽을 끼워요)</label>
+        <label class="field-label-spaced">시험지 이름 <span class="hint" style="margin:0;">(마지막에 꼭 적어 주세요)</span></label>
+        <input type="text" id="title" placeholder="예: 중3 과학 1단원 모음고사" value="${regenFrom ? escapeHtml(regenFrom.title) + (presetUnits ? ' - ' + (whoName ? escapeHtml(whoName) + ' ' : '') + '유사오답' : ' (유사)') : ''}">
         <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:18px;">문항 고르기 → 검토</button>
       </div>
       <div id="review-area" style="display:none;"></div>`;
@@ -419,7 +419,7 @@ function buildPicksAndReview() {
   const err = $('error-banner');
   err.innerHTML = '';
   const title = $('title').value.trim();
-  if (!title) { err.innerHTML = '<div class="banner error">시험지 이름을 입력해주세요.</div>'; return; }
+  if (!title) { err.innerHTML = '<div class="banner error">시험지 이름을 입력해주세요. (맨 아래 칸이에요)</div>'; $('title').focus(); $('title').scrollIntoView({ block: 'center' }); return; }
   const units = Array.from(document.querySelectorAll('.use:checked')).map(c => c.dataset.u);
   if (!units.length) { err.innerHTML = '<div class="banner error">단원을 하나 이상 선택해주세요.</div>'; return; }
 

@@ -547,6 +547,14 @@ document.addEventListener('focusin', e => {
 
 // 파일 이름에서 얻은 분류(guessMeta 결과)를 목차로 다듬는다: 단원 이름이 목차에 있으면 목차 이름으로, 학년이 비었으면 단원에서 학년을 알아낸다
 function refineMeta(m) {
+  // 「2-2-1.물질의 …」「7-1-1.지구의 …」「4-1.입자의 …」처럼 파일 이름이 "대단원-소단원[-번호].이름"이면, 맨 앞 숫자가 대단원이다 → 그 단원으로 넣는다
+  if (m && m.kind !== '기출' && m.unit && _tocParsed && _tocParsed.length) {
+    const pm = /^\s*(\d{1,2})\s*-\s*\d{1,2}(?:\s*-\s*\d{1,2})?\s*[.．]/.exec(m.unit);
+    if (pm) {
+      const t = tocUnitByNo(_tocParsed, m.grade, parseInt(pm[1], 10));
+      if (t) { m.unit = t.unit; if (!m.grade) m.grade = t.grade; return m; }
+    }
+  }
   if (m && m.kind !== '기출' && m.unit && _tocParsed && _tocParsed.length) {
     const mm = BankCore.matchUnitName(m.unit, _tocParsed, m.grade) || BankCore.matchUnitName(m.unit, _tocParsed);
     if (mm && (!m.grade || mm.grade === m.grade)) { m.unit = mm.unit; if (!m.grade) m.grade = mm.grade; }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202610150103">
+<link rel="stylesheet" href="css/style.css?v=202611011600">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,6 +16,7 @@
   <span class="backlink"><a href="index.html">← 홈으로</a></span>
   <h1>문제은행</h1>
   <p class="muted"><span id="total-text">불러오는 중...</span> <a href="#" id="reload-bank" style="margin-left:8px;">↻ 새로 불러오기</a></p>
+  <div id="fix-units" class="banner" style="display:none; margin:8px 0;"></div>
   <div class="actions">
     <a class="btn primary" href="bank_upload.html">📄 PDF에서 문항 가져오기</a>
     <a class="btn outline" href="bank_compose.html">🧩 시험 조합하기</a>
@@ -77,11 +78,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202610150103"></script>
-<script src="js/api.js?v=202610150103"></script>
-<script src="js/common.js?v=202610150103"></script>
-<script src="js/bankcore.js?v=202610150103"></script>
-<script src="js/pdfui.js?v=202610150103"></script>
+<script src="js/config.js?v=202611011600"></script>
+<script src="js/api.js?v=202611011600"></script>
+<script src="js/common.js?v=202611011600"></script>
+<script src="js/bankcore.js?v=202611011600"></script>
+<script src="js/pdfui.js?v=202611011600"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -97,8 +98,36 @@ async function load() {
     if (!res.ok) { $('total-text').textContent = res.error; return; }
     all = res.questions.slice().reverse();
     try { await ensureToc(); } catch (e) {}
-    render();
+    render(); showFixUnits();
   } catch (e) { $('total-text').textContent = '서버에 연결할 수 없어요.'; }
+}
+// 단원 이름이 「2-2-1.물질의 …」처럼 파일 이름 모양으로 들어간 문항을 찾아, 맨 앞 숫자(대단원)의 단원으로 바로잡는다
+const FILE_UNIT_RE = /^\s*(\d{1,2})\s*-\s*\d{1,2}(?:\s*-\s*\d{1,2})?\s*[.．]/;
+function fixUnitTargets() {
+  const out = [];
+  (all || []).forEach(q => {
+    if (q.kind === '기출') return;
+    const m = FILE_UNIT_RE.exec(String(q.unit || '')); if (!m) return;
+    const t = tocUnitByNo(_tocParsed, q.grade, parseInt(m[1], 10));
+    if (t && t.unit !== q.unit) out.push({ q: q, t: t });
+  });
+  return out;
+}
+function showFixUnits() {
+  const box = $('fix-units'), list = fixUnitTargets();
+  if (!list.length) { box.style.display = 'none'; return; }
+  const names = Array.from(new Set(list.map(x => String(x.q.unit).slice(0, 24) + ' → ' + x.t.unit))).slice(0, 6);
+  box.style.display = 'block';
+  box.innerHTML = '🧹 단원 이름이 파일 이름처럼 들어간 문항 <b>' + list.length + '개</b>가 있어요. 맨 앞 숫자의 단원으로 정리할까요?<div class="hint" style="margin:4px 0;">' + names.map(escapeHtml).join('<br>') + '</div><button type="button" class="btn primary" id="fix-units-go" style="padding:7px 14px;">단원으로 정리하기</button> <span class="hint" id="fix-units-msg" style="margin:0;"></span>';
+  $('fix-units-go').addEventListener('click', async () => {
+    const b = $('fix-units-go'); b.disabled = true; $('fix-units-msg').textContent = '저장 중...';
+    try {
+      const ups = list.map(x => ({ id: x.q.id, unit: x.t.unit, grade: x.t.grade }));
+      for (let i = 0; i < ups.length; i += 40) { const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: ups.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '저장 실패'); }
+      list.forEach(x => { x.q.unit = x.t.unit; x.q.grade = x.t.grade; });
+      render(); showFixUnits(); alert('정리했어요: ' + list.length + '개 문항');
+    } catch (e) { $('fix-units-msg').textContent = '⚠️ ' + e.message; b.disabled = false; }
+  });
 }
 
 

@@ -180,7 +180,24 @@
             break;
           }
         }
-        if (!k) continue;
+        if (!k) {
+          // 「1)」 다음 줄에 「정답」 라벨이 따로 있고, 정답(동그라미 숫자)은 그 아래 줄에 있는 교재 형식 (그다음 줄은 「해설」)
+          let lab = null;
+          for (let n = 1; n <= 5 && its[i + n]; n++) {
+            const c = its[i + n], t = c.str.replace(/\s+/g, '');
+            if (t === '정답' && c.top > it.bottom - 2 && c.top - it.top < 34 && Math.abs(c.x - it.x) < 30) { lab = c; break; }
+          }
+          if (!lab) continue;
+          const hs = its.find(c => c.str.replace(/\s+/g, '') === '해설' && c.top > lab.bottom - 1 && c.top - lab.bottom < 60 && Math.abs(c.x - lab.x) < 12);
+          const gBottom = hs ? hs.top - 1 : lab.bottom + 22;
+          const gTop = lab.bottom + 2.5, gRect = [it.x - 8, gTop, it.x + 110, Math.max(gTop + 9, Math.min(gTop + 17, hs ? hs.top - 1 : gTop + 17))];
+          let vtext = '';
+          const dg = its.find(c => c !== lab && c.top >= lab.bottom - 2 && c.bottom <= gBottom + 3 && c.x >= lab.x - 6 && c.x < lab.x + 110 && CIRCLED[c.str.replace(/[:\s]/g, '')]);
+          if (dg) vtext = CIRCLED[dg.str.replace(/[:\s]/g, '')];
+          const wr = !dg && its.some(c => { const t = c.str.replace(/\s+/g, ''); return c !== lab && /[가-힣A-Za-z0-9(]/.test(t) && t !== '해설' && !CIRCLED[t] && c.top >= lab.bottom - 1 && c.top < gTop + 9 && c.x >= it.x - 6 && c.x < it.x + 230; });      // 정답 칸에 글(서술형 답)이 적혀 있으면 서술형
+          found.push({ num: parseInt(m[1], 10), rect: [it.x - 4, it.top - 4, lab.x + lab.w + 70, lab.bottom + 4], text: vtext, written: wr, top: it.top, bottom: lab.bottom, x: it.x, mr: lab.x + lab.w, numRect: [it.x - 1, it.top - 1, it.x + it.w + 2, it.bottom + 1], gRect: gRect });
+          continue;
+        }
         num = parseInt(m[1], 10);
         numRect = [it.x - 1, it.top - 1, it.x + it.w + 2, it.bottom + 1];
         markerRight = nxt.x + nxt.w;
@@ -437,7 +454,7 @@
     pages.forEach((pd, idx) => {
       if (pd.markers.length) answerPages.push(idx + 1);
       pd.markers.forEach(m => {
-        if (!answers[m.num]) answers[m.num] = { page: idx + 1, rect: m.rect, text: m.text, written: !!m.written, mr: m.mr, mtop: m.top, mbottom: m.bottom };
+        if (!answers[m.num]) answers[m.num] = { page: idx + 1, rect: m.rect, text: m.text, written: !!m.written, mr: m.mr, mtop: m.top, mbottom: m.bottom, g: m.gRect || null };
       });
     });
 
@@ -2903,8 +2920,14 @@
       const a = scan.answers[n];
       try {
         // 「② 」 하나뿐 아니라 「③, ⑤」처럼 동그라미 숫자 그림이 여러 개 이어진 정답도 읽는다: 줄 오른쪽을 넓게 떼어 글자 덩어리로 나눈 뒤 동그라미 모양만 모은다
-        const c = await renderRect(doc, a.page, [a.mr + 3, a.mtop - 3, a.mr + 110, a.mbottom + 3], 6, false);
-        const w = c.width, h = c.height, d = c.getContext('2d').getImageData(0, 0, w, h).data;
+        const c = await renderRect(doc, a.page, a.g ? a.g : [a.mr + 3, a.mtop - 3, a.mr + 110, a.mbottom + 3], 6, false);
+        const w = c.width, h = c.height;
+        if (a.g) {          // 보라색 「정답」「해설」 라벨(밑줄·상자)은 지우고 검은 글자만 남긴다
+          const cx0 = c.getContext('2d'), im0 = cx0.getImageData(0, 0, w, h), q = im0.data;
+          for (let i = 0; i < q.length; i += 4) { const mx = Math.max(q[i], q[i + 1], q[i + 2]), mn = Math.min(q[i], q[i + 1], q[i + 2]); if (mx - mn > 45) { q[i] = q[i + 1] = q[i + 2] = 255; } }
+          cx0.putImageData(im0, 0, 0);
+        }
+        const d = c.getContext('2d').getImageData(0, 0, w, h).data;
         const colInk = new Array(w).fill(false);
         for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) { const i = (y * w + x) * 4; if (1 - (d[i] + d[i + 1] + d[i + 2]) / 765 > 0.45) { colInk[x] = true; break; } }
         const blobs = []; let x = 0;
@@ -2926,7 +2949,7 @@
         }
       } catch (e) {}
     }
-    if (samples.length < 3) return 0;
+    scan._gs = samples.length; if (samples.length < 3) return 0;
     // 같은 모양끼리 묶기
     const clusters = [];
     samples.forEach(sm => {
@@ -2936,7 +2959,7 @@
       best.members.push(sm); best.sum.forEach((_, i) => { best.sum[i] += sm.v[i]; });
       best.mean = normVec(Float32Array.from(best.sum));
     });
-    if (clusters.length > 9) return 0;
+    scan._gc = clusters.length; if (clusters.length > 9) return 0;
     // 숫자는 5가지뿐이니, 5묶음을 넘으면 가장 닮은 두 묶음을 합친다
     while (clusters.length > 5) {
       let bi = 0, bj = 1, bv = -2;
