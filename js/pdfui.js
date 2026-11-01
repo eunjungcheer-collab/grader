@@ -731,12 +731,14 @@ function withSchoolName(field, name) {
   if (stem && field.replace(/\s+/g, '').indexOf(stem) >= 0) return field;
   return (name + ' ' + field).trim();
 }
+// "한밤중"·"공부중"처럼 학교 이름이 아니라 그냥 낱말인 "~중"
+const WORD_JUNG = /(밤|낮|새벽|한밤|하는|하던|되는|있는|없는|공부|수업|식사|여행|운전|근무|방송|통화|작업|실험|관찰|측정|비행|운동|활동|학습|설명|조사|검사|회의|상담|출장|휴식|휴가|연습|훈련|제작|제조|생산|사용|이용|운영|운행|공사|수리|점검|준비|예약|접수|처리|진료|치료|입원|재판|연구|개발|발표|촬영|녹화|방영|전송|이동|보관|운반|작동|가동|통신|거래|판매|영업|주문|배송|검토|심사|논의|토론)중$/;
 function extractSchoolYear(txt) {
   const BAD = /^(집중|도중|그중|수중|공중|심중|열중|가운데중|진행중|연구중|계속중|사용중|이중|무중|개중|평중|대중|비중|산중|운중|입중|합중|가중|체중|혼중|초중|고중)$/;   // 정확히 이 글자뿐일 때만("중평중"의 "평중" 같은 이름 끝 글자 때문에 학교를 놓치지 않게)
   let school = '';
   const t1 = txt.replace(/\s+/g, ' ');
   let m, re = /(^|[^가-힣])([가-힣]{2,5}?)(중학교(?=[에의은는가를과도로]|[^가-힣]|$)|중(?![가-힣]))/g;
-  while ((m = re.exec(t1))) { const nm = m[2] + '중'; if ((!/^중학교/.test(m[3]) && BAD.test(nm)) || /^(고|초|중등|과학|학원)/.test(m[2]) && m[2].length < 3) continue; school = nm; break; }
+  while ((m = re.exec(t1))) { const nm = m[2] + '중'; if ((!/^중학교/.test(m[3]) && (BAD.test(nm) || WORD_JUNG.test(nm))) || /^(고|초|중등|과학|학원)/.test(m[2]) && m[2].length < 3) continue; school = nm; break; }
   let year = '';
   const ym = t1.match(/(20\d\d)\s*(학년도|년도|년)/); if (ym) year = ym[1] + (ym[2] === '년' ? '년' : '학년도');
   return { school: school, year: year, mock: /모의\s*(고사|평가|시험)|모평|변형|유사|대비|예상\s*문제|적중|실전/.test(txt) };   // 모의고사·변형·유사·대비 문제는 학교 기출이 아니다 (이름에 학교가 있어도)

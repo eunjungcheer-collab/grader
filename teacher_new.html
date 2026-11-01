@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611011600">
+<link rel="stylesheet" href="css/style.css?v=202611012010">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611011600"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611011600"></script>
-<script src="js/vendor/pdf.min.js?v=202611011600"></script>
-<script src="js/config.js?v=202611011600"></script>
-<script src="js/api.js?v=202611011600"></script>
-<script src="js/common.js?v=202611011600"></script>
-<script src="js/bankcore.js?v=202611011600"></script>
-<script src="js/pdfui.js?v=202611011600"></script>
-<script src="js/pdfview.js?v=202611011600"></script>
+<script src="js/vendor/qrcode.min.js?v=202611012010"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611012010"></script>
+<script src="js/vendor/pdf.min.js?v=202611012010"></script>
+<script src="js/config.js?v=202611012010"></script>
+<script src="js/api.js?v=202611012010"></script>
+<script src="js/common.js?v=202611012010"></script>
+<script src="js/bankcore.js?v=202611012010"></script>
+<script src="js/pdfui.js?v=202611012010"></script>
+<script src="js/pdfview.js?v=202611012010"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -692,7 +692,7 @@ async function answerSnap(n) {
   let c = null;
   const a = scanned.answers && scanned.answers[n];
   if (snipUrls && snipUrls[n]) return snipUrls[n];
-  if (a && a.rect && a.page) { try { c = await BankCore.renderRect(pdfInfo.doc, a.page, a.rect, 3, false); } catch (e) {} }
+  if (a && a.rect && a.page) { const r0 = a.g ? [Math.min(a.rect[0], a.g[0]), Math.min(a.rect[1], a.g[1]), Math.max(a.rect[2], a.g[2]), Math.max(a.rect[3], a.g[3])] : a.rect; try { c = await BankCore.renderRect(pdfInfo.doc, a.page, r0, 3, false); } catch (e) {} }
   if (!c) { const ex = scanned.explanations && scanned.explanations[n]; if (ex) { try { c = await BankCore.renderExplanation(pdfInfo.doc, ex, 1.6); } catch (e) {} } }
   if (!c) { const q = scanned.questions.find(x => x.num === n); if (q) { try { c = await BankCore.renderQuestion(pdfInfo.doc, q, 1.4, true); } catch (e) {} } }
   if (!c) return '';
@@ -705,7 +705,7 @@ async function peekSnap(n) {
   let c = null;
   const a = scanned.answers && scanned.answers[n];
   if (snipUrls && snipUrls[n]) return snipUrls[n];
-  if (a && a.rect && a.page) { try { c = await BankCore.renderRect(pdfInfo.doc, a.page, a.rect, 3, false); } catch (e) {} }
+  if (a && a.rect && a.page) { const r0 = a.g ? [Math.min(a.rect[0], a.g[0]), Math.min(a.rect[1], a.g[1]), Math.max(a.rect[2], a.g[2]), Math.max(a.rect[3], a.g[3])] : a.rect; try { c = await BankCore.renderRect(pdfInfo.doc, a.page, r0, 3, false); } catch (e) {} }
   if (!c) { const ex = scanned.explanations && scanned.explanations[n]; if (ex) { try { c = await BankCore.renderExplanation(pdfInfo.doc, ex, 1.6); } catch (e) {} } }
   if (!c) return '';
   const k = Math.min(1, 520 / c.width), o = document.createElement('canvas'); o.width = Math.max(1, Math.round(c.width * k)); o.height = Math.max(1, Math.round(c.height * k));
@@ -863,9 +863,9 @@ async function openSavedReview() {
           if (!d.ok) continue;
           const ans = (d.answers || []).map(a => String(a));
           const mine = qs.filter(q => q.source === d.title && q.num > 0).sort((a, b) => a.num - b.num);
-          const bankIds = {}, qinfo = [], units = [];
-          mine.forEach(q => { bankIds[q.num] = q.id; qinfo.push({ n: q.num, unit: q.unit === '(단원 미지정)' ? '' : q.unit, grade: q.grade || '', sub: q.sub || '' }); if (units.indexOf(q.unit) < 0) units.push(q.unit); });
-          server.push({ title: d.title, id: d.id, answers: ans, units: units, unread: [], dash: ans.map((a, i) => a === '-' ? i + 1 : 0).filter(Boolean), dashImg: {}, pair: null, srv: true, bankIds: bankIds, unreadImg: {}, qinfo: qinfo, tm: {}, qthumb: {}, at: e.createdAt });
+          const bankIds = {}, qinfo = [], units = [], qthumb = {};
+          mine.forEach(q => { bankIds[q.num] = q.id; if (q.fileId) qthumb[q.num] = driveThumb(q.fileId, 500); qinfo.push({ n: q.num, unit: q.unit === '(단원 미지정)' ? '' : q.unit, grade: q.grade || '', sub: q.sub || '' }); if (units.indexOf(q.unit) < 0) units.push(q.unit); });
+          server.push({ title: d.title, id: d.id, answers: ans, units: units, unread: [], dash: ans.map((a, i) => a === '-' ? i + 1 : 0).filter(Boolean), dashImg: {}, pair: null, srv: true, bankIds: bankIds, unreadImg: {}, qinfo: qinfo, tm: {}, qthumb: qthumb, at: e.createdAt });
         } catch (e2) {} } };
       await Promise.all([worker(), worker(), worker(), worker()]);
       server.sort((a, b) => String(b.at).localeCompare(String(a.at)));
