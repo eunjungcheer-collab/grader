@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>시험지 찾는 중…</title>
+<style>body{font-family:system-ui,sans-serif;background:#F6F4EE;color:#222;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}.b{max-width:420px;padding:24px;text-align:center}</style></head>
+<body><div class="b"><div id="m">⏳ 시험지 주소를 찾는 중이에요...</div></div>
+<script>
+// 앱 주소(폴더 위치)가 바뀌어도, 예전에 인쇄한 시험지 QR이 새 주소로 이어지게 하는 안내 페이지 (GitHub Pages가 없는 주소에서 자동으로 보여 준다)
+(async function () {
+  var m = document.getElementById('m');
+  var parts = location.pathname.split('/').filter(Boolean);
+  var isStudent = /student_exam\.html$/.test(location.pathname) || /student_multi\.html$/.test(location.pathname);
+  var file = isStudent ? parts[parts.length - 1] : '';
+  if (!file) { m.innerHTML = '페이지를 찾을 수 없어요.<br><a href="' + location.pathname.replace(/[^/]*$/, '') + '">처음 화면으로</a>'; return; }
+  var repo = parts.length ? '/' + parts[0] + '/' : '/';
+  var cands = [repo + file, repo + parts[0] + '/' + file, repo + 'grader/' + file], tried = {};
+  var cur = location.pathname;
+  for (var i = 0; i < cands.length; i++) {
+    var u = cands[i]; if (u === cur || tried[u]) continue; tried[u] = 1;
+    try { var r = await fetch(u, { method: 'HEAD', cache: 'no-store' }); if (r.ok) { location.replace(u + location.search + location.hash); return; } } catch (e) {}
+  }
+  m.innerHTML = '시험지 페이지를 찾지 못했어요.<br>선생님께 문의해 주세요.';
+})();
+</script></body></html>
