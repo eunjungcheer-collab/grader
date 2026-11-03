@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611022100">
+<link rel="stylesheet" href="css/style.css?v=202611030140">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,6 +20,7 @@
     <a class="btn outline" href="teacher_list.html">📋 등록된 시험지 목록</a>
     <a class="btn outline" href="teacher_new.html?review=1">🕘 최근 등록 시험지 정답·단원 확인 (다른 기기 등록분 포함)</a>
     <a class="btn outline" href="bank_compose.html">🧩 문제은행에서 시험 조합하기</a>
+    <a class="btn outline" href="alerts.html" id="alerts-link">⏰ 시험 예약·알림</a>
     <a class="btn outline" href="records.html">🗂️ 시험 기록 관리</a>
     <a class="btn outline" href="trend.html">📈 학생별 성적 추이</a>
     <a class="btn outline" href="bank_list.html">🗂️ 문제은행</a>
@@ -28,9 +29,22 @@
   </div>
 </template>
 
-<script src="js/config.js?v=202611022100"></script>
-<script src="js/api.js?v=202611022100"></script>
-<script src="js/common.js?v=202611022100"></script>
-<script>renderHeader();</script>
+<script src="js/config.js?v=202611030140"></script>
+<script src="js/api.js?v=202611030140"></script>
+<script src="js/common.js?v=202611030140"></script>
+<script>
+renderHeader();
+// 새 제출·미제출이 있으면 메뉴에 숫자를 띄운다 (알림 서버가 아직 배포 전이면 조용히 넘어간다)
+(async function () {
+  const a = document.getElementById('alerts-link'); if (!a || !getTeacherPassword()) return;
+  try {
+    let since = ''; try { since = localStorage.getItem('alertSeen') || ''; } catch (e) {}
+    const r = await callApi('listAlerts', { password: getTeacherPassword(), since: since });
+    if (!r || !r.ok) return;
+    const n = (since ? r.recent.length : 0), m = r.missed.length;
+    if (n || m) a.innerHTML = '⏰ 시험 예약·알림 ' + (m ? '<b style="color:#C1392B;">· 미제출 ' + m + '명</b> ' : '') + (n ? '<b style="color:#1a7a4a;">· 새 제출 ' + n + '건</b>' : '');
+  } catch (e) {}
+})();
+</script>
 </body>
 </html>

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>시험 예약·알림 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611030140">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>⏰ 시험 예약·알림</h1>
+  <p class="muted">학생에게 시험을 <b>언제까지</b> 내라고 예약해 두면, 학생이 제출할 때와 기한이 지났는데 안 냈을 때 알려 드려요.</p>
+
+  <div class="card" id="al-box"><b>🔔 알림</b><div id="al-body" class="hint" style="margin-top:8px;">불러오는 중...</div></div>
+
+  <div class="card">
+    <b>➕ 시험 예약하기</b>
+    <label style="display:block; margin-top:8px;">시험지 <select id="as-exam"><option value="">불러오는 중...</option></select></label>
+    <label style="display:block; margin-top:8px;">학생 이름 <span class="hint" style="margin:0;">(여러 명이면 줄을 바꾸거나 쉼표로 나눠 적으세요)</span>
+      <textarea id="as-names" rows="3" placeholder="윤태현&#10;김철수"></textarea></label>
+    <div class="hint" style="margin:4px 0 0;">학생이 시험 화면에서 적는 이름과 <b>똑같이</b> 적어야 제출로 인식돼요. (띄어쓰기는 달라도 돼요)</div>
+    <label style="display:block; margin-top:8px;">제출 기한 <input type="datetime-local" id="as-dl"></label>
+    <div id="as-dl-txt" class="hint" style="margin:2px 0 0;"></div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;" id="as-quick"></div>
+    <button type="button" class="btn primary" id="as-go" style="width:100%; margin-top:10px;">예약하기</button>
+    <div id="as-msg" class="hint" style="margin-top:6px;"></div>
+  </div>
+
+  <div class="card"><b>📋 예약 목록</b><div id="as-list" style="margin-top:8px;"></div></div>
+
+  <div class="card">
+    <b>⚙️ 알림 설정</b>
+    <label style="display:block; margin-top:8px;">알림 받을 이메일 <input type="email" id="st-email" placeholder="example@naver.com"></label>
+    <label style="display:block; font-weight:400; margin-top:6px;"><input type="checkbox" id="st-sub"> 학생이 제출할 때마다 메일 받기</label>
+    <label style="display:block; font-weight:400; margin-top:4px;"><input type="checkbox" id="st-miss"> 기한이 지났는데 안 낸 학생이 있으면 메일 받기</label>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;"><button type="button" class="btn primary" id="st-save">저장</button><button type="button" class="btn outline" id="st-test">테스트 메일 보내기</button></div>
+    <div id="st-msg" class="hint" style="margin-top:6px;"></div>
+    <div id="st-trig" class="hint" style="margin-top:10px;"></div>
+    <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
+  </div>
+</template>
+<script src="js/config.js?v=202611030140"></script>
+<script src="js/api.js?v=202611030140"></script>
+<script src="js/common.js?v=202611030140"></script>
+<script>
+requireLogin();
+renderHeader({});
+const $ = id => document.getElementById(id);
+const pw = () => getTeacherPassword();
+const e = escapeHtml;
+const SEEN = 'alertSeen';
+const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+function fmt(iso) { const d = new Date(iso); if (isNaN(d)) return String(iso); const p = n => String(n).padStart(2, '0'); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + DAYS[d.getDay()] + ') ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+function kakaoText(name, title, deadline) { return name + ' 학생, 「' + title + '」 시험 기록 제출 기한(' + fmt(deadline) + ')이 지났어요. 카카오톡으로 시험기록을 보내세요.'; }
+function copy(text, btn) {
+  const done = () => { const o = btn.textContent; btn.textContent = '✅ 복사됨'; setTimeout(() => { btn.textContent = o; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => { prompt('아래 문구를 복사하세요', text); });
+  else prompt('아래 문구를 복사하세요', text);
+}
+let ALERT_NOW = '';
+async function loadAlerts() {
+  const body = $('al-body');
+  let since = ''; try { since = localStorage.getItem(SEEN) || ''; } catch (x) {}
+  try {
+    const r = await callApi('listAlerts', { password: pw(), since: since });
+    if (!r.ok) throw new Error(r.error || '알림을 불러오지 못했어요');
+    ALERT_NOW = r.now;
+    let h = '';
+    if (r.missed.length) {
+      h += '<div style="color:#C1392B; font-weight:700; margin-bottom:4px;">⚠️ 기한 안에 제출하지 않은 학생 ' + r.missed.length + '명</div>';
+      h += r.missed.map(m => '<div style="border-top:1px solid var(--line); padding:8px 0;"><b>' + e(m.studentName) + '</b> — ' + e(m.examTitle) + ' <span class="hint" style="margin:0;">(기한 ' + fmt(m.deadline) + ')</span><div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;"><button type="button" class="btn outline al-copy" data-t="' + e(kakaoText(m.studentName, m.examTitle, m.deadline)) + '" style="padding:5px 10px;">💬 카톡 문구 복사</button></div></div>').join('');
+    } else h += '<div>기한이 지났는데 안 낸 학생은 없어요.</div>';
+    h += '<div style="font-weight:700; margin:12px 0 4px;">📥 새로 제출한 기록 ' + r.recent.length + '건' + (since ? '' : ' <span class="hint" style="margin:0;">(최근 기록)</span>') + '</div>';
+    h += r.recent.length ? r.recent.map(s => '<div style="border-top:1px solid var(--line); padding:6px 0;"><b>' + e(s.studentName) + '</b> — ' + e(s.examTitle) + ' · ' + s.score100 + '점 <span class="hint" style="margin:0;">(' + fmt(s.submittedAt) + ')</span></div>').join('') : '<div class="hint">새로 제출한 기록이 없어요.</div>';
+    h += '<button type="button" class="btn outline" id="al-seen" style="margin-top:10px;">확인했어요 (새 제출 목록 비우기)</button>';
+    body.innerHTML = h;
+    body.querySelectorAll('.al-copy').forEach(b => b.addEventListener('click', () => copy(b.dataset.t, b)));
+    $('al-seen').addEventListener('click', () => { try { localStorage.setItem(SEEN, ALERT_NOW || new Date().toISOString()); } catch (x) {} loadAlerts(); });
+  } catch (err) { body.innerHTML = '<span style="color:#C1392B;">' + e(err.message) + '</span>'; }
+}
+const STAT = { wait: ['⏳ 대기', '#475569'], done: ['✅ 제출', '#145A32'], late: ['🕒 늦게 제출', '#9A5B00'], missed: ['⚠️ 미제출', '#C1392B'] };
+async function loadAssign() {
+  try {
+    const r = await callApi('listAssignments', { password: pw() });
+    if (!r.ok) throw new Error(r.error || '목록을 불러오지 못했어요');
+    const L = r.assignments;
+    $('as-list').innerHTML = L.length ? L.map(a => { const st = STAT[a.status] || STAT.wait;
+      return '<div style="border-top:1px solid var(--line); padding:8px 0; display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;"><div><b>' + e(a.studentName) + '</b> — ' + e(a.examTitle) + '<div class="hint" style="margin:2px 0 0;">기한 ' + fmt(a.deadline) + (a.submittedAt ? ' · 제출 ' + fmt(a.submittedAt) : '') + '</div></div><div style="display:flex; gap:6px; align-items:center;"><span style="font-weight:700; color:' + st[1] + ';">' + st[0] + '</span>' + (a.status === 'missed' || a.status === 'wait' ? '' : '') + '<button type="button" class="btn outline as-del" data-id="' + e(a.id) + '" style="padding:4px 10px; color:#C1392B;">삭제</button></div></div>'; }).join('') : '<div class="hint">예약한 시험이 없어요.</div>';
+    $('as-list').querySelectorAll('.as-del').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('이 예약을 삭제할까요? (제출 기록은 지워지지 않아요)')) return;
+      b.disabled = true; await callApi('deleteAssignment', { password: pw(), id: b.dataset.id }); loadAssign(); loadAlerts();
+    }));
+  } catch (err) { $('as-list').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + '</span>'; }
+}
+async function loadExams() {
+  try {
+    const r = await callApi('listExams', { password: pw() });
+    if (!r.ok) throw new Error(r.error);
+    $('as-exam').innerHTML = '<option value="">시험지를 고르세요</option>' + (r.exams || []).map(x => '<option value="' + e(x.id) + '">' + e(x.title) + '</option>').join('');
+    const q = new URLSearchParams(location.search).get('exam'); if (q) $('as-exam').value = q;
+  } catch (err) { $('as-exam').innerHTML = '<option value="">시험지를 불러오지 못했어요</option>'; }
+}
+// 기한 빠른 선택 + 요일 표시
+function pad(n) { return String(n).padStart(2, '0'); }
+function toLocalInput(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+function showDl() { const v = $('as-dl').value; $('as-dl-txt').textContent = v ? '→ ' + fmt(new Date(v).toISOString()) + ' 까지' : ''; }
+(function quick() {
+  const box = $('as-quick'), mk = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn outline'; b.style.padding = '4px 10px'; b.textContent = label; b.addEventListener('click', () => { const d = fn(); $('as-dl').value = toLocalInput(d); showDl(); }); box.appendChild(b); };
+  mk('오늘 밤 11:59', () => { const d = new Date(); d.setHours(23, 59, 0, 0); return d; });
+  mk('내일 저녁 6시', () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(18, 0, 0, 0); return d; });
+  mk('일주일 뒤 저녁 6시', () => { const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(18, 0, 0, 0); return d; });
+})();
+$('as-dl').addEventListener('input', showDl);
+$('as-go').addEventListener('click', async () => {
+  const msg = $('as-msg'), ex = $('as-exam').value, dl = $('as-dl').value;
+  const names = $('as-names').value.split(/[\n,，、]+/).map(s => s.trim()).filter(Boolean);
+  if (!ex) { msg.textContent = '⚠️ 시험지를 고르세요'; return; }
+  if (!names.length) { msg.textContent = '⚠️ 학생 이름을 적어 주세요'; return; }
+  if (!dl) { msg.textContent = '⚠️ 제출 기한을 고르세요'; return; }
+  if (new Date(dl).getTime() < Date.now() && !confirm('기한이 이미 지난 시간이에요. 그래도 예약할까요?')) return;
+  $('as-go').disabled = true; msg.textContent = '예약하는 중...';
+  try {
+    const r = await callApi('createAssignments', { password: pw(), examId: ex, students: names, deadline: new Date(dl).toISOString() });
+    if (!r.ok) throw new Error(r.error || '예약하지 못했어요');
+    msg.textContent = '✅ ' + r.added + '명을 예약했어요' + (r.skipped ? ' (이미 예약된 ' + r.skipped + '명은 건너뛰었어요)' : '');
+    $('as-names').value = ''; loadAssign(); loadAlerts();
+  } catch (err) { msg.innerHTML = '<span style="color:#C1392B;">⚠️ ' + e(err.message) + '</span>'; }
+  $('as-go').disabled = false;
+});
+async function loadSettings() {
+  try {
+    const r = await callApi('getAlertSettings', { password: pw() });
+    if (!r.ok) throw new Error(r.error);
+    $('st-email').value = r.email || ''; $('st-sub').checked = !!r.notifySubmit; $('st-miss').checked = !!r.notifyMiss;
+    $('st-trig').innerHTML = r.triggerOn ? '✅ 기한 자동 확인이 켜져 있어요 (10분마다).' : '⚠️ 기한 자동 확인이 꺼져 있어요. 꺼져 있으면 <b>이 화면을 열 때만</b> 미제출이 반영돼요. <button type="button" class="btn outline" id="st-trigbtn" style="padding:4px 10px;">자동 확인 켜기</button>';
+    const tb = $('st-trigbtn'); if (tb) tb.addEventListener('click', async () => { tb.disabled = true; const x = await callApi('installAlertTrigger', { password: pw() }); if (!x.ok) $('st-trig').innerHTML = '<span style="color:#C1392B;">' + e(x.error) + '<br>Apps Script 편집기에서 setupAlerts 함수를 한 번 실행해 권한을 허용한 뒤 다시 눌러 주세요.</span>'; else loadSettings(); });
+  } catch (err) { $('st-msg').innerHTML = '<span style="color:#C1392B;">설정을 불러오지 못했어요: ' + e(err.message) + ' (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; }
+}
+async function saveSettings(test) {
+  const msg = $('st-msg'); msg.textContent = test ? '테스트 메일을 보내는 중...' : '저장 중...';
+  try {
+    const r = await callApi('setAlertSettings', { password: pw(), email: $('st-email').value.trim(), notifySubmit: $('st-sub').checked, notifyMiss: $('st-miss').checked, test: !!test });
+    if (!r.ok) throw new Error(r.error || '저장하지 못했어요');
+    msg.textContent = test ? (r.testSent ? '✅ 테스트 메일을 보냈어요. 메일함(스팸함도)을 확인하세요.' : '⚠️ 메일을 보내지 못했어요. 이메일 주소와 권한을 확인하세요.') : '✅ 저장했어요';
+  } catch (err) { msg.innerHTML = '<span style="color:#C1392B;">⚠️ ' + e(err.message) + '</span>'; }
+}
+$('st-save').addEventListener('click', () => saveSettings(false));
+$('st-test').addEventListener('click', () => saveSettings(true));
+loadExams(); loadAlerts(); loadAssign(); loadSettings();
+</script>
+</body>
+</html>
