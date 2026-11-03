@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 예약·알림 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611040220">
+<link rel="stylesheet" href="css/style.css?v=202611040240">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -47,7 +47,8 @@
     <label style="display:block; margin-top:8px;">알림 받을 이메일 <input type="email" id="st-email" placeholder="example@naver.com"></label>
     <label style="display:block; font-weight:400; margin-top:6px;"><input type="checkbox" id="st-sub"> 학생이 제출할 때마다 메일 받기</label>
     <label style="display:block; font-weight:400; margin-top:4px;"><input type="checkbox" id="st-miss"> 기한이 지났는데 안 낸 학생이 있으면 메일 받기</label>
-    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;"><button type="button" class="btn primary" id="st-save">저장</button><button type="button" class="btn outline" id="st-test">테스트 메일 보내기</button></div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;"><button type="button" class="btn primary" id="st-save">저장</button><button type="button" class="btn outline" id="st-test">테스트 메일 보내기</button><button type="button" class="btn outline" id="st-resend">미제출 메일 다시 보내기</button></div>
+    <div id="st-miss-res" class="hint" style="margin-top:6px;"></div>
     <div id="st-msg" class="hint" style="margin-top:6px;"></div>
     <div id="st-trig" class="hint" style="margin-top:10px;"></div>
     <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:10px;"><b>💬 카톡 안내 문구</b>
@@ -58,10 +59,10 @@
     <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
   </div>
 </template>
-<script src="js/config.js?v=202611040220"></script>
-<script src="js/api.js?v=202611040220"></script>
-<script src="js/common.js?v=202611040220"></script>
-<script src="js/clockpicker.js?v=202611040220"></script>
+<script src="js/config.js?v=202611040240"></script>
+<script src="js/api.js?v=202611040240"></script>
+<script src="js/common.js?v=202611040240"></script>
+<script src="js/clockpicker.js?v=202611040240"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -197,6 +198,8 @@ async function loadSettings() {
     if (!r.ok) throw new Error(r.error);
     $('st-email').value = r.email || ''; $('st-sub').checked = !!r.notifySubmit; $('st-miss').checked = !!r.notifyMiss;
     $('st-trig').innerHTML = r.triggerOn ? '✅ 기한 자동 확인이 켜져 있어요 (10분마다).' : '⚠️ 기한 자동 확인이 꺼져 있어요. 꺼져 있으면 <b>이 화면을 열 때만</b> 미제출이 반영돼요. <button type="button" class="btn outline" id="st-trigbtn" style="padding:4px 10px;">자동 확인 켜기</button>';
+    const lm = r.lastMissMail;
+    $('st-miss-res').innerHTML = lm ? ((lm.ok ? '✅ 최근 미제출 메일: ' + lm.n + '명 분을 보냈어요' : '⚠️ 최근 미제출 메일을 <b>보내지 못했어요</b>' + (lm.err ? ' (' + e(lm.err) + ')' : '')) + ' · ' + new Date(lm.at).toLocaleString('ko-KR')) : '아직 미제출 메일을 보낸 기록이 없어요.';
     const tb = $('st-trigbtn'); if (tb) tb.addEventListener('click', async () => { tb.disabled = true; const x = await callApi('installAlertTrigger', { password: pw() }); if (!x.ok) $('st-trig').innerHTML = '<span style="color:#C1392B;">' + e(x.error) + '<br>Apps Script 편집기에서 setupAlerts 함수를 한 번 실행해 권한을 허용한 뒤 다시 눌러 주세요.</span>'; else loadSettings(); });
   } catch (err) { $('st-msg').innerHTML = '<span style="color:#C1392B;">설정을 불러오지 못했어요: ' + e(err.message) + ' (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; }
 }
@@ -210,6 +213,15 @@ async function saveSettings(test) {
 }
 $('st-save').addEventListener('click', () => saveSettings(false));
 $('st-test').addEventListener('click', () => saveSettings(true));
+$('st-resend').addEventListener('click', async () => {
+  const msg = $('st-msg'); msg.textContent = '미제출 메일을 보내는 중...';
+  try { await saveSettings(false); msg.textContent = '미제출 메일을 보내는 중...';
+    const r = await callApi('resendMissMail', { password: pw() });
+    if (!r.ok) throw new Error(r.error || '보내지 못했어요');
+    msg.innerHTML = r.sent ? '✅ 미제출 ' + r.n + '명 분 메일을 보냈어요. 메일함(스팸함도)을 확인하세요.' : '⚠️ ' + e(r.error || '메일을 보내지 못했어요');
+    loadSettings();
+  } catch (err) { msg.innerHTML = '<span style="color:#C1392B;">⚠️ ' + e(err.message) + '</span>'; }
+});
 $('kt-tpl').value = ktTpl();
 $('kt-save').addEventListener('click', () => { try { localStorage.setItem(KT_KEY, $('kt-tpl').value.trim() || KT_DEF); $('kt-msg').textContent = '✅ 저장했어요 (이 컴퓨터·브라우저에 저장돼요)'; loadAlerts(); } catch (x) { $('kt-msg').textContent = '⚠️ 저장하지 못했어요'; } });
 $('kt-reset').addEventListener('click', () => { $('kt-tpl').value = KT_DEF; try { localStorage.removeItem(KT_KEY); } catch (x) {} $('kt-msg').textContent = '기본 문구로 되돌렸어요'; loadAlerts(); });
