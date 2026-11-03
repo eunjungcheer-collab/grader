@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611032200">
+<link rel="stylesheet" href="css/style.css?v=202611032340">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,9 +16,9 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611032200"></script>
-<script src="js/api.js?v=202611032200"></script>
-<script src="js/common.js?v=202611032200"></script>
+<script src="js/config.js?v=202611032340"></script>
+<script src="js/api.js?v=202611032340"></script>
+<script src="js/common.js?v=202611032340"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -51,6 +51,7 @@ async function loadExam() {
       <form id="answer-form" class="card">
         <label>이름</label>
         <input type="text" id="student-name" required>
+        <div id="dl-box" style="display:none; margin-top:8px; padding:8px 10px; border-radius:8px; background:#FFF4E0; border:1px solid #F3D9A4; color:#7A4A00; font-size:14px;"></div>
         <label style="margin-top:12px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 또는 1-10, 15 · 풀지 않는 번호는 채점에서 빠져요)</span></label>
         <input type="text" id="skip-input" placeholder="예: 1-10" inputmode="numeric" autocomplete="off">
         <div id="answer-grid" style="margin-top:16px;"></div>
@@ -92,6 +93,26 @@ async function loadExam() {
 
     document.getElementById('skip-input').addEventListener('input', applySkip);
     document.getElementById('answer-form').addEventListener('submit', submitAnswers);
+    // 선생님이 예약해 둔 학생이면 이름을 적을 때 제출 기한을 보여 준다
+    (function () {
+      const inp = document.getElementById('student-name'), box = document.getElementById('dl-box');
+      let timer = null, seq = 0;
+      const DAYS = ['일', '월', '화', '수', '목', '금', '토'], pad = n => String(n).padStart(2, '0');
+      function look() {
+        const name = inp.value.trim(), my = ++seq;
+        if (!name) { box.style.display = 'none'; return; }
+        callApi('getDeadline', { examId: examId, studentName: name }).then(r => {
+          if (my !== seq) return;
+          if (!r || !r.ok || !r.deadline) { box.style.display = 'none'; return; }
+          const d = new Date(r.deadline); if (isNaN(d)) { box.style.display = 'none'; return; }
+          const t = (d.getMonth() + 1) + '/' + d.getDate() + '(' + DAYS[d.getDay()] + ') ' + (d.getHours() < 12 ? '오전 ' : '오후 ') + ((d.getHours() % 12) || 12) + ':' + pad(d.getMinutes());
+          box.innerHTML = d.getTime() < Date.now() ? '⏰ 제출 기한은 <b>' + t + '</b>이었어요. 기한이 지났지만 지금 제출해도 기록돼요.' : '⏰ 제출 기한: <b>' + t + '</b>까지';
+          box.style.display = '';
+        }).catch(() => { if (my === seq) box.style.display = 'none'; });
+      }
+      inp.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(look, 600); });
+      inp.addEventListener('blur', () => { clearTimeout(timer); look(); });
+    })();
   } catch (err) {
     area.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
   }
