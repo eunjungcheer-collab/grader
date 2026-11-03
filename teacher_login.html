@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>로그인 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611031530">
+<link rel="stylesheet" href="css/style.css?v=202611031650">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -18,15 +18,17 @@
   <form id="login-form" class="card">
     <label>비밀번호</label>
     <input type="password" id="password" required autofocus>
+    <label style="display:flex; align-items:center; gap:8px; font-weight:400; margin-top:12px;"><input type="checkbox" id="keep" checked style="width:auto; margin:0;"> 이 기기에서 로그인 유지 <span class="hint" style="margin:0;">(로그아웃하기 전까지 비밀번호를 다시 묻지 않아요. 학원·학교의 공용 컴퓨터에서는 끄세요)</span></label>
     <button type="submit" class="btn primary" style="width:100%; margin-top:16px;">로그인</button>
   </form>
 </template>
 
-<script src="js/config.js?v=202611031530"></script>
-<script src="js/api.js?v=202611031530"></script>
-<script src="js/common.js?v=202611031530"></script>
+<script src="js/config.js?v=202611031650"></script>
+<script src="js/api.js?v=202611031650"></script>
+<script src="js/common.js?v=202611031650"></script>
 <script>
 renderHeader();
+if (getTeacherPassword()) { location.replace('index.html'); }
 
 document.getElementById('login-form').addEventListener('submit', async function (e) {
   e.preventDefault();
@@ -36,8 +38,10 @@ document.getElementById('login-form').addEventListener('submit', async function 
   try {
     const res = await callApi('login', { password: password });
     if (res.ok) {
-      sessionStorage.setItem('teacher_pw', password);
-      location.href = 'index.html';
+      setTeacherPassword(password, document.getElementById('keep').checked);
+      let next = 'index.html';
+      try { const n = sessionStorage.getItem('login_next'); sessionStorage.removeItem('login_next'); if (n && /^[A-Za-z0-9_\-]+\.html(\?[^\s]*)?$/.test(n) && n !== 'teacher_login.html') next = n; } catch (e) {}
+      location.href = next;
     } else {
       errorBox.innerHTML = '<div class="banner error">비밀번호가 올바르지 않아요.</div>';
     }

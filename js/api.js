@@ -47,6 +47,8 @@ async function _callApiRaw(action, params) {
         throw new Error('서버 요청에 실패했어요 (' + res.status + ')');
       }
       const out = await res.json();
+      // 다른 기기에서 비밀번호를 바꾼 경우 등: 저장된 로그인이 맞지 않으면 지우고 로그인 화면으로 보낸다
+      if (out && out.ok === false && out.error === '로그인이 필요해요.' && action !== 'login' && !/teacher_login/.test(location.pathname)) { clearTeacherLogin(); goLogin(); }
       if (out && out.error === 'unknown action') {
         throw new Error('서버(Apps Script)가 옛날 버전이에요. 새 AppsScript_Code.gs를 붙여넣고 "배포 관리 → 편집 → 새 버전"으로 다시 배포해주세요. (모르는 기능: ' + action + ')');
       }
@@ -64,13 +66,32 @@ async function _callApiRaw(action, params) {
   }
 }
 
+// 로그인 상태: 이 탭에서만 유지(sessionStorage) 또는 이 기기에서 계속 유지(localStorage, 「이 기기에서 로그인 유지」를 켠 경우)
 function getTeacherPassword() {
-  return sessionStorage.getItem('teacher_pw') || '';
+  let pw = '';
+  try { pw = sessionStorage.getItem('teacher_pw') || ''; } catch (e) {}
+  if (pw) return pw;
+  try { pw = localStorage.getItem('teacher_pw_keep') || ''; } catch (e) {}
+  if (pw) { try { sessionStorage.setItem('teacher_pw', pw); } catch (e) {} }
+  return pw;
+}
+function setTeacherPassword(pw, keep) {
+  try { sessionStorage.setItem('teacher_pw', pw); } catch (e) {}
+  try { if (keep) localStorage.setItem('teacher_pw_keep', pw); else localStorage.removeItem('teacher_pw_keep'); } catch (e) {}
+}
+function isTeacherKept() { try { return !!localStorage.getItem('teacher_pw_keep'); } catch (e) { return false; } }
+function clearTeacherLogin() {
+  try { sessionStorage.removeItem('teacher_pw'); } catch (e) {}
+  try { localStorage.removeItem('teacher_pw_keep'); } catch (e) {}
+}
+function goLogin() {
+  try { sessionStorage.setItem('login_next', location.pathname.replace(/^.*\//, '') + location.search); } catch (e) {}
+  location.href = 'teacher_login.html';
 }
 
 function requireLogin() {
   if (!getTeacherPassword()) {
-    location.href = 'teacher_login.html';
+    goLogin();
   }
 }
 

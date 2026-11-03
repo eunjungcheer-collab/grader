@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 예약·알림 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611031530">
+<link rel="stylesheet" href="css/style.css?v=202611031650">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -42,12 +42,17 @@
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;"><button type="button" class="btn primary" id="st-save">저장</button><button type="button" class="btn outline" id="st-test">테스트 메일 보내기</button></div>
     <div id="st-msg" class="hint" style="margin-top:6px;"></div>
     <div id="st-trig" class="hint" style="margin-top:10px;"></div>
+    <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:10px;"><b>💬 카톡 안내 문구</b>
+      <div class="hint" style="margin:4px 0;">미제출 학생 옆 「카톡 문구 복사」를 누르면 이 문구가 복사돼요. <b>{이름}</b> <b>{시험}</b> <b>{기한}</b>은 학생마다 자동으로 바뀌어요.</div>
+      <textarea id="kt-tpl" rows="4" style="display:block; width:100%; box-sizing:border-box;"></textarea>
+      <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;"><button type="button" class="btn primary" id="kt-save" style="padding:6px 14px;">문구 저장</button><button type="button" class="btn outline" id="kt-reset" style="padding:6px 14px;">기본 문구로</button></div>
+      <div id="kt-msg" class="hint" style="margin-top:4px;"></div></div>
     <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
   </div>
 </template>
-<script src="js/config.js?v=202611031530"></script>
-<script src="js/api.js?v=202611031530"></script>
-<script src="js/common.js?v=202611031530"></script>
+<script src="js/config.js?v=202611031650"></script>
+<script src="js/api.js?v=202611031650"></script>
+<script src="js/common.js?v=202611031650"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -57,7 +62,9 @@ const e = escapeHtml;
 const SEEN = 'alertSeen';
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 function fmt(iso) { const d = new Date(iso); if (isNaN(d)) return String(iso); const p = n => String(n).padStart(2, '0'); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + DAYS[d.getDay()] + ') ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
-function kakaoText(name, title, deadline) { return name + ' 학생, 「' + title + '」 시험 기록 제출 기한(' + fmt(deadline) + ')이 지났어요. 카카오톡으로 시험기록을 보내세요.'; }
+const KT_KEY = 'kakaoTpl', KT_DEF = '{이름} 학생, 「{시험}」 제출 기한({기한})이 지났어요. 아직 제출하지 못했다면 시험지의 QR로 지금 제출하고, 카카오톡으로 알려 주세요.';
+function ktTpl() { try { return localStorage.getItem(KT_KEY) || KT_DEF; } catch (x) { return KT_DEF; } }
+function kakaoText(name, title, deadline) { return ktTpl().split('{이름}').join(name).split('{시험}').join(title).split('{기한}').join(fmt(deadline)); }
 function copy(text, btn) {
   const done = () => { const o = btn.textContent; btn.textContent = '✅ 복사됨'; setTimeout(() => { btn.textContent = o; }, 1500); };
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => { prompt('아래 문구를 복사하세요', text); });
@@ -152,6 +159,9 @@ async function saveSettings(test) {
 }
 $('st-save').addEventListener('click', () => saveSettings(false));
 $('st-test').addEventListener('click', () => saveSettings(true));
+$('kt-tpl').value = ktTpl();
+$('kt-save').addEventListener('click', () => { try { localStorage.setItem(KT_KEY, $('kt-tpl').value.trim() || KT_DEF); $('kt-msg').textContent = '✅ 저장했어요 (이 컴퓨터·브라우저에 저장돼요)'; loadAlerts(); } catch (x) { $('kt-msg').textContent = '⚠️ 저장하지 못했어요'; } });
+$('kt-reset').addEventListener('click', () => { $('kt-tpl').value = KT_DEF; try { localStorage.removeItem(KT_KEY); } catch (x) {} $('kt-msg').textContent = '기본 문구로 되돌렸어요'; loadAlerts(); });
 loadExams(); loadAlerts(); loadAssign(); loadSettings();
 </script>
 </body>

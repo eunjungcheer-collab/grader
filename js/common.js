@@ -1,4 +1,4 @@
-window.APP_BUILD = '202611031530';
+window.APP_BUILD = '202611031650';
 function renderHeader(opts) {
   const isLoggedIn = !!getTeacherPassword();
   const authHtml = isLoggedIn ? `
@@ -24,7 +24,7 @@ function renderHeader(opts) {
   if (logoutLink) {
     logoutLink.addEventListener('click', function (e) {
       e.preventDefault();
-      sessionStorage.removeItem('teacher_pw');
+      clearTeacherLogin();
       location.href = 'teacher_login.html';
     });
   }
