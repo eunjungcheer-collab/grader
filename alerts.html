@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 예약·알림 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611030140">
+<link rel="stylesheet" href="css/style.css?v=202611031530">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
+<style>#as-exam,#as-names,#as-dl,#st-email{display:block; width:100%; max-width:100%; box-sizing:border-box; margin-top:4px;} #as-names{resize:vertical;}</style>
 <template id="page-content">
   <span class="backlink"><a href="index.html">← 홈으로</a></span>
   <h1>⏰ 시험 예약·알림</h1>
@@ -44,9 +45,9 @@
     <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
   </div>
 </template>
-<script src="js/config.js?v=202611030140"></script>
-<script src="js/api.js?v=202611030140"></script>
-<script src="js/common.js?v=202611030140"></script>
+<script src="js/config.js?v=202611031530"></script>
+<script src="js/api.js?v=202611031530"></script>
+<script src="js/common.js?v=202611031530"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -146,7 +147,7 @@ async function saveSettings(test) {
   try {
     const r = await callApi('setAlertSettings', { password: pw(), email: $('st-email').value.trim(), notifySubmit: $('st-sub').checked, notifyMiss: $('st-miss').checked, test: !!test });
     if (!r.ok) throw new Error(r.error || '저장하지 못했어요');
-    msg.textContent = test ? (r.testSent ? '✅ 테스트 메일을 보냈어요. 메일함(스팸함도)을 확인하세요.' : '⚠️ 메일을 보내지 못했어요. 이메일 주소와 권한을 확인하세요.') : '✅ 저장했어요';
+    msg.textContent = test ? (r.testSent ? '✅ 테스트 메일을 보냈어요. 메일함(스팸함도)을 확인하세요.' : '⚠️ 메일을 보내지 못했어요. ' + (r.testError ? '(' + r.testError + ') ' : '') + '아래 안내대로 권한을 허용했는지 확인하세요.') : '✅ 저장했어요';
   } catch (err) { msg.innerHTML = '<span style="color:#C1392B;">⚠️ ' + e(err.message) + '</span>'; }
 }
 $('st-save').addEventListener('click', () => saveSettings(false));
