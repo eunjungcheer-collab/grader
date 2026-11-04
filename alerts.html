@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 예약·알림 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611050200">
+<link rel="stylesheet" href="css/style.css?v=202611050440">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -19,12 +19,12 @@
 
   <div class="card" id="al-box"><b>🔔 알림</b><div id="al-body" class="hint" style="margin-top:8px;">불러오는 중...</div></div>
 
-  <div class="card">
+  <div class="card" id="assign">
     <b>➕ 시험 예약하기</b>
     <label style="display:block; margin-top:8px;">시험지 <select id="as-exam"><option value="">불러오는 중...</option></select></label>
     <div style="margin-top:10px;"><b style="font-size:14px;">학생 선택</b> <span class="hint" style="margin:0;">(반 이름을 누르면 반 전체, 학생 이름을 누르면 한 명씩 골라져요)</span>
       <div id="as-rosters" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;"><span class="hint">불러오는 중...</span></div>
-      <details id="ro-wrap" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:#1F3A6B;">👥 반 명단 만들기·고치기</summary>
+      <details id="ro-wrap" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:#1F3A6B;">👥 반 명단 만들기·고치기 (알림장 학생은 자동으로 들어와요)</summary>
         <div id="ro-edit" style="margin-top:8px;"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;"><button type="button" class="btn outline" id="ro-add" style="padding:6px 12px;">+ 반 추가</button><button type="button" class="btn primary" id="ro-save" style="padding:6px 14px;">명단 저장</button></div>
         <div id="ro-msg" class="hint" style="margin-top:4px;"></div>
@@ -40,7 +40,7 @@
     <div id="as-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 
-  <div class="card"><b>📋 예약 목록</b><div id="as-list" style="margin-top:8px;"></div></div>
+  <div class="card"><b>📋 학생에게 등록한 시험 목록</b> <span class="hint" style="margin:0;">(학생 앱에도 똑같이 보여요)</span><input type="text" id="as-q" placeholder="학생 이름·시험 이름으로 찾기" style="margin-top:8px;"><div id="as-list" style="margin-top:8px;"></div></div>
 
   <div class="card">
     <b>⚙️ 알림 설정</b>
@@ -60,10 +60,10 @@
     <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
   </div>
 </template>
-<script src="js/config.js?v=202611050200"></script>
-<script src="js/api.js?v=202611050200"></script>
-<script src="js/common.js?v=202611050200"></script>
-<script src="js/clockpicker.js?v=202611050200"></script>
+<script src="js/config.js?v=202611050440"></script>
+<script src="js/api.js?v=202611050440"></script>
+<script src="js/common.js?v=202611050440"></script>
+<script src="js/clockpicker.js?v=202611050440"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -104,11 +104,14 @@ async function loadAlerts() {
   } catch (err) { body.innerHTML = '<span style="color:#C1392B;">' + e(err.message) + '</span>'; }
 }
 const STAT = { wait: ['⏳ 대기', '#475569'], done: ['✅ 제출', '#145A32'], late: ['🕒 늦게 제출', '#9A5B00'], missed: ['⚠️ 미제출', '#C1392B'] };
+let ASG = [], asT = null;
+$('as-q').addEventListener('input', () => { clearTimeout(asT); asT = setTimeout(loadAssign, 250); });
 async function loadAssign() {
   try {
     const r = await callApi('listAssignments', { password: pw() });
     if (!r.ok) throw new Error(r.error || '목록을 불러오지 못했어요');
-    const L = r.assignments;
+    ASG = r.assignments; const qv = ($('as-q').value || '').replace(/\s+/g, '').toLowerCase();
+    const L = ASG.filter(a => !qv || (a.studentName + a.examTitle).replace(/\s+/g, '').toLowerCase().includes(qv));
     $('as-list').innerHTML = L.length ? L.map(a => { const st = STAT[a.status] || STAT.wait;
       return '<div style="border-top:1px solid var(--line); padding:8px 0; display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;"><div><b>' + e(a.studentName) + '</b> — ' + e(a.examTitle) + '<div class="hint" style="margin:2px 0 0;">기한 ' + fmt(a.deadline) + (a.submittedAt ? ' · 제출 ' + fmt(a.submittedAt) : '') + '</div></div><div style="display:flex; gap:6px; align-items:center;"><span style="font-weight:700; color:' + st[1] + ';">' + st[0] + '</span>' + (a.status === 'missed' || a.status === 'wait' ? '' : '') + '<button type="button" class="btn outline as-del" data-id="' + e(a.id) + '" style="padding:4px 10px; color:#C1392B;">삭제</button></div></div>'; }).join('') : '<div class="hint">예약한 시험이 없어요.</div>';
     $('as-list').querySelectorAll('.as-del').forEach(b => b.addEventListener('click', async () => {
@@ -158,7 +161,7 @@ function drawRosterChips() {
   const cnt = Object.keys(SEL).length; $('as-selcount').textContent = cnt ? '✔ 선택한 학생 ' + cnt + '명' : '반 이름이나 학생 이름을 눌러 고르세요. 한 명만 골라도 돼요.';
 }
 function drawRosterEditor() {
-  $('ro-edit').innerHTML = ROSTERS.map((r, i) => '<div style="border:1px solid var(--line); border-radius:10px; padding:8px; margin-bottom:8px;"><div style="display:flex; gap:6px;"><input type="text" class="ro-name" data-i="' + i + '" value="' + e(r.name) + '" placeholder="반 이름 (예: 중1 A반)" style="flex:1; min-width:0; box-sizing:border-box;"><button type="button" class="btn outline ro-del" data-i="' + i + '" style="padding:4px 10px; color:#C1392B;">삭제</button></div><textarea class="ro-stu" data-i="' + i + '" rows="3" placeholder="학생 이름 (줄을 바꾸거나 쉼표로 나눠 적으세요)" style="display:block; width:100%; box-sizing:border-box; margin-top:6px;">' + e(r.students.join('\n')) + '</textarea></div>').join('') || '<div class="hint">「+ 반 추가」를 눌러 반을 만드세요.</div>';
+  $('ro-edit').innerHTML = ROSTERS.map((r, i) => r.auto ? '' : '<div style="border:1px solid var(--line); border-radius:10px; padding:8px; margin-bottom:8px;"><div style="display:flex; gap:6px;"><input type="text" class="ro-name" data-i="' + i + '" value="' + e(r.name) + '" placeholder="반 이름 (예: 중1 A반)" style="flex:1; min-width:0; box-sizing:border-box;"><button type="button" class="btn outline ro-del" data-i="' + i + '" style="padding:4px 10px; color:#C1392B;">삭제</button></div><textarea class="ro-stu" data-i="' + i + '" rows="3" placeholder="학생 이름 (줄을 바꾸거나 쉼표로 나눠 적으세요)" style="display:block; width:100%; box-sizing:border-box; margin-top:6px;">' + e(r.students.join('\n')) + '</textarea></div>').join('') || '<div class="hint">「+ 반 추가」를 눌러 반을 만드세요.</div>';
   $('ro-edit').querySelectorAll('.ro-del').forEach(b => b.addEventListener('click', () => { if (!confirm('이 반 명단을 지울까요? (예약·제출 기록은 지워지지 않아요)')) return; readRosterEditor(); ROSTERS.splice(+b.dataset.i, 1); drawRosterEditor(); }));
 }
 function readRosterEditor() {
@@ -166,15 +169,15 @@ function readRosterEditor() {
   $('ro-edit').querySelectorAll('.ro-stu').forEach(t => { const r = ROSTERS[+t.dataset.i]; if (r) r.students = splitNames(t.value); });
 }
 async function loadRosters() {
-  try { const r = await callApi('getRosters', { password: pw() }); if (!r.ok) throw new Error(r.error); ROSTERS = r.rosters || []; }
+  try { const r = await callApi('getRosters', { password: pw() }); if (!r.ok) throw new Error(r.error); ROSTERS = r.rosters || []; if (r.noticeError) $('ro-msg').innerHTML = '<span style="color:#B45309;">' + e(r.noticeError) + '</span>'; }
   catch (err) { ROSTERS = []; $('as-rosters').innerHTML = '<span class="hint" style="color:#C1392B;">반 명단을 불러오지 못했어요 (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; drawRosterEditor(); return; }
   drawRosterChips(); drawRosterEditor();
 }
 $('ro-add').addEventListener('click', () => { readRosterEditor(); ROSTERS.push({ name: '', students: [] }); drawRosterEditor(); });
 $('ro-save').addEventListener('click', async () => {
   readRosterEditor(); const msg = $('ro-msg'); msg.textContent = '저장 중...';
-  const list = ROSTERS.filter(r => r.name);
-  try { const r = await callApi('setRosters', { password: pw(), rosters: list }); if (!r.ok) throw new Error(r.error || '저장하지 못했어요'); msg.textContent = '✅ 저장했어요'; ROSTERS = list; drawRosterChips(); drawRosterEditor(); }
+  const list = ROSTERS.filter(r => r.name && !r.auto);
+  try { const r = await callApi('setRosters', { password: pw(), rosters: list }); if (!r.ok) throw new Error(r.error || '저장하지 못했어요'); msg.textContent = '✅ 저장했어요'; ROSTERS = ROSTERS.filter(r => r.auto).concat(list); drawRosterChips(); drawRosterEditor(); }
   catch (err) { msg.innerHTML = '<span style="color:#C1392B;">⚠️ ' + e(err.message) + '</span>'; }
 });
 $('as-go').addEventListener('click', async () => {

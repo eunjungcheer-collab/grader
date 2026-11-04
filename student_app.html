@@ -71,26 +71,26 @@ svg text{font-family:inherit;}
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><div><b>📝 자동채점 (학생용)</b><small id="ver"></small></div><a href="#" id="logout" class="hide">로그아웃</a></div>
+  <div class="top"><div><b>📝 자동채점 (학생용)</b><small id="ver"></small></div><a href="#" id="logout" class="hide"><span id="who"></span> 로그아웃</a></div>
 
   <!-- 로그인 -->
   <main id="v-login">
     <h2 style="margin-top:6px;font-size:22px;">안녕하세요 👋</h2>
-    <p class="muted">이름과 숫자 4자리로 들어와요. 처음이면 숫자를 새로 정하면 돼요.</p>
+    <p class="muted">이름과 숫자 4자리를 한 번에 넣고 「들어가기」를 눌러요. <b>처음이면</b> 원하는 숫자 4자리를 넣으면 돼요.</p>
     <div class="card">
       <label for="lg-name" style="margin-top:0;">이름</label>
       <input type="text" id="lg-name" autocomplete="off" placeholder="예: 홍길동">
-      <div id="lg-pinbox" class="hide">
-        <label for="lg-pin" id="lg-pinlabel">숫자 4자리</label>
+      <div id="lg-pinbox">
+        <label for="lg-pin" id="lg-pinlabel">비밀 숫자 4자리</label>
         <input type="password" id="lg-pin" class="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
         <div id="lg-pin2box" class="hide">
-          <label for="lg-pin2">한 번 더</label>
+          <label for="lg-pin2" id="lg-pin2label">처음이에요! 같은 숫자를 한 번 더</label>
           <input type="password" id="lg-pin2" class="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
         </div>
       </div>
       <label style="display:flex;gap:8px;align-items:center;font-weight:600;margin-top:16px;"><input type="checkbox" id="lg-keep" checked> 이 기기에서 로그인 유지</label>
       <div class="hint">친구와 같이 쓰는 기기라면 체크를 풀어 주세요.</div>
-      <button class="btn" id="lg-go" style="margin-top:14px;">다음</button>
+      <button class="btn" id="lg-go" style="margin-top:14px;">들어가기</button>
       <div class="err" id="lg-err"></div>
     </div>
   </main>
@@ -113,9 +113,9 @@ svg text{font-family:inherit;}
   <button data-t="wrong"><span class="ic">🔁</span>다시 풀기</button>
 </nav>
 
-<script src="js/config.js?v=202611050200"></script>
-<script src="js/api.js?v=202611050200"></script>
-<script src="js/common.js?v=202611050200"></script>
+<script src="js/config.js?v=202611050440"></script>
+<script src="js/api.js?v=202611050440"></script>
+<script src="js/common.js?v=202611050440"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -132,56 +132,56 @@ function saveLogin(name, pin, keep) { try { localStorage.removeItem(KEY); sessio
 function clearLogin() { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); } catch (e) {} }
 let ME = null, DATA = null;
 
-// ── 로그인 화면 ──
-let step = 'name', mode = '';
+// ── 로그인 화면 (이름 + 숫자를 한 화면에서) ──
+let REG = false;
 $('lg-go').addEventListener('click', loginStep);
 ['lg-name', 'lg-pin', 'lg-pin2'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') loginStep(); }));
-$('lg-name').addEventListener('input', () => { if (step !== 'name') { step = 'name'; $('lg-pinbox').classList.add('hide'); $('lg-go').textContent = '다음'; } });
+$('lg-name').addEventListener('input', () => { if (REG) { REG = false; $('lg-pin2box').classList.add('hide'); $('lg-go').textContent = '들어가기'; } });
 async function loginStep() {
   const err = $('lg-err'); err.textContent = ''; err.style.color = '';
-  const name = $('lg-name').value.trim(), btn = $('lg-go');
+  let name = $('lg-name').value.trim(), pin = $('lg-pin').value.trim(); const btn = $('lg-go');
+  const m = name.match(/^(.*\D)\s*(\d{4})$/);       // 이름 칸에 "송다솔1234"처럼 같이 적어도 나눠 준다
+  if (m) { name = m[1].trim(); $('lg-name').value = name; if (!pin) { pin = m[2]; $('lg-pin').value = pin; } }
   if (!name) { err.textContent = '이름을 입력해 주세요.'; return; }
-  btn.disabled = true;
+  if (!/^\d{4}$/.test(pin)) { err.textContent = '숫자 4자리를 입력해 주세요.'; return; }
+  btn.disabled = true; const label = btn.textContent; btn.textContent = '확인 중...';
   try {
-    if (step === 'name') {
-      const r = await callApi('stuStatus', { name: name });
+    if (REG) {
+      if (pin !== $('lg-pin2').value.trim()) throw new Error('두 번 입력한 숫자가 달라요.');
+      const r = await callApi('stuRegister', { name: name, pin: pin });
       if (!r.ok) throw new Error(r.error);
-      if (!r.allowed && !r.registered) throw new Error('반 명단에 없는 이름이에요. 이름을 다시 확인하거나 선생님께 말씀드리세요.');
-      if (r.pending) throw new Error('가입 신청은 되어 있어요. 선생님이 승인하면 들어올 수 있어요. 조금만 기다려 주세요.');
-      mode = r.registered ? 'login' : 'register';
-      step = 'pin'; $('lg-pinbox').classList.remove('hide');
-      $('lg-pin2box').classList.toggle('hide', mode !== 'register');
-      $('lg-pinlabel').textContent = mode === 'register' ? '처음이네요! 사용할 숫자 4자리를 정해 주세요' : '숫자 4자리';
-      btn.textContent = mode === 'register' ? '가입하고 시작하기' : '들어가기';
-      $('lg-pin').focus();
-    } else {
-      const pin = $('lg-pin').value.trim();
-      if (!/^\d{4}$/.test(pin)) throw new Error('숫자 4자리를 입력해 주세요.');
-      if (mode === 'register') {
-        if (pin !== $('lg-pin2').value.trim()) throw new Error('두 번 입력한 숫자가 달라요.');
-        const r = await callApi('stuRegister', { name: name, pin: pin });
-        if (!r.ok) throw new Error(r.error);
-        step = 'name'; $('lg-pinbox').classList.add('hide'); $('lg-pin').value = ''; $('lg-pin2').value = ''; btn.textContent = '다음';
-        $('lg-err').style.color = '#145a32'; $('lg-err').textContent = '✅ 가입 신청을 했어요! 선생님이 승인하면 이 이름과 숫자로 들어올 수 있어요.';
-        btn.disabled = false; return;
-      } else {
-        const r = await callApi('stuLogin', { name: name, pin: pin });
-        if (!r.ok) throw new Error(r.error);
-      }
-      saveLogin(name, pin, $('lg-keep').checked);
-      ME = { name: name, pin: pin };
-      await enterHome();
+      REG = false; $('lg-pin2box').classList.add('hide'); $('lg-pin').value = ''; $('lg-pin2').value = '';
+      err.style.color = '#145a32'; err.textContent = '✅ 가입 신청을 했어요! 선생님이 승인하면 이 이름과 숫자로 들어올 수 있어요.';
+      btn.textContent = '들어가기'; btn.disabled = false; return;
     }
-  } catch (e) { err.textContent = e.message || '연결하지 못했어요.'; }
+    const r = await callApi('stuHome', { name: name, pin: pin, login: true });      // 로그인과 화면 데이터를 한 번에 받는다
+    if (r.ok) { saveLogin(name, pin, $('lg-keep').checked); ME = { name: name, pin: pin }; DATA = r; ME.display = r.display; await enterHome(true); btn.textContent = '들어가기'; btn.disabled = false; return; }
+    if (r.notRegistered) {
+      REG = true; $('lg-pin2box').classList.remove('hide'); $('lg-pin2').focus();
+      err.style.color = '#8F2A1F'; err.textContent = '처음이네요! 같은 숫자를 한 번 더 넣고 「가입 신청」을 눌러 주세요. (선생님이 승인하면 들어올 수 있어요)';
+      btn.textContent = '가입 신청'; btn.disabled = false; return;
+    }
+    throw new Error(r.error || '로그인하지 못했어요.');
+  } catch (e) { err.textContent = e.message || '연결하지 못했어요.'; btn.textContent = REG ? '가입 신청' : label; }
   btn.disabled = false;
 }
 $('logout').addEventListener('click', e => { e.preventDefault(); clearLogin(); try { sessionStorage.removeItem('stu_name'); } catch (x) {} setAppBadgeCount(0); location.reload(); });
 
 // ── 홈 ──
-async function enterHome() {
+function cacheKey() { return 'stu_cache_' + String(ME.name).replace(/\s+/g, ''); }
+function saveCache() { try { localStorage.setItem(cacheKey(), JSON.stringify(DATA)); } catch (e) {} }
+function loadCache() { try { const c = localStorage.getItem(cacheKey()); return c ? JSON.parse(c) : null; } catch (e) { return null; } }
+function applyData() {
+  ME.display = DATA.display; $('who').textContent = DATA.display + ' 학생';
+  setAppBadgeCount(DATA.pendingCount);                 // 홈 화면 아이콘 배지 = 아직 안 낸 시험 수
+  drawBadge(); drawHome(); drawMine(); drawRec(); drawWrongPicker();
+  if (!window._pc) { window._pc = 1; pushCard(); } else if (PUSHSTATE !== 'on') pushCard();
+}
+async function enterHome(fresh) {
   $('v-login').classList.add('hide'); $('v-home').classList.remove('hide'); $('tabs').classList.remove('hide'); $('logout').classList.remove('hide');
   try { sessionStorage.setItem('stu_name', ME.name); } catch (e) {}
-  await refresh();
+  if (fresh && DATA) { saveCache(); applyData(); loadWeak(); }
+  else { const c = loadCache(); if (c) { DATA = c; applyData(); } else $('t-home').innerHTML = '<div class="card muted">불러오는 중...</div>'; await refresh(); }
   if (location.hash === '#wrong') goTab('wrong'); else if (location.hash === '#mine') goTab('mine');
 }
 async function refresh() {
@@ -191,10 +191,12 @@ async function refresh() {
       if (/맞지 않|가입하지/.test(r.error || '')) { clearLogin(); location.reload(); return; }
       $('pend').innerHTML = '<div class="banner">' + esc(r.error || '불러오지 못했어요') + '</div>'; return;
     }
-    DATA = r; ME.display = r.display;
-    setAppBadgeCount(r.pendingCount);                 // 홈 화면 아이콘 배지 = 아직 안 낸 시험 수
-    drawBadge(); drawHome(); drawMine(); drawList(); drawRec(); drawWrongPicker(); if (!window._pc) { window._pc = 1; pushCard(); } else if (PUSHSTATE !== 'on') pushCard();
-  } catch (e) { $('pend').innerHTML = '<div class="banner">서버에 연결하지 못했어요. 인터넷을 확인해 주세요.</div>'; }
+    const oldWeak = DATA && DATA.weak; DATA = r; if (oldWeak) DATA.weak = oldWeak;
+    saveCache(); applyData(); loadWeak();
+  } catch (e) { if (!DATA) $('pend').innerHTML = '<div class="banner">서버에 연결하지 못했어요. 인터넷을 확인해 주세요.</div>'; }
+}
+async function loadWeak() {       // 반복 오답 안내는 느린 계산이라 화면을 먼저 보여 준 뒤 따로 불러온다
+  try { const r = await callApi('stuWeak', { name: ME.name, pin: ME.pin }); if (r.ok && DATA) { DATA.weak = r.weak; saveCache(); drawHome(); } } catch (e) {}
 }
 function drawBadge() {
   const n = DATA.pendingCount, b = $('bd-mine');
@@ -211,10 +213,15 @@ function left(deadline) {
 }
 function drawMine() {
   const pend = DATA.assignments.filter(a => a.status === 'wait' || a.status === 'missed');
-  const done = DATA.assignments.filter(a => a.status === 'done' || a.status === 'late').slice().reverse().slice(0, 15);
-  let h = '<h2>⏰ 제출해야 할 시험</h2>';
-  h += pend.length ? pend.map(a => { const l = left(a.deadline); return '<a class="ex' + (a.status === 'missed' ? ' late' : '') + '" href="' + examHref(a.examId) + '"><div class="row"><div class="t">' + esc(a.title) + '</div><span class="chip ' + l[1] + '">' + l[0] + '</span></div><div class="m">제출 기한 ' + fmtT(a.deadline) + '까지 · <b style="color:var(--point);">시험 보러 가기 ›</b></div></a>'; }).join('') : '<div class="card muted">선생님이 예약해 둔 시험이 없어요. 「시험 목록」에서 직접 골라서 풀 수도 있어요.</div>';
-  if (done.length) h += '<h2>✅ 제출 완료</h2>' + done.map(a => '<div class="ex" style="opacity:.85;"><div class="row"><div class="t" style="font-size:14.5px;">' + esc(a.title) + '</div><span class="chip ' + (a.status === 'late' ? 'amber' : 'green') + '">' + (a.status === 'late' ? '늦게 제출' : '제출함') + '</span></div></div>').join('');
+  const asgDone = DATA.assignments.filter(a => a.status === 'done' || a.status === 'late');
+  const inAsg = {}; DATA.assignments.forEach(a => { inAsg[a.examId] = 1; });
+  const selfSeen = {}, self = [];
+  DATA.records.forEach(r => { if (!inAsg[r.examId] && !selfSeen[r.examId]) { selfSeen[r.examId] = 1; self.push(r); } });
+  let h = '<h2 style="margin-top:6px;">⏰ 제출해야 할 시험</h2>';
+  h += pend.length ? pend.map(a => { const l = left(a.deadline); return '<a class="ex' + (a.status === 'missed' ? ' late' : '') + '" href="' + examHref(a.examId) + '"><div class="row"><div class="t">' + esc(a.title) + '</div><span class="chip ' + l[1] + '">' + l[0] + '</span></div><div class="m">제출 기한 ' + fmtT(a.deadline) + '까지 · <b style="color:var(--point);">시험 보러 가기 ›</b></div></a>'; }).join('') : '<div class="card muted">선생님이 내 이름으로 등록한 시험 중 아직 안 낸 시험이 없어요.</div>';
+  const doneRows = asgDone.slice().reverse().map(a => '<div class="ex" style="opacity:.9;"><div class="row"><div class="t" style="font-size:14.5px;">' + esc(a.title) + '</div><span class="chip ' + (a.status === 'late' ? 'amber' : 'green') + '">' + (a.status === 'late' ? '늦게 제출' : '제출함') + '</span></div><div class="m"><span>선생님이 등록한 시험</span></div></div>').join('');
+  if (doneRows) h += '<h2>✅ 제출 완료</h2>' + doneRows;
+  if (self.length) h += '<h2>📷 QR로 직접 푼 시험</h2>' + self.slice(0, 30).map(r => '<div class="ex" style="opacity:.9;"><div class="row"><div class="t" style="font-size:14.5px;">' + esc(r.title) + '</div><span class="chip green">' + esc(r.score100) + '점</span></div><div class="m"><span>' + fmtD(r.submittedAt) + ' 제출</span></div></div>').join('');
   $('t-mine').innerHTML = h;
 }
 let LQ = '';
@@ -285,7 +292,7 @@ async function loadWrong(id) {
 // ── 탭 ──
 function goTab(t) {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === t));
-  const show = { home: ['home'], mine: ['mine', 'list'], rec: ['rec'], wrong: ['wrong'] }[t] || ['home'];
+  const show = { home: ['home'], mine: ['mine'], rec: ['rec'], wrong: ['wrong'] }[t] || ['home'];
   ['home', 'mine', 'list', 'rec', 'wrong'].forEach(x => $('t-' + x).classList.toggle('hide', show.indexOf(x) < 0));
   $('pend').classList.toggle('hide', t !== 'home' && t !== 'mine');
   window.scrollTo(0, 0);
@@ -295,7 +302,7 @@ function drawHome() {
   const n = DATA.pendingCount, R = DATA.records, W = DATA.weak || { repeatQ: [], weakUnits: [] };
   const last = R[0], seen = {}; R.forEach(r => { seen[r.examId] = 1; });
   const wk = W.repeatQ.length || W.weakUnits.length;
-  let h = '';
+  let h = '<h2 style="margin:4px 0 2px;font-size:21px;">' + esc(DATA.display) + ' 학생, 환영해요 👋</h2>';
   if (wk) h += '<div class="banner"><b>🔁 반복해서 틀리는 문제가 있어요</b><br>' + W.repeatQ.slice(0, 3).map(x => esc(x.title || x.examTitle) + ' ' + x.n + '번').join(', ') + (W.repeatQ.length ? ' · ' : '') + W.weakUnits.slice(0, 2).map(u => '「' + esc(u.unit) + '」 단원').join(', ') + '<br>「틀린 것 다시 풀기」에서 복습해 보세요.</div>';
   h += '<button type="button" class="big main" data-go="mine"><span class="bi">📝</span><div><div class="bt">시험 보기</div><div class="bs">' + (n ? '아직 제출하지 않은 시험이 있어요' : '제출할 시험이 없어요 · 시험 목록 보기') + '</div></div>' + (n ? '<span class="bn">' + n + '</span>' : '') + '</button>';
   h += '<button type="button" class="big" data-go="rec"><span class="bi">📈</span><div><div class="bt">결과 보기</div><div class="bs">' + (last ? '최근 점수 <b>' + last.score100 + '점</b> · ' + esc(last.title) : '아직 제출한 시험이 없어요') + '</div></div></button>';
@@ -323,7 +330,12 @@ async function setupPush(ask) {
   const token = await firebase.messaging().getToken({ vapidKey: vapid, serviceWorkerRegistration: reg });
   if (!token) return 'fail';
   const r = await callApi('stuSaveToken', { name: ME.name, pin: ME.pin, token: token, appUrl: new URL('student_app.html', location.href).href });
-  try { firebase.messaging().onMessage(() => { refresh(); }); } catch (e) {}
+  try { firebase.messaging().onMessage(pl => {
+    refresh(); const d = (pl && pl.data) || {};
+    const t = document.createElement('div'); t.style.cssText = 'position:fixed;top:12px;left:12px;right:12px;max-width:520px;margin:0 auto;z-index:99;background:#0B1F5C;color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.3);';
+    t.innerHTML = '<b>' + esc(d.title || '알림') + '</b><br>' + esc(d.body || ''); document.body.appendChild(t); setTimeout(() => t.remove(), 8000);
+    try { if (Notification.permission === 'granted') reg.showNotification(d.title || '자동채점 (학생용)', { body: d.body || '', icon: 'icons/stu-icon-192.png' }); } catch (e) {}
+  }); } catch (e) {}
   return r.ok ? 'on' : 'fail';
 }
 async function pushCard() {
@@ -356,7 +368,7 @@ function askBadge() {
   const s = loadLogin();
   if (s && s.name && s.pin) {
     ME = { name: s.name, pin: s.pin };
-    try { const r = await callApi('stuLogin', { name: s.name, pin: s.pin }); if (r.ok) { await enterHome(); askBadge(); return; } if (!r.locked) clearLogin(); } catch (e) { await enterHome(); askBadge(); return; }
+    try { await enterHome(false); askBadge(); return; } catch (e) {}
   }
   ME = null; $('lg-name').focus();
 })();

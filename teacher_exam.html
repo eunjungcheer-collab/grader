@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611050200">
+<link rel="stylesheet" href="css/style.css?v=202611050440">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,13 +17,13 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611050200"></script>
-<script src="js/config.js?v=202611050200"></script>
-<script src="js/api.js?v=202611050200"></script>
-<script src="js/common.js?v=202611050200"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611050200"></script>
-<script src="js/bankcore.js?v=202611050200"></script>
-<script src="js/pdfui.js?v=202611050200"></script>
+<script src="js/vendor/qrcode.min.js?v=202611050440"></script>
+<script src="js/config.js?v=202611050440"></script>
+<script src="js/api.js?v=202611050440"></script>
+<script src="js/common.js?v=202611050440"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611050440"></script>
+<script src="js/bankcore.js?v=202611050440"></script>
+<script src="js/pdfui.js?v=202611050440"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -147,6 +147,7 @@ async function makeTeacherFromBank(exam, say) {
         <button type="button" class="btn outline" id="dl-teacher-only" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📘 강사용만 받기 (정답 동그라미·문제 밑 정답·해설)</button>
         <p class="hint" id="dl-note" style="margin:6px 0 0;">「둘 다」를 누르면 브라우저가 여러 파일 받기를 물을 수 있어요. 허용해 주세요.</p>
         ${res.explUrl ? '<a class="btn outline" href="' + res.explUrl + '" target="_blank" style="width:100%; margin-top:8px;">📝 해설지 PDF 열기 (예전 방식 — 따로 저장된 해설)</a>' : ''}
+        <a class="btn primary" href="alerts.html?exam=${encodeURIComponent(res.id)}#assign" style="display:block;text-align:center;margin:10px 0;">👥 이 시험을 어떤 학생에게 낼까요? (학생 선택·기한 정하기)</a>
         <p class="hint">학생 제출 링크: <a href="${studentUrl}">${studentUrl}</a></p>
         <div style="display:flex; gap:8px; margin-top:12px;">
           ${res.sourceQuestionIds && res.sourceQuestionIds.length && !(res.composeRecipe && res.composeRecipe.book) ? '<a class="btn outline" href="bank_compose.html?regen=' + res.id + '" style="flex:1; padding:9px;">🔁 유사 시험지 만들기</a>' : ''}

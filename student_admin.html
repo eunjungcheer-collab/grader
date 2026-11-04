@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>학생용 앱 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611050200">
+<link rel="stylesheet" href="css/style.css?v=202611050440">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -74,10 +74,10 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/qrcode.min.js?v=202611050200"></script>
-<script src="js/config.js?v=202611050200"></script>
-<script src="js/api.js?v=202611050200"></script>
-<script src="js/common.js?v=202611050200"></script>
+<script src="js/vendor/qrcode.min.js?v=202611050440"></script>
+<script src="js/config.js?v=202611050440"></script>
+<script src="js/api.js?v=202611050440"></script>
+<script src="js/common.js?v=202611050440"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -96,7 +96,7 @@ async function load() {
     document.querySelectorAll('input[name=rv]').forEach(x => { x.checked = x.value === (r.reveal || 'always'); });
     const pend = r.students.filter(s => s.pending), ok = r.students.filter(s => !s.pending);
     $('sa-pend-card').style.display = pend.length ? '' : 'none';
-    $('sa-pend').innerHTML = pend.map(s => '<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding:8px 0;"><b style="font-size:15px;">' + e(s.name) + '</b><span><button type="button" class="btn primary sa-ok" data-n="' + e(s.name) + '" style="padding:6px 12px;">승인</button> <button type="button" class="btn outline sa-reset" data-n="' + e(s.name) + '" data-rej="1" style="padding:6px 12px;">거절</button></span></div>').join('');
+    $('sa-pend').innerHTML = pend.map(s => '<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding:8px 0;"><b style="font-size:15px;">' + e(s.name) + '</b>' + (s.offRoster ? ' <span style="color:#B45309;font-weight:800;font-size:12.5px;">⚠️ 명단에 없는 이름</span>' : '') + '<span><button type="button" class="btn primary sa-ok" data-n="' + e(s.name) + '" style="padding:6px 12px;">승인</button> <button type="button" class="btn outline sa-reset" data-n="' + e(s.name) + '" data-rej="1" style="padding:6px 12px;">거절</button></span></div>').join('');
     $('sa-list').innerHTML = ok.length ? ok.map(s => '<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding:8px 0;"><div><b style="font-size:15px;color:var(--ink);">' + e(s.name) + '</b> <span class="hint" style="margin:0;">' + (s.push ? '🔔 알림 켬' : '알림 꺼짐') + '</span><div class="hint" style="margin:0;">최근 접속 ' + fmt(s.lastLogin) + '</div></div><button type="button" class="btn outline sa-reset" data-n="' + e(s.name) + '" style="padding:6px 12px;">초기화</button></div>').join('') : '아직 승인된 학생이 없어요.';
     document.querySelectorAll('.sa-reset').forEach(b => b.addEventListener('click', async () => {
       if (!confirm(b.dataset.n + (b.dataset.rej ? ' 학생의 가입 신청을 거절할까요?' : ' 학생의 숫자를 초기화할까요? (학생이 다시 가입 신청을 해요)'))) return;
