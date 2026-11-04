@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611051200">
+<link rel="stylesheet" href="css/style.css?v=202611051400">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -50,42 +50,40 @@
   </div></details>
 </template>
 
-<script src="js/config.js?v=202611051200"></script>
-<script src="js/api.js?v=202611051200"></script>
-<script src="js/common.js?v=202611051200"></script>
+<script src="js/config.js?v=202611051400"></script>
+<script src="js/api.js?v=202611051400"></script>
+<script src="js/common.js?v=202611051400"></script>
 <script>
 if (!getTeacherPassword()) { location.replace('teacher_login.html'); }
 const MORE = { appr: 0, weak: 0 };
 function moreSum() { const el = document.getElementById('more-sum'); if (el) el.innerHTML = '🔧 분석 · 문제은행 · 학생 관리' + (MORE.weak ? ' <b style="color:#C1392B;">· 반복 오답 ' + MORE.weak + '명</b>' : '') + (MORE.appr ? ' <b style="color:#C1392B;">· 승인 대기 ' + MORE.appr + '명</b>' : ''); }
 renderHeader();
-// 새 제출·미제출이 있으면 메뉴에 숫자를 띄운다 (알림 서버가 아직 배포 전이면 조용히 넘어간다)
-async function refreshAlertBadge() {
-  const a = document.getElementById('alerts-link'); if (!a || !getTeacherPassword()) return;
-  try {
-    let since = ''; try { since = localStorage.getItem('alertSeen') || ''; } catch (e) {}
-    const r = await callApi('listAlerts', { password: getTeacherPassword(), since: since });
-    if (!r || !r.ok) return;
-    const n = (since ? r.recent.length : 0), m = r.missed.length;
+// 홈 배지(새 제출·미제출 / 가입 승인 대기 / 반복 오답): 서버에 한 번만 묻고, 지난번 값은 먼저 바로 보여 준다
+function paintBadges(r, since) {
+  const a = document.getElementById('alerts-link');
+  if (r.alerts && r.alerts.ok && a) {
+    const n = (since ? r.alerts.recent.length : 0), m = r.alerts.missed.length;
     a.innerHTML = '⏰ 시험 예약·알림 ' + (m ? '<b style="color:#C1392B;">· 미제출 ' + m + '명</b> ' : '') + (n ? '<b style="color:#1a7a4a;">· 새 제출 ' + n + '건</b>' : '');
     setAppBadgeCount(m);          // 홈 화면 아이콘 배지 = 미제출 학생 수
+  }
+  const ap = document.querySelector('a[href="student_admin.html"]');
+  MORE.appr = r.pending || 0; if (MORE.appr && ap) ap.innerHTML = '📱 학생용 앱 <b style="color:#C1392B;">· 승인 대기 ' + MORE.appr + '명</b>';
+  const wk = document.getElementById('weak-link');
+  MORE.weak = r.weak || 0; if (MORE.weak && wk) wk.innerHTML = '🎯 약점 분석 <b style="color:#C1392B;">· 반복 오답 ' + MORE.weak + '명</b>';
+  moreSum();
+}
+async function refreshAlertBadge() {
+  if (!getTeacherPassword()) return;
+  let since = ''; try { since = localStorage.getItem('alertSeen') || ''; } catch (e) {}
+  try {
+    const r = await callApi('homeBadges', { password: getTeacherPassword(), since: since });
+    if (!r || !r.ok) return;
+    paintBadges(r, since);
+    try { localStorage.setItem('homeBadgesCache', JSON.stringify({ r: r, since: since })); } catch (e) {}
   } catch (e) {}
 }
+try { const c = JSON.parse(localStorage.getItem('homeBadgesCache') || 'null'); if (c && c.r) paintBadges(c.r, c.since); } catch (e) {}
 refreshAlertBadge();
-(async function () {      // 가입 승인을 기다리는 학생이 있으면 메뉴에 숫자를 띄운다
-  try {
-    const r = await callApi('listStudents', { password: getTeacherPassword() });
-    const n = r && r.ok ? r.students.filter(function (x) { return x.pending; }).length : 0;
-    const a = document.querySelector('a[href="student_admin.html"]');
-    if (n && a) { a.innerHTML = '📱 학생용 앱 <b style="color:#C1392B;">· 승인 대기 ' + n + '명</b>'; MORE.appr = n; moreSum(); }
-  } catch (e) {}
-})();
-(async function () {      // 반복 오답 학생이 있으면 메뉴에 숫자를 띄운다
-  try {
-    const r = await callApi('weakReport', { password: getTeacherPassword() });
-    const a = document.getElementById('weak-link');
-    if (r && r.ok && r.count && a) { a.innerHTML = '🎯 약점 분석 <b style="color:#C1392B;">· 반복 오답 ' + r.count + '명</b>'; MORE.weak = r.count; moreSum(); }
-  } catch (e) {}
-})();
 // ── 선생님 폰·컴퓨터 푸시 알림 (학생 제출·미제출을 앱이 닫혀 있어도 알려 줘요) ──
 function loadScript(src) { return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
 async function setupTeacherPush(ask, test) {
