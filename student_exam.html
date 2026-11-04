@@ -5,20 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611040240">
+<link rel="stylesheet" href="css/style.css?v=202611050200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#95D1DB">
+<style>
+.sx-prog{position:sticky;top:0;z-index:15;background:#fff;border-bottom:1.5px solid var(--ink);padding:8px 16px;margin:0 -20px 12px;display:none;}
+.sx-prog .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:5px;}
+.sx-prog .bar i{display:block;height:100%;width:0;background:var(--point);transition:width .2s;}
+.sx-prog .row{display:flex;justify-content:space-between;font-size:13px;font-weight:800;}
+.qrow{display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:12px;border:1.5px solid transparent;margin-bottom:4px;transition:background .15s;}
+.qrow.done{background:#EEF2FF;}
+.qrow.miss{background:#FBEAE7;border-color:var(--red);animation:sxshake .3s;}
+@keyframes sxshake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.qnum{min-width:30px;font-weight:900;font-size:17px;color:var(--point);text-align:right;}
+.ans-btns{display:flex;gap:7px;flex:1;}
+.qrow .ans-btn{flex:1;width:auto;height:50px;border-radius:12px;font-size:18px;}
+.qrow .ans-btn.selected{box-shadow:0 2px 0 var(--point-dark);transform:translateY(-1px);}
+.qrow{flex-wrap:wrap;}.multi-note{flex-basis:100%;margin:-2px 0 0 40px;font-size:11.5px;color:#B45309;font-weight:800;}
+.qrow.is-sub{opacity:.55;}.sub-note{font-size:12.5px;color:var(--muted);}
+.sx-submit{position:sticky;bottom:0;margin:20px -20px 0;padding:12px 20px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,#F7F5EF 70%,rgba(247,245,239,0));}
+.sx-ring{width:150px;height:150px;border-radius:50%;margin:8px auto 4px;display:flex;align-items:center;justify-content:center;font-size:38px;font-weight:900;color:var(--point);}
+.sx-ring span{font-size:18px;color:var(--muted);margin-left:2px;}
+.sx-chips{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:8px 0;}
+.sx-chip{border-radius:10px;padding:8px 0;text-align:center;font-weight:800;font-size:13px;border:1.5px solid var(--line);background:#fff;}
+.sx-chip.ok{background:#e8f5ee;border-color:#1a7a4a;color:#145a32;}
+.sx-chip.x{background:#FBEAE7;border-color:var(--red);color:var(--red-dark);}
+.sx-chip.na{background:#F3F4F6;color:#9CA3AF;}
+.sx-chip small{display:block;font-weight:600;font-size:11px;}
+</style>
 </head>
 <body>
 <template id="page-content">
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611040240"></script>
-<script src="js/api.js?v=202611040240"></script>
-<script src="js/common.js?v=202611040240"></script>
+<script src="js/config.js?v=202611050200"></script>
+<script src="js/api.js?v=202611050200"></script>
+<script src="js/common.js?v=202611050200"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -30,6 +55,23 @@ let multi = [];        // 정답이 2개 이상인(복수 선택) 문항 번호(
 const isMulti = i => multi.indexOf(i + 1) >= 0;
 const isSub = i => subjective.indexOf(i + 1) >= 0;
 let studentAnswers = [];
+const FROM_APP = new URLSearchParams(location.search).get('app') === '1';
+let STU_NAME = '';
+try { STU_NAME = sessionStorage.getItem('stu_name') || ''; if (!STU_NAME) { const l = JSON.parse(localStorage.getItem('stu_login') || sessionStorage.getItem('stu_login') || 'null'); if (l && l.name) STU_NAME = l.name; } } catch (e) {}
+function updateProgress() {
+  const need = []; for (let i = 0; i < answerCount; i++) if (!isSub(i) && !skipSet.has(i + 1)) need.push(i);
+  const done = need.filter(i => studentAnswers[i]).length;
+  const t = document.getElementById('sx-ptxt'); if (!t) return;
+  t.textContent = '답 입력 ' + done + ' / ' + need.length;
+  document.getElementById('sx-pbar').style.width = (need.length ? done / need.length * 100 : 0) + '%';
+  const left = need.length - done; document.getElementById('sx-pleft').textContent = left ? left + '문항 남았어요' : '✅ 다 입력했어요!';
+  document.querySelectorAll('#answer-grid .qrow').forEach((r, i) => { r.classList.toggle('done', !!studentAnswers[i]); if (studentAnswers[i]) r.classList.remove('miss'); });
+}
+function advanceFrom(q) {
+  // 한 문항을 고르면 다음에 풀 문항이 화면 가운데로 오게 부드럽게 이동
+  const rows = document.querySelectorAll('#answer-grid .qrow');
+  for (let i = q + 1; i < rows.length; i++) if (!isSub(i) && !skipSet.has(i + 1) && !studentAnswers[i]) { rows[i].scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+}
 
 async function loadExam() {
   const area = document.getElementById('content-area');
@@ -48,14 +90,15 @@ async function loadExam() {
       <h1>${escapeHtml(res.title)}</h1>
       <p class="muted">이름과 정답을 입력하고 제출하면 바로 채점돼요.${multi.length ? '<br><b>복수 선택(' + multi.join(', ') + '번)은 정답을 모두 골라야 해요.</b> 번호를 여러 개 눌러서 선택하고, 다시 누르면 취소돼요.' : ''}${subjective.length ? '<br><b>주관식(' + subjective.join(', ') + '번)은 회색으로 표시돼요.</b> 여기서 입력하지 않고 선생님이 따로 채점해요.' : ''}</p>
       ${res.book ? '<a class="btn outline" href="student_multi.html?book=' + encodeURIComponent(res.book) + '" style="width:100%; margin-bottom:10px;">📚 같은 교재의 다른 단원도 함께 채점하기</a>' : ''}
+      <div class="sx-prog" id="sx-prog"><div class="row"><span id="sx-ptxt">답 입력 0 / 0</span><span id="sx-pleft" style="color:var(--muted);font-weight:600;"></span></div><div class="bar"><i id="sx-pbar"></i></div></div>
       <form id="answer-form" class="card">
         <label>이름</label>
-        <input type="text" id="student-name" required>
+        <input type="text" id="student-name" required autocomplete="off" value="${escapeHtml(STU_NAME)}">
         <div id="dl-box" style="display:none; margin-top:8px; padding:8px 10px; border-radius:8px; background:#FFF4E0; border:1px solid #F3D9A4; color:#7A4A00; font-size:14px;"></div>
         <label style="margin-top:12px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 또는 1-10, 15 · 풀지 않는 번호는 채점에서 빠져요)</span></label>
         <input type="text" id="skip-input" placeholder="예: 1-10" inputmode="numeric" autocomplete="off">
         <div id="answer-grid" style="margin-top:16px;"></div>
-        <button type="submit" class="btn primary" style="width:100%; margin-top:20px;">제출하고 채점받기</button>
+        <div class="sx-submit"><button type="submit" class="btn primary" style="width:100%; font-size:17px; padding:15px;">제출하고 채점받기</button></div>
       </form>
     `;
 
@@ -83,13 +126,15 @@ async function loadExam() {
           // 복수 선택: 누르면 켜지고 다시 누르면 꺼진다. 고른 번호를 작은 것부터 이어붙여 "35"로 보관
           this.classList.toggle('selected');
           studentAnswers[q] = Array.from(grid.querySelectorAll(`.ans-btn[data-q="${q}"].selected`)).map(b => b.dataset.v).sort().join('');
-          return;
+          updateProgress(); return;
         }
         studentAnswers[q] = v;
         grid.querySelectorAll(`.ans-btn[data-q="${q}"]`).forEach(b => b.classList.remove('selected'));
         this.classList.add('selected');
+        updateProgress(); advanceFrom(parseInt(q, 10));
       });
     });
+    document.getElementById('sx-prog').style.display = 'block'; updateProgress();
 
     document.getElementById('skip-input').addEventListener('input', applySkip);
     document.getElementById('answer-form').addEventListener('submit', submitAnswers);
@@ -110,8 +155,24 @@ async function loadExam() {
           box.style.display = '';
         }).catch(() => { if (my === seq) box.style.display = 'none'; });
       }
+      // 이름을 잘못 적은 것 같으면(반 명단·예약과 한 글자 차이) 비슷한 이름을 추천한다
+      const sug = document.createElement('div'); sug.style.cssText = 'display:none; margin-top:8px; padding:8px 10px; border-radius:8px; background:#EEF2FF; border:1px solid #C7D2FE; font-size:14px;';
+      box.parentNode.insertBefore(sug, box);
+      let sseq = 0;
+      function suggest() {
+        const name = inp.value.trim(), my = ++sseq;
+        if (name.length < 2) { sug.style.display = 'none'; return; }
+        callApi('suggestName', { examId: examId, name: name }).then(r => {
+          if (my !== sseq || !r || !r.ok) return;
+          if (r.exact && r.name && r.name !== name) { inp.value = r.name; sug.style.display = 'none'; look(); return; }
+          if (r.exact || !r.suggestions || !r.suggestions.length) { sug.style.display = 'none'; return; }
+          sug.innerHTML = '혹시 이 이름인가요? ' + r.suggestions.map(n => '<button type="button" class="btn outline" style="padding:4px 12px; margin-left:6px;" data-n="' + escapeHtml(n) + '">' + escapeHtml(n) + '</button>').join('');
+          sug.style.display = '';
+          sug.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { inp.value = b.dataset.n; sug.style.display = 'none'; look(); }));
+        }).catch(() => {});
+      }
       inp.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(look, 600); });
-      inp.addEventListener('blur', () => { clearTimeout(timer); look(); });
+      inp.addEventListener('blur', () => { clearTimeout(timer); look(); suggest(); });
     })();
   } catch (err) {
     area.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
@@ -129,6 +190,7 @@ function applySkip() {
     row.querySelectorAll('.ans-btn').forEach(b => { b.disabled = off; if (off) b.classList.remove('selected'); });
     if (off) studentAnswers[i] = '';
   });
+  updateProgress();
 }
 async function submitAnswers(e) {
   e.preventDefault();
@@ -136,7 +198,12 @@ async function submitAnswers(e) {
   if (!name) return;
   const skipAll = Array.from({ length: answerCount }, (_, i) => skipSet.has(i + 1) && !isSub(i));
   const miss = studentAnswers.findIndex((a, i) => !isSub(i) && !skipAll[i] && !a);
-  if (miss >= 0) { alert(miss + 1 + '번에 답을 선택해주세요. (풀지 않는 문항은 위 「안 푸는 문항」에 번호를 적어 주세요)'); return; }
+  if (miss >= 0) {
+    const rows = document.querySelectorAll('#answer-grid .qrow');
+    studentAnswers.forEach((a, i) => { if (!isSub(i) && !skipAll[i] && !a) rows[i].classList.add('miss'); });
+    rows[miss].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alert(miss + 1 + '번에 답을 선택해주세요. (빨갛게 표시된 문항이 아직 비어 있어요. 풀지 않는 문항은 위 「안 푸는 문항」에 번호를 적어 주세요)'); return;
+  }
   if (skipAll.every((x, i) => x || isSub(i))) { alert('풀 문항이 하나도 없어요. 「안 푸는 문항」을 확인해 주세요.'); return; }
 
   const btn = e.target.querySelector('button[type=submit]');
@@ -147,34 +214,28 @@ async function submitAnswers(e) {
     const res = await callApi('submitAnswer', { id: examId, studentName: name, answers: studentAnswers.map((a, i) => skipAll[i] ? '~' : a) });
     if (!res.ok) { alert(res.error || '제출에 실패했어요.'); btn.disabled = false; btn.textContent = '제출하고 채점받기'; return; }
 
+    const sc100 = res.total ? to100(res.score, res.total) : null;
+    const wrongN = res.results.filter(r => r === 'x').length;
+    const ringCol = sc100 === null ? '#9CA3AF' : sc100 >= 90 ? '#1a7a4a' : sc100 >= 70 ? '#0B1F5C' : '#B45309';
+    const pct = sc100 === null ? 0 : sc100;
+    try { sessionStorage.setItem('stu_name', name); } catch (e) {}
     document.getElementById('content-area').innerHTML = `
-      <h1>채점 결과</h1>
-      <div class="card center">
-        <p class="muted">${name}님</p>
-        <div class="score-badge ${res.total && res.score === res.total ? 'pass' : 'fail'}" style="font-size:30px; padding:10px 28px;">
-          ${res.total ? to100(res.score, res.total) + '점' : '객관식 없음'}
-        </div>
-        <p class="hint" style="margin-top:8px;">${res.total ? '객관식 ' + res.total + '문항 중 ' + res.score + '개 정답 · 100점 만점 환산' : ''}</p>
-        ${(res.subjective && res.subjective.length) ? '<p class="hint" style="margin-top:4px;">주관식 ' + res.subjective.length + '문항(' + res.subjective.join(', ') + '번)은 점수에 합산하지 않아요. 선생님이 따로 채점해요.</p>' : ''}
-      </div>
+      <h1 style="text-align:center;">채점 결과</h1>
+      <p class="muted" style="text-align:center;margin:0;">${escapeHtml(name)}님 · ${sc100 === null ? '' : sc100 === 100 ? '만점이에요! 🎉' : wrongN ? '틀린 문제 ' + wrongN + '개를 복습해 봐요 💪' : ''}</p>
+      <div class="sx-ring" style="background:conic-gradient(${ringCol} ${pct * 3.6}deg, #E5E1D6 0);"><div style="width:122px;height:122px;border-radius:50%;background:#F7F5EF;display:flex;align-items:center;justify-content:center;">${sc100 === null ? '<span style="font-size:15px;">객관식 없음</span>' : sc100 + '<span>점</span>'}</div></div>
+      <p class="hint" style="text-align:center;">${res.total ? '객관식 ' + res.total + '문항 중 ' + res.score + '개 정답 · 100점 만점 환산' : ''}</p>
+      ${(res.subjective && res.subjective.length) ? '<p class="hint" style="text-align:center;">주관식 ' + res.subjective.length + '문항(' + res.subjective.join(', ') + '번)은 점수에 합산하지 않아요. 선생님이 따로 채점해요.</p>' : ''}
       <h2>문항별 결과</h2>
-      <p class="hint">틀린 문항(❌)을 다시 풀어 보세요. 정답은 알려주지 않아요.</p>
-      <div class="card">
-        ${res.results.map((rs, i) => rs === 'subj' ? `
-          <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;">
-            <span>${i + 1}번</span>
-            <span>주관식 (자동 채점 제외)</span>
-          </div>` : rs === 'skip' ? `
-          <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;">
-            <span>${i + 1}번</span>
-            <span>안 푼 문항 (채점 제외)</span>
-          </div>` : `
-          <div class="submission-row">
-            <span>${i + 1}번</span>
-            <span>내 답: ${fmtAnswer(res.studentAnswers[i])} ${rs === 'ok' ? '✅' : '❌'}</span>
-          </div>`).join('')}
+      <div class="sx-chips">
+        ${res.results.map((rs, i) => rs === 'ok' ? '<div class="sx-chip ok">' + (i + 1) + '번<small>⭕ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : rs === 'x' ? '<div class="sx-chip x">' + (i + 1) + '번<small>❌ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : '<div class="sx-chip na">' + (i + 1) + '번<small>' + (rs === 'subj' ? '주관식' : '안 품') + '</small></div>').join('')}
+      </div>
+      <p class="hint">❌ 표시한 문항은 다시 풀어 보세요. ${FROM_APP ? '「오답 복습」에서 틀린 문제만 모아서 다시 풀 수 있어요.' : ''}</p>
+      <div class="actions">
+        ${FROM_APP || STU_NAME ? '<a class="btn primary" href="student_app.html' + (wrongN ? '#wrong' : '') + '" style="width:100%;">' + (wrongN ? '🔁 틀린 문제 복습하러 가기' : '🏠 내 시험 현황으로') + '</a>' : ''}
+        ${FROM_APP || STU_NAME ? (wrongN ? '<a class="btn outline" href="student_app.html" style="width:100%;">🏠 내 시험 현황으로</a>' : '') : ''}
       </div>
     `;
+    window.scrollTo(0, 0);
   } catch (err) {
     alert('오류가 발생했어요: ' + err.message);
     btn.disabled = false;

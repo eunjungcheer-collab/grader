@@ -520,9 +520,22 @@
         const colAllH = pd.items.filter(it => it.top >= pd.H * 0.035 && it.top < pd.H - 62 && inCol(it));   // 머리글은 쪽 맨 위 가까이에도 있다
         const heads = findGroupHeads(colAllH).filter(h => h.x > x0 - 14 && h.x < x0 + 34);
         heads.forEach(h => { if (h.digits && !allHeads.some(o => o.page === idx + 1 && Math.abs(o.digits[1] - h.digits[1]) < 2 && Math.abs(o.digits[0] - h.digits[0]) < 2)) allHeads.push({ page: idx + 1, digits: h.digits, a: h.a, b: h.b }); });
+        // "※ 그림은 …" 같은 설명 줄 + 그림이 앞 문항 선택지 끝과 다음 문항 번호 사이에 있으면, 그 그림은 다음 문항 것이다 (앞 문항에 붙여 자르면 다음 문항 그림이 빠진다)
+        const capHeads = [];
+        colSpans.forEach((sp, i) => {
+          if (i === 0) return;
+          const prev = colSpans[i - 1];
+          const cands = colAllH.filter(it => /^\s*[※＊*]/.test(String(it.str)) && it.x > x0 - 14 && it.x < x0 + 34 && it.top > prev.bottom + 2 && it.top < sp.top - 6).sort((u, v) => u.top - v.top);
+          if (!cands.length) return;
+          const c = cands[0];
+          const hasChoice = colAllH.some(it => it.top > c.top + 2 && it.top < sp.top - 6 && /[①-⑤]/.test(String(it.str)));
+          const prevChoice = colAllH.some(it => it.top > prev.top && it.top < c.top - 2 && /[①-⑤]/.test(String(it.str)));
+          const hasImg = (pd.imgs || []).some(r => r[1] >= c.top - 2 && r[3] <= sp.top + 2 && r[0] < x1 - 4 && r[2] > x0 + 4 && (r[2] - r[0]) >= 20 && (r[3] - r[1]) >= 20);
+          if (!hasChoice && prevChoice && hasImg) capHeads.push({ top: c.top, bottom: c.bottom, x: c.x, text: '※' });
+        });
         const headTop = colSpans.map((sp, i) => {
           const lo = i > 0 ? colSpans[i - 1].bottom : pd.H * 0.03;
-          const hs = heads.filter(h => h.top < sp.top - 6 && h.top > lo + 2);
+          const hs = heads.concat(capHeads).sort((u, v) => u.top - v.top).filter(h => h.top < sp.top - 6 && h.top > lo + 2);
           return hs.length ? Math.max(0, hs[0].top - 3) : null;
         });
         // 단 맨 위, 첫 문항 번호보다 위에 글자·그림이 있으면 앞 단 마지막 문항이 이어지는 부분이다
@@ -537,6 +550,17 @@
           for (const e of els) { if (e.bottom >= cur - (chain.length ? 45 : 130)) { chain.push(e); cur = Math.min(cur, e.top); ctop = cur; if (cbot === null) cbot = e.bottom; } else break; }
           if (chain.length && ctop !== null && chain.some(e => /[①②③④⑤]/.test(e.str || ''))) {
             conts.push({ idx: idx, ci: ci, rect: [Math.max(0, x0), Math.max(0, ctop - 3), Math.min(pd.W, x1), Math.min(rb, cbot + BOTTOM_PAD)] });
+          }
+          else if (headTop[0] === null) {
+            // 단 맨 위에 "※ …" 설명 줄과 표·그림만 있고 선택지가 없으면: 앞 문항 이어짐이 아니라 첫 문항이 쓰는 표·그림이다
+            const cap = colAllH.filter(it => /^\s*[※＊*]/.test(String(it.str)) && it.x > x0 - 14 && it.x < x0 + 34 && it.top < rb && it.top > pd.H * 0.04).sort((u, v) => u.top - v.top)[0];
+            if (cap) {
+              const above = colAllH.some(it => it.bottom < cap.top - 2 && it.top > pd.H * 0.07 && String(it.str).trim() && !jkc.has(it));
+              const between = colAllH.filter(it => it.top >= cap.bottom - 1 && it.top < first.top - 4 && String(it.str).trim() && !jkc.has(it));
+              const hasChoice = between.some(it => /[①-⑤]/.test(String(it.str)));
+              const hasFig = between.length >= 6 || (pd.imgs || []).some(r => r[1] >= cap.top - 2 && r[3] <= first.top + 2 && r[0] < x1 - 4 && r[2] > x0 + 4 && (r[2] - r[0]) >= 20 && (r[3] - r[1]) >= 20);
+              if (!above && !hasChoice && hasFig) headTop[0] = Math.max(0, cap.top - 3);
+            }
           }
         }
         colSpans.forEach((s, i) => {
@@ -1575,7 +1599,7 @@
     entries.forEach((e, i) => {
       const parts = [];
       if (true) parts.push([e.n + '번  ', '#0B1F5C']);
-      parts.push(['내 답 ', '#6B7280'], [fmt(e.given), '#C1392B'], ['   정답 ', '#6B7280'], [fmt(e.answer), '#0B1F5C']);
+      parts.push(['내 답 ', '#6B7280'], [fmt(e.given), '#C1392B']);        // 정답은 맨 뒤 쪽에 모아서 보여 준다
       if (i < entries.length - 1) parts.push(['      ', '#000']);
       parts.forEach(pt => { ctx.font = 'bold ' + (9.5 * sc) + 'px ' + FONT; ctx.fillStyle = pt[1]; ctx.fillText(pt[0], x, cy); x += ctx.measureText(pt[0]).width; });
     });
@@ -1599,6 +1623,80 @@
     ctx.strokeStyle = '#0B1F5C'; ctx.lineWidth = 1.2 * sc; ctx.beginPath(); ctx.moveTo(0, c.height - 0.6 * sc); ctx.lineTo(c.width, c.height - 0.6 * sc); ctx.stroke();
     return { base64: canvasToBase64(c), w: widthPt, h: h };
   }
+  // 해설 그림 맨 윗줄의 "정답 ②" 표시를 지운다 (학생이 해설을 힌트로만 쓰게). 번호는 해설을 만들 때 이미 지워져 있다.
+  // 첫 줄에서 가장 왼쪽 글자 덩어리(= "정답 ②")를 지우고, 교재 형식처럼 정답이 다음 줄에 따로 있으면(짧은 한 덩어리) 그것도 지운다.
+  async function hideExplAnswer(b64) {
+    const im = await loadImage('data:image/png;base64,' + b64);
+    const w = im.width, h = im.height, c = createCanvas(w, h), ctx = c.getContext('2d');
+    ctx.drawImage(im, 0, 0);
+    const d = ctx.getImageData(0, 0, w, h).data, S = 2.2;
+    const ink = (x, y) => { const i = (y * w + x) * 4; return d[i + 3] > 40 && (d[i] + d[i + 1] + d[i + 2]) < 560; };
+    const rowN = new Array(h).fill(0);
+    for (let y = 0; y < h; y++) { let n = 0; for (let x = 0; x < w; x++) if (ink(x, y)) n++; rowN[y] = n; }
+    const lines = [];
+    for (let y = 0; y < h && lines.length < 3;) {
+      if (!rowN[y]) { y++; continue; }
+      let y0 = y, y1 = y, gap = 0;
+      for (; y < h; y++) { if (rowN[y]) { y1 = y; gap = 0; } else if (++gap > 3) break; }
+      const widest = Math.max.apply(null, rowN.slice(y0, y1 + 1));
+      if (y1 - y0 < 4 && widest > w * 0.8) continue;           // 가로줄(구분선)은 글자 줄이 아니다
+      lines.push([y0, y1]);
+    }
+    const clusters = ln => {
+      const cols = new Array(w).fill(false);
+      for (let x = 0; x < w; x++) for (let y = ln[0]; y <= ln[1]; y++) if (ink(x, y)) { cols[x] = true; break; }
+      const out = []; let x = 0;
+      while (x < w) { if (!cols[x]) { x++; continue; } let x0 = x, x1 = x, gap = 0; for (; x < w; x++) { if (cols[x]) { x1 = x; gap = 0; } else if (++gap > 11 * S) break; } out.push([x0, x1]); }
+      return out;
+    };
+    const wipe = (ln, cl) => { ctx.fillStyle = '#fff'; ctx.fillRect(cl[0] - 3, ln[0] - 2, cl[1] - cl[0] + 6, ln[1] - ln[0] + 4); };
+    if (lines.length) {
+      const c1 = clusters(lines[0]);
+      if (c1.length) {
+        wipe(lines[0], c1[0]);
+        if (c1[0][1] - c1[0][0] < 45 * S && lines[1]) {            // "정답" 글자만 있으면 정답은 다음 줄에 있다
+          const c2 = clusters(lines[1]);
+          if (c2.length === 1 && c2[0][1] - c2[0][0] < 24 * S) wipe(lines[1], c2[0]);
+        }
+      }
+    }
+    return canvasToBase64(c);
+  }
+  function wrongNoteQrLabelPng(text, widthPt, sizePt, color) {
+    const sc = 5, h = Math.round(sizePt * 1.6), FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
+    const c = createCanvas(Math.round(widthPt * sc), h * sc), ctx = c.getContext('2d');
+    ctx.fillStyle = color || '#0B1F5C'; ctx.font = 'bold ' + (sizePt * sc) + 'px ' + FONT; ctx.textBaseline = 'middle'; ctx.fillText(text, 0, c.height / 2 + sc * 0.4);
+    return { base64: canvasToBase64(c), w: widthPt, h: h };
+  }
+  // 오답노트 맨 뒤 쪽: 틀린 문항의 정답을 한 곳에 모은다
+  async function wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, entries, qrImg, opts) {
+    const W = 595.28, H = 841.89, marginX = 30, SC = 3, perPage = 70, groups = 5, circ = '①②③④⑤⑥⑦⑧⑨';
+    const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
+    const fmt = a => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '(없음)'; if (t === '-') return '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
+    for (let start = 0; start < entries.length; start += perPage) {
+      const chunk = entries.slice(start, start + perPage), page = doc.addPage([W, H]);
+      page.drawImage(headImg, { x: marginX, y: H - 28 - hdr.h, width: W - marginX * 2, height: hdr.h });
+      const c = createCanvas(Math.round(W * SC), Math.round(H * SC)), ctx = c.getContext('2d');
+      ctx.scale(SC, SC); ctx.textBaseline = 'top';
+      ctx.fillStyle = '#111'; ctx.font = 'bold 17px ' + FONT; ctx.fillText('정답', marginX, 28 + hdr.h + 16);
+      ctx.fillStyle = '#6B7280'; ctx.font = '10px ' + FONT; ctx.fillText('먼저 해설과 문제를 보고 다시 풀어 본 뒤에 확인하세요.', marginX + 44, 28 + hdr.h + 21);
+      const top = 28 + hdr.h + 52, rowH = 30, gw = (W - marginX * 2) / groups;
+      chunk.forEach((e, k) => {
+        const g = k % groups, r = Math.floor(k / groups), x = marginX + g * gw, y = top + r * rowH;
+        ctx.strokeStyle = '#E5E7EB'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(x, y + rowH - 4); ctx.lineTo(x + gw - 10, y + rowH - 4); ctx.stroke();
+        ctx.fillStyle = '#0B1F5C'; ctx.font = 'bold 12px ' + FONT; ctx.fillText(e.n + '번', x, y + 4);
+        ctx.fillStyle = '#111'; ctx.font = 'bold 13px ' + FONT; ctx.fillText(fmt(e.answer), x + 34, y + 3.5);
+      });
+      const img = await doc.embedPng(b64ToBytes(canvasToBase64(c)));
+      page.drawImage(img, { x: 0, y: 0, width: W, height: H });
+      if (qrImg && start + perPage >= entries.length) {          // 맨 뒤 쪽에는 큰 QR: 찍으면 틀린 문항만 다시 풀 수 있다
+        const q = 96, l = wrongNoteQrLabelPng('QR을 찍어 틀린 문항만 다시 풀어 보세요', 300, 11), l2 = wrongNoteQrLabelPng('정답은 이 쪽에서 확인하고, 다시 푼 답을 입력하면 맞았는지 바로 알려 줘요.', 330, 8.5, '#6B7280');
+        page.drawImage(qrImg, { x: marginX, y: 60, width: q, height: q });
+        page.drawImage((await doc.embedPng(b64ToBytes(l.base64))), { x: marginX + q + 14, y: 60 + q / 2 + 8, width: l.w, height: l.h });
+        page.drawImage((await doc.embedPng(b64ToBytes(l2.base64))), { x: marginX + q + 14, y: 60 + q / 2 - 12, width: l2.w, height: l2.h });
+      }
+    }
+  }
   async function composeWrongNotePdf(PDFLib, items, opts) {
     opts = opts || {};
     const { PDFDocument, rgb } = PDFLib;
@@ -1609,10 +1707,13 @@
     const hdr = wrongNoteHeaderPng((opts.studentName || '') + (opts.examTitle ? '  ·  ' + opts.examTitle : ''), '틀린 ' + (opts.wrongCount != null ? opts.wrongCount : items.length) + '문항' + (opts.scoreText ? '  ·  ' + opts.scoreText : ''), areaW);
     const headImg = await doc.embedPng(b64ToBytes(hdr.base64));
     const marginTop = 28 + hdr.h + 14, maxH = H - marginTop - marginBottom;
+    let qrImg = null, qrLab = null;
+    if (opts.qrBase64) { try { qrImg = await doc.embedPng(b64ToBytes(opts.qrBase64)); const l = wrongNoteQrLabelPng('QR을 찍어 틀린 문항 다시 풀기', 150, 7.5); qrLab = { img: await doc.embedPng(b64ToBytes(l.base64)), w: l.w, h: l.h }; } catch (e) { qrImg = null; } }
     let page, ys, col;
     function newPage() {
       page = doc.addPage([W, H]);
       page.drawImage(headImg, { x: marginX, y: H - 28 - hdr.h, width: areaW, height: hdr.h });
+      if (qrImg) { page.drawImage(qrImg, { x: marginX, y: 5, width: 30, height: 30 }); page.drawImage(qrLab.img, { x: marginX + 34, y: 14, width: qrLab.w, height: qrLab.h }); }
       page.drawLine({ start: { x: marginX + colW + colGap / 2, y: H - marginTop + 4 }, end: { x: marginX + colW + colGap / 2, y: marginBottom - 4 }, thickness: 0.6, color: rgb(0.8, 0.8, 0.8) });
       ys = [H - marginTop, H - marginTop]; col = 0;
     }
@@ -1627,6 +1728,7 @@
     newPage();
     const blank = opts.blank || 0;
     for (const it of items) {
+      if (opts.hideExplAnswer !== false && opts.withExpl && it.explBase64) { try { it.explBase64 = await hideExplAnswer(it.explBase64); } catch (e) {} }
       const img = await doc.embedPng(b64ToBytes(it.base64));
       const wide = (it.naturalW || 0) > colW * 1.45, fullW = wide ? areaW : colW;
       let dw = Math.min(fullW, it.naturalW || fullW), dh = it.height * (dw / it.width);
@@ -1666,6 +1768,12 @@
           advance(p2, eh2);
         }
       } else advance(p, used);
+    }
+    if (opts.answersAtEnd !== false) {
+      const seen = {}, all = [];
+      items.forEach(it => (it.entries || []).forEach(e => { if (!seen[e.n]) { seen[e.n] = 1; all.push(e); } }));
+      all.sort((x, y) => x.n - y.n);
+      if (all.length) await wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, all, qrImg, opts);
     }
     return doc;
   }
@@ -3371,7 +3479,7 @@
 
   root.BankCore = {
     scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, parseBookToc: parseBookToc, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
-    textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
+    textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
     _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
     _pageItems: pageItems, eraseEdgeRules: eraseEdgeRules, cleanImageBase64: cleanImageBase64,

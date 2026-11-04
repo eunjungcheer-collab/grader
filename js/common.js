@@ -1,4 +1,4 @@
-window.APP_BUILD = '202611040240';
+window.APP_BUILD = '202611050200';
 function renderHeader(opts) {
   const isLoggedIn = !!getTeacherPassword();
   const authHtml = isLoggedIn ? `
@@ -54,3 +54,11 @@ document.addEventListener('DOMContentLoaded', () => {
   box.querySelector('button').addEventListener('click', () => box.remove());
   document.body.appendChild(box);
 });
+
+// 스마트폰 홈 화면 아이콘의 숫자 배지 (홈 화면에 추가한 앱에서만 보여요). n=0이면 지운다.
+function setAppBadgeCount(n) {
+  try {
+    if (n > 0 && navigator.setAppBadge) navigator.setAppBadge(n).catch(function () {});
+    else if (navigator.clearAppBadge) navigator.clearAppBadge().catch(function () {});
+  } catch (e) {}
+}

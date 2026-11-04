@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>틀린 문항 다시 풀기</title>
+<link rel="stylesheet" href="css/style.css?v=202611050200">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+.qrow{display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:12px;border:1.5px solid transparent;margin-bottom:6px;flex-wrap:wrap;}
+.qnum{min-width:34px;font-weight:900;font-size:18px;color:var(--point);text-align:right;}
+.ans-btns{display:flex;gap:7px;flex:1;}
+.qrow .ans-btn{flex:1;width:auto;height:52px;border-radius:12px;font-size:18px;}
+.qrow.ok{background:#e8f5ee;border-color:#1a7a4a;}
+.qrow.x{background:#FBEAE7;border-color:#C1392B;}
+.verdict{flex-basis:100%;margin:-2px 0 0 44px;font-weight:800;font-size:14px;}
+.multi-note{flex-basis:100%;margin:-2px 0 0 44px;font-size:11.5px;color:#B45309;font-weight:800;}
+</style>
+</head>
+<body>
+<template id="page-content">
+  <div id="content-area" class="muted">불러오는 중...</div>
+</template>
+<script src="js/config.js?v=202611050200"></script>
+<script src="js/api.js?v=202611050200"></script>
+<script src="js/common.js?v=202611050200"></script>
+<script>
+renderHeader();
+const qs = new URLSearchParams(location.search), examId = qs.get('id');
+const nums = (qs.get('n') || '').split(',').map(x => parseInt(x, 10)).filter(x => x > 0);
+let subjective = [], multi = [], ans = {}, state = {}, title = '';
+async function init() {
+  const area = document.getElementById('content-area');
+  if (!examId || !nums.length) { area.innerHTML = '<div class="banner error">잘못된 링크예요.</div>'; return; }
+  try {
+    const r = await callApi('getExamPublic', { id: examId });
+    if (!r.ok) { area.innerHTML = '<div class="banner error">' + escapeHtml(r.error) + '</div>'; return; }
+    title = r.title; subjective = r.subjective || []; multi = r.multi || [];
+    const list = nums.filter(n => n <= r.answerCount && subjective.indexOf(n) < 0);
+    let nm = qs.get('name') || ''; try { nm = nm || sessionStorage.getItem('stu_name') || ''; } catch (e) {}
+    area.innerHTML = '<h1>🔁 틀린 문항 다시 풀기</h1><p class="muted"><b>' + escapeHtml(title) + '</b><br>오답노트에 있던 <b>' + list.length + '문항</b>만 다시 풀어요. 풀고 「확인하기」를 누르면 맞았는지 알려 줘요. 정답은 오답노트 맨 뒤 쪽에 있어요.</p>' +
+      '<div class="card"><label>이름</label><input type="text" id="nm" value="' + escapeHtml(nm) + '" autocomplete="off"><div id="grid" style="margin-top:14px;"></div><button type="button" class="btn primary" id="chk" style="width:100%;margin-top:14px;font-size:17px;padding:15px;">확인하기</button><div id="sum" class="hint" style="margin-top:10px;text-align:center;"></div></div>';
+    const grid = document.getElementById('grid');
+    list.forEach(n => {
+      const isM = multi.indexOf(n) >= 0, row = document.createElement('div'); row.className = 'qrow'; row.id = 'r' + n;
+      row.innerHTML = '<span class="qnum">' + n + '</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(v => '<button type="button" class="ans-btn" data-n="' + n + '" data-v="' + v + '">' + v + '</button>').join('') + '</div>' + (isM ? '<span class="multi-note">복수 선택 — 정답을 모두 눌러요</span>' : '') + '<span class="verdict"></span>';
+      grid.appendChild(row);
+    });
+    grid.querySelectorAll('.ans-btn').forEach(b => b.addEventListener('click', () => {
+      const n = +b.dataset.n; if (state[n] === 'ok') return;
+      const isM = multi.indexOf(n) >= 0;
+      if (isM) b.classList.toggle('selected'); else { grid.querySelectorAll('.ans-btn[data-n="' + n + '"]').forEach(x => x.classList.remove('selected')); b.classList.add('selected'); }
+      ans[n] = Array.from(grid.querySelectorAll('.ans-btn[data-n="' + n + '"].selected')).map(x => x.dataset.v).sort().join('');
+      const row = document.getElementById('r' + n); row.classList.remove('x'); row.querySelector('.verdict').textContent = '';
+    }));
+    document.getElementById('chk').addEventListener('click', async () => {
+      const todo = list.filter(n => state[n] !== 'ok' && ans[n]);
+      if (!todo.length) { document.getElementById('sum').textContent = '답을 먼저 골라 주세요.'; return; }
+      const btn = document.getElementById('chk'); btn.disabled = true; btn.textContent = '확인 중...';
+      try {
+        const r2 = await callApi('retryCheck', { id: examId, studentName: document.getElementById('nm').value.trim(), answers: todo.map(n => ({ n: n, a: ans[n] })) });
+        if (!r2.ok) throw new Error(r2.error);
+        todo.forEach(n => {
+          const row = document.getElementById('r' + n), v = r2.results[n]; state[n] = v;
+          row.classList.remove('ok', 'x'); row.classList.add(v === 'ok' ? 'ok' : 'x');
+          row.querySelector('.verdict').innerHTML = v === 'ok' ? '<span style="color:#1a7a4a;">⭕ 맞았어요!</span>' : '<span style="color:#C1392B;">❌ 틀렸어요. 해설을 보고 다시 골라 보세요.</span>';
+          if (v === 'ok') grid.querySelectorAll('.ans-btn[data-n="' + n + '"]').forEach(x => x.disabled = true);
+        });
+        const okN = list.filter(n => state[n] === 'ok').length;
+        document.getElementById('sum').innerHTML = okN === list.length ? '<b style="color:#1a7a4a;font-size:16px;">🎉 모두 맞혔어요!</b>' : '지금까지 <b>' + okN + ' / ' + list.length + '</b> 맞혔어요. 틀린 문항만 다시 골라서 「확인하기」를 눌러요.';
+      } catch (e) { document.getElementById('sum').innerHTML = '<span style="color:#C1392B;">' + escapeHtml(e.message || '확인하지 못했어요') + '</span>'; }
+      btn.disabled = false; btn.textContent = '확인하기';
+    });
+  } catch (e) { area.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>'; }
+}
+init();
+</script>
+</body>
+</html>

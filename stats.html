@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>시험 통계 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611050200">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+</head>
+<body>
+<style>
+.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;flex:1;}
+.bar i{display:block;height:100%;}
+.qr2{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:14px;}
+.qr2 b{min-width:34px;}
+.st-ex{display:block;width:100%;text-align:left;background:#fff;border:1.5px solid var(--ink);border-radius:10px;padding:11px 14px;margin:8px 0;cursor:pointer;font-size:14.5px;}
+</style>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>📊 시험 통계</h1>
+  <p class="muted">시험을 누르면 <b>자주 틀리는 문항</b>과 학생별 점수를 볼 수 있어요.</p>
+  <div class="card" id="od-box" style="display:none;"><b>⚠️ 제출 기한을 자주 놓치는 학생</b><div id="od" style="margin-top:6px;"></div></div>
+  <div id="detail"></div>
+  <h2>시험 목록 (최근 순)</h2>
+  <div id="list" class="hint">불러오는 중...</div>
+</template>
+<script src="js/config.js?v=202611050200"></script>
+<script src="js/api.js?v=202611050200"></script>
+<script src="js/common.js?v=202611050200"></script>
+<script>
+requireLogin();
+renderHeader({});
+const $ = id => document.getElementById(id);
+const e = escapeHtml;
+const col = r => r === null ? '#9CA3AF' : r >= 80 ? '#1a7a4a' : r >= 50 ? '#0B1F5C' : '#C1392B';
+(async function () {
+  try {
+    const r = await callApi('statsOverview', { password: getTeacherPassword() });
+    if (!r.ok) throw new Error(r.error);
+    if (r.overdue.length) { $('od-box').style.display = ''; $('od').innerHTML = r.overdue.map(m => '<div class="qr2"><b style="min-width:70px;">' + e(m.name) + '</b><span>미제출 <b style="color:#C1392B;min-width:0;">' + m.missed + '</b>번 · 늦게 제출 ' + m.late + '번 <span class="hint" style="margin:0;">(예약 ' + m.total + '건 중)</span></span></div>').join(''); }
+    $('list').innerHTML = r.exams.length ? r.exams.map(x => '<button type="button" class="st-ex" data-id="' + e(x.id) + '"><b>' + e(x.title) + '</b><div class="hint" style="margin:3px 0 0;">제출 ' + x.submissions + '건' + (x.avg === null ? '' : ' · 평균 <b style="color:' + col(x.avg) + ';">' + x.avg + '점</b>') + '</div></button>').join('') : '<div class="hint">등록된 시험이 없어요.</div>';
+    document.querySelectorAll('.st-ex').forEach(b => b.addEventListener('click', () => openExam(b.dataset.id)));
+  } catch (err) { $('list').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + ' (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; }
+})();
+async function openExam(id) {
+  const box = $('detail'); box.innerHTML = '<div class="card hint">불러오는 중...</div>'; window.scrollTo({ top: 0, behavior: 'smooth' });
+  try {
+    const r = await callApi('statsExam', { password: getTeacherPassword(), id: id });
+    if (!r.ok) throw new Error(r.error);
+    const tried = r.items.filter(i => i.rate !== null).sort((a, b) => a.rate - b.rate);
+    const hard = tried.filter(i => i.rate < 70).slice(0, 5);
+    let h = '<div class="card"><b style="font-size:16px;">' + e(r.title) + '</b><div class="hint">제출한 학생 ' + r.students.length + '명 · 평균 ' + (r.students.length ? Math.round(r.students.reduce((a, s) => a + s.score100, 0) / r.students.length) : '-') + '점</div>';
+    h += '<div style="font-weight:700;margin-top:10px;">🔥 자주 틀리는 문항</div>' + (hard.length ? hard.map(i => '<div class="qr2"><b>' + i.n + '번</b><div class="bar"><i style="width:' + i.rate + '%;background:' + col(i.rate) + ';"></i></div><span style="min-width:150px;text-align:right;">정답률 <b style="color:' + col(i.rate) + ';">' + i.rate + '%</b>' + (i.topWrong ? ' · 오답 ' + e(fmtAnswer(i.topWrong)) + '번이 많음' : '') + '</span></div>').join('') : '<div class="hint">정답률 70% 미만인 문항이 없어요.</div>');
+    h += '<details style="margin-top:10px;"><summary style="font-weight:700;cursor:pointer;">전체 문항 정답률</summary>' + r.items.map(i => '<div class="qr2"><b>' + i.n + '번</b><div class="bar"><i style="width:' + (i.rate || 0) + '%;background:' + col(i.rate) + ';"></i></div><span style="min-width:60px;text-align:right;">' + (i.subjective ? '주관식' : i.rate === null ? '-' : i.rate + '%') + '</span></div>').join('') + '</details>';
+    h += '<details style="margin-top:10px;"><summary style="font-weight:700;cursor:pointer;">학생별 점수 (가장 최근 제출)</summary>' + r.students.map(s => '<div class="qr2"><b style="min-width:70px;">' + e(s.name) + '</b><div class="bar"><i style="width:' + s.score100 + '%;background:' + col(s.score100) + ';"></i></div><span style="min-width:44px;text-align:right;">' + s.score100 + '점</span></div>').join('') + '</details></div>';
+    box.innerHTML = h;
+  } catch (err) { box.innerHTML = '<div class="card" style="color:#C1392B;">' + e(err.message) + '</div>'; }
+}
+</script>
+</body>
+</html>

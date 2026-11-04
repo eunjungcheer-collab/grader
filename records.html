@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611040240">
+<link rel="stylesheet" href="css/style.css?v=202611050200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -47,13 +47,14 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611040240"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611040240"></script>
-<script src="js/config.js?v=202611040240"></script>
-<script src="js/api.js?v=202611040240"></script>
-<script src="js/common.js?v=202611040240"></script>
-<script src="js/bankcore.js?v=202611040240"></script>
-<script src="js/pdfui.js?v=202611040240"></script>
+<script src="js/vendor/pdf.min.js?v=202611050200"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611050200"></script>
+<script src="js/vendor/qrcode.min.js?v=202611050200"></script>
+<script src="js/config.js?v=202611050200"></script>
+<script src="js/api.js?v=202611050200"></script>
+<script src="js/common.js?v=202611050200"></script>
+<script src="js/bankcore.js?v=202611050200"></script>
+<script src="js/pdfui.js?v=202611050200"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -71,13 +72,18 @@ renderHeader({ wide: true });
 setupPdfJs();
 const $ = id => document.getElementById(id);
 const PER_PAGE = 20;
-let all = [], examFilter = '', page = 1;
+let all = [], retries = [], examFilter = '', page = 1;
 
 async function load() {
   try {
     const res = await callApi('listSubmissions', { password: getTeacherPassword() });
     if (!res.ok) { $('total-text').textContent = res.error; return; }
     all = res.submissions;
+    retries = [];
+    try {
+      const rr = await callApi('retryLog', { password: getTeacherPassword() });
+      if (rr.ok) retries = rr.rows.map(x => Object.assign(x, { retry: true, correctAnswers: [], score100: x.total ? Math.round(x.score / x.total * 100) : 0 }));
+    } catch (e) {}
     await ensureBankUnits();
     render();
   } catch (e) { $('total-text').textContent = '서버에 연결할 수 없어요.'; }
@@ -85,7 +91,7 @@ async function load() {
 
 function filtered() {
   const q = $('q').value.trim().toLowerCase();
-  let list = all.filter(s => (!examFilter || s.examId === examFilter) && (!q || String(s.studentName).toLowerCase().includes(q)));
+  let list = all.concat(retries).filter(s => (!examFilter || s.examId === examFilter) && (!q || String(s.studentName).toLowerCase().includes(q)));
   const sort = $('sort-sel').value;
   const byDate = (a, b) => new Date(a.submittedAt) - new Date(b.submittedAt);
   if (sort === 'date-asc') list = list.slice().sort(byDate);
@@ -311,7 +317,12 @@ async function buildWrongNote(s, opt, say) {
     if (miss.length) say(miss.join(', ') + '번은 찾지 못해 빠졌어요');
   }
   say('PDF 만드는 중...');
-  const ndoc = await BankCore.composeWrongNotePdf(PDFLib, items, { studentName: s.studentName, examTitle: s.examTitle, wrongCount: wrong.length, scoreText: s.total ? s.score100 + '점' : '', withExpl: opt.withExpl, blank: opt.blank });
+  let qrBase64 = '';
+  try {
+    const retryUrl = new URL('student_retry.html', location.href).href + '?id=' + encodeURIComponent(s.examId) + '&n=' + wrong.map(r => r.n).join(',') + '&name=' + encodeURIComponent(s.studentName);
+    qrBase64 = (await QRCode.toDataURL(retryUrl, { width: 300, margin: 1 })).split(',')[1];
+  } catch (e) { qrBase64 = ''; }
+  const ndoc = await BankCore.composeWrongNotePdf(PDFLib, items, { studentName: s.studentName, examTitle: s.examTitle, wrongCount: wrong.length, scoreText: s.total ? s.score100 + '점' : '', withExpl: opt.withExpl, blank: opt.blank, qrBase64: qrBase64 });
   await BankCore.addPageNumbers(PDFLib, ndoc);
   return await ndoc.save();
 }
@@ -341,7 +352,11 @@ function render() {
   page = Math.min(page, pages);
   const slice = list.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  $('list').innerHTML = examStatsHtml(list) + (slice.length ? slice.map((s, i) => `
+  $('list').innerHTML = examStatsHtml(list.filter(x => !x.retry)) + (slice.length ? slice.map((s, i) => s.retry ? `
+    <div class="card record-row" data-key="${i}" style="border-left:5px solid #7C3AED;">
+      <div class="record-main"><div><span class="score-badge" style="background:#EDE9FE;color:#5B21B6;border-color:#7C3AED;margin-right:6px;">🔁 오답노트</span><b>${escapeHtml(s.studentName)}</b><span class="muted" style="margin-left:8px;">${escapeHtml(s.examTitle)}</span></div><div class="hint">${formatDate(s.submittedAt)} · 틀린 문항 다시 풀기</div></div>
+      <div class="record-side"><span class="score-badge ${s.total && s.score === s.total ? 'pass' : 'fail'}">${s.total ? s.score + '/' + s.total + ' 정답' : '-'}</span></div>
+    </div>` : `
     <div class="card record-row" data-key="${i}">
       <div class="record-main">
         <div>
@@ -362,7 +377,7 @@ function render() {
         ${(() => { const wc = wrongCountNoSource(s); return wc ? '<button type="button" class="btn outline textmatch-btn" data-i="' + i + '" style="padding:7px 12px;">📝 유사오답 (' + wc + '개)</button>' : ''; })()}
       </div>
       <div class="note-panel" id="note-${i}" style="display:none; margin-top:10px; padding:10px 12px; background:#F3F4F6; border-radius:8px;">
-        <b>📓 ${escapeHtml(s.studentName)} 오답노트</b> <span class="hint">틀린 문항의 문제·내 답·정답을 PDF로 만들어요.</span><br>
+        <b>📓 ${escapeHtml(s.studentName)} 오답노트</b> <span class="hint">틀린 문항의 문제·내 답(정답은 맨 뒤 쪽에 모아서)·해설(정답 표시 없이)을 PDF로 만들어요.</span><br>
         <label style="margin-right:14px;"><input type="checkbox" id="note-expl-${i}" checked> 해설 포함</label>
         <label style="margin-right:14px;">다시 풀 빈칸 <select id="note-blank-${i}"><option value="0">없음</option><option value="60">작게</option><option value="110" selected>보통</option><option value="170">넓게</option></select></label>
         <button type="button" class="btn primary note-go" data-i="${i}" style="padding:7px 12px;">PDF 만들기</button>

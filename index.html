@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611040240">
+<link rel="stylesheet" href="css/style.css?v=202611050200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -21,6 +21,9 @@
     <a class="btn outline" href="teacher_new.html?review=1">🕘 최근 등록 시험지 정답·단원 확인 (다른 기기 등록분 포함)</a>
     <a class="btn outline" href="bank_compose.html">🧩 문제은행에서 시험 조합하기</a>
     <a class="btn outline" href="alerts.html" id="alerts-link">⏰ 시험 예약·알림</a>
+    <a class="btn outline" href="weak.html" id="weak-link">🎯 약점 분석 (오답률 높은 문항 출제·반복 오답 학생)</a>
+    <a class="btn outline" href="stats.html">📊 시험 통계 (자주 틀리는 문항·미제출 학생)</a>
+    <a class="btn outline" href="student_admin.html">📱 학생용 앱 (주소·학생 관리)</a>
     <a class="btn outline" href="records.html">🗂️ 시험 기록 관리</a>
     <a class="btn outline" href="trend.html">📈 학생별 성적 추이</a>
     <a class="btn outline" href="bank_list.html">🗂️ 문제은행</a>
@@ -29,21 +32,50 @@
   </div>
 </template>
 
-<script src="js/config.js?v=202611040240"></script>
-<script src="js/api.js?v=202611040240"></script>
-<script src="js/common.js?v=202611040240"></script>
+<script src="js/config.js?v=202611050200"></script>
+<script src="js/api.js?v=202611050200"></script>
+<script src="js/common.js?v=202611050200"></script>
 <script>
 if (!getTeacherPassword()) { location.replace('teacher_login.html'); }
 renderHeader();
 // 새 제출·미제출이 있으면 메뉴에 숫자를 띄운다 (알림 서버가 아직 배포 전이면 조용히 넘어간다)
-(async function () {
+async function refreshAlertBadge() {
   const a = document.getElementById('alerts-link'); if (!a || !getTeacherPassword()) return;
   try {
     let since = ''; try { since = localStorage.getItem('alertSeen') || ''; } catch (e) {}
     const r = await callApi('listAlerts', { password: getTeacherPassword(), since: since });
     if (!r || !r.ok) return;
     const n = (since ? r.recent.length : 0), m = r.missed.length;
-    if (n || m) a.innerHTML = '⏰ 시험 예약·알림 ' + (m ? '<b style="color:#C1392B;">· 미제출 ' + m + '명</b> ' : '') + (n ? '<b style="color:#1a7a4a;">· 새 제출 ' + n + '건</b>' : '');
+    a.innerHTML = '⏰ 시험 예약·알림 ' + (m ? '<b style="color:#C1392B;">· 미제출 ' + m + '명</b> ' : '') + (n ? '<b style="color:#1a7a4a;">· 새 제출 ' + n + '건</b>' : '');
+    setAppBadgeCount(m);          // 홈 화면 아이콘 배지 = 미제출 학생 수
+  } catch (e) {}
+}
+refreshAlertBadge();
+(async function () {      // 가입 승인을 기다리는 학생이 있으면 메뉴에 숫자를 띄운다
+  try {
+    const r = await callApi('listStudents', { password: getTeacherPassword() });
+    const n = r && r.ok ? r.students.filter(function (x) { return x.pending; }).length : 0;
+    const a = document.querySelector('a[href="student_admin.html"]');
+    if (n && a) a.innerHTML = '📱 학생용 앱 <b style="color:#C1392B;">· 승인 대기 ' + n + '명</b>';
+  } catch (e) {}
+})();
+(async function () {      // 반복 오답 학생이 있으면 메뉴에 숫자를 띄운다
+  try {
+    const r = await callApi('weakReport', { password: getTeacherPassword() });
+    const a = document.getElementById('weak-link');
+    if (r && r.ok && r.count && a) a.innerHTML = '🎯 약점 분석 <b style="color:#C1392B;">· 반복 오답 ' + r.count + '명</b>';
+  } catch (e) {}
+})();
+document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshAlertBadge(); });
+// 아이폰은 배지를 쓰려면 알림 허용이 한 번 필요해요
+(function () {
+  try {
+    if ('Notification' in window && Notification.permission === 'default' && navigator.setAppBadge) {
+      const d = document.createElement('div'); d.className = 'hint'; d.style.cssText = 'margin:8px 0;text-align:center;';
+      d.innerHTML = '📲 홈 화면 아이콘에 미제출 숫자를 띄우려면 <a href="#" id="badge-ok">여기를 눌러 허용</a>해 주세요.';
+      document.querySelector('main, #content, .wrap')?.appendChild(d);
+      document.getElementById('badge-ok').addEventListener('click', function (e) { e.preventDefault(); Notification.requestPermission().then(function () { d.remove(); refreshAlertBadge(); }); });
+    }
   } catch (e) {}
 })();
 </script>

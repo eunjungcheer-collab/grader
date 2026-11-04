@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>약점 분석 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611050200">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+.qr2{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:14px;flex-wrap:wrap;}
+.hq{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);}
+.hq img{width:96px;max-height:110px;object-fit:contain;border:1px solid var(--line);border-radius:6px;background:#fff;flex:none;}
+.hq .rate{font-weight:900;font-size:18px;color:#C1392B;}
+.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:800;background:#EEF2FF;color:var(--point);margin-right:4px;}
+.tag.r{background:#FBEAE7;color:#C1392B;}
+.bar-fix{position:sticky;bottom:0;background:#fff;border-top:1.5px solid var(--ink);padding:10px 14px;margin:14px -20px 0;display:flex;gap:10px;align-items:center;z-index:5;}
+</style>
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>🎯 약점 분석</h1>
+  <p class="muted">오답률이 높은 문항을 모아 문제은행에서 바로 출제하고, 같은 문제를 반복해서 틀리는 학생을 찾아요.</p>
+
+  <h2>🔁 반복 오답 학생</h2>
+  <p class="hint">같은 문항을 2번 이상 틀렸거나, 같은 단원을 여러 시험에서 3개 이상 틀린 학생이에요. 제출할 때마다 선생님 메일과 학생 알림으로도 알려요.</p>
+  <div id="stu" class="hint">불러오는 중...</div>
+
+  <h2>🔥 오답률 높은 문항</h2>
+  <div class="card" style="padding:12px 14px;">
+    오답률 <select id="rate" style="width:auto;display:inline-block;padding:6px;"><option value="70">70% 이상</option><option value="50" selected>50% 이상</option><option value="40">40% 이상</option><option value="30">30% 이상</option></select>
+    · 응시 <select id="mt" style="width:auto;display:inline-block;padding:6px;"><option value="2">2명 이상</option><option value="3" selected>3명 이상</option><option value="5">5명 이상</option></select>
+    <button type="button" class="btn outline" id="reload" style="padding:6px 12px;margin-left:6px;">다시 보기</button>
+  </div>
+  <div id="hard" class="hint">불러오는 중...</div>
+  <div class="bar-fix" id="bar" style="display:none;"><span id="selcnt" class="hint" style="margin:0;flex:1;">0문항 선택</span><button type="button" class="btn primary" id="go" style="padding:10px 16px;">선택한 문항으로 문제은행 출제 →</button></div>
+</template>
+<script src="js/config.js?v=202611050200"></script>
+<script src="js/api.js?v=202611050200"></script>
+<script src="js/common.js?v=202611050200"></script>
+<script>
+requireLogin();
+renderHeader({});
+const $ = id => document.getElementById(id), e = escapeHtml;
+const thumb = id => 'https://drive.google.com/thumbnail?id=' + id + '&sz=w300';
+let HARD = [], PICK = new Set();
+function composeUrl(ids, title) { return 'bank_compose.html?directIds=' + encodeURIComponent(JSON.stringify(ids)) + '&title=' + encodeURIComponent(title); }
+async function load() {
+  try {
+    const r = await callApi('weakReport', { password: getTeacherPassword(), minRate: $('rate').value, minTried: $('mt').value });
+    if (!r.ok) throw new Error(r.error);
+    HARD = r.hard; PICK.clear(); upd();
+    $('stu').innerHTML = r.students.length ? r.students.map((s, i) => '<div class="card"><b style="font-size:16px;">' + e(s.name) + '</b>' +
+      (s.weakUnits.length ? '<div style="margin-top:6px;">' + s.weakUnits.map(u => '<span class="tag r">약점 단원 · ' + e(u.unit) + ' (' + u.count + '개)</span>').join('') + '</div>' : '') +
+      s.repeatQ.map(x => '<div class="qr2"><span class="tag">반복 오답</span><span>' + e(x.examTitle) + ' <b>' + x.n + '번</b></span><span class="hint" style="margin:0;">' + x.times + '번 틀림' + (x.unit ? ' · ' + e(x.unit) : '') + '</span></div>').join('') +
+      (s.similarIds.length ? '<button type="button" class="btn outline sim" data-i="' + i + '" style="margin-top:10px;width:100%;">📝 ' + e(s.name) + ' 유사 문제로 출제 (' + s.similarIds.length + '문항 후보)</button>' : '<div class="hint">문제은행에 이 단원의 새 문항이 없어요.</div>') + '</div>').join('') : '<div class="card muted">아직 반복해서 틀리는 학생이 없어요. 👍</div>';
+    document.querySelectorAll('.sim').forEach(b => b.addEventListener('click', () => { const s = r.students[+b.dataset.i]; location.href = composeUrl(s.similarIds, s.name + ' 유사문제') + '&who=' + encodeURIComponent(s.name); }));
+    $('hard').innerHTML = HARD.length ? HARD.map((x, i) => '<label class="hq"' + '>' + (x.qid ? '<input type="checkbox" class="hk" data-i="' + i + '" style="margin-top:4px;">' : '<span style="width:18px;"></span>') +
+      (x.fileId ? '<img loading="lazy" src="' + thumb(x.fileId) + '" alt="">' : '') +
+      '<div style="flex:1;"><div><span class="rate">' + x.rate + '%</span> <span class="hint" style="margin:0;">오답 (' + x.wrong + '/' + x.tried + '명)</span></div>' +
+      '<div><b>' + e(x.examTitle) + ' ' + x.n + '번</b></div>' + (x.unit ? '<div class="hint" style="margin:2px 0;">' + e((x.grade ? x.grade + ' · ' : '') + x.unit) + '</div>' : '') +
+      (x.qid ? '' : '<div class="hint" style="color:#B45309;">문제은행에 없는 문항이라 출제에 담을 수 없어요 (「문제은행」에 먼저 가져오기)</div>') + '</div></label>').join('') + '' : '<div class="card muted">조건에 맞는 문항이 없어요. 기준을 낮춰 보세요.</div>';
+    document.querySelectorAll('.hk').forEach(c => c.addEventListener('change', () => { const q = HARD[+c.dataset.i].qid; c.checked ? PICK.add(q) : PICK.delete(q); upd(); }));
+  } catch (err) { $('stu').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + ' (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; $('hard').innerHTML = ''; }
+}
+function upd() { $('bar').style.display = HARD.some(x => x.qid) ? '' : 'none'; $('selcnt').textContent = PICK.size + '문항 선택'; }
+$('go').addEventListener('click', () => { if (!PICK.size) { alert('출제할 문항을 먼저 체크해 주세요.'); return; } location.href = composeUrl(Array.from(PICK), '오답률 높은 문항 모음'); });
+$('reload').addEventListener('click', load);
+load();
+</script>
+</body>
+</html>

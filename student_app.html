@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B1F5C">
+<title>자동채점 (학생용)</title>
+<link rel="manifest" href="student_manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/stu-favicon-32.png">
+<link rel="apple-touch-icon" href="icons/stu-apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="자동채점 (학생용)">
+<style>
+:root{--ink:#1F2937;--muted:#6B7280;--red:#C1392B;--point:#0B1F5C;--soft:#E8EBF5;--line:#E5E1D6;--bg:#F7F5EF;--white:#fff;--ok:#1a7a4a;--warn:#B45309;}
+*{box-sizing:border-box;}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%;}
+.wrap{max-width:560px;margin:0 auto;min-height:100vh;padding-bottom:calc(84px + env(safe-area-inset-bottom));}
+.top{position:sticky;top:0;z-index:20;background:var(--point);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 18px 12px;display:flex;align-items:center;justify-content:space-between;}
+.top b{font-size:17px;}.top small{opacity:.75;font-size:11px;margin-left:6px;}
+.top a{color:#fff;opacity:.85;font-size:13px;text-decoration:none;}
+main{padding:16px 16px 0;}
+h2{font-size:16px;margin:22px 0 10px;}
+.card{background:var(--white);border:1.5px solid var(--ink);border-radius:14px;padding:16px;margin:12px 0;box-shadow:3px 3px 0 var(--line);}
+.muted{color:var(--muted);font-size:13.5px;line-height:1.6;}
+.hint{color:var(--muted);font-size:12.5px;margin:4px 0;}
+label{display:block;font-weight:700;font-size:13px;color:var(--muted);margin:14px 0 6px;}
+input[type=text],input[type=password],input[type=tel],input[type=search]{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:14px;font-size:17px;background:#fff;color:var(--ink);}
+input:focus{outline:2px solid var(--point);border-color:var(--point);}
+.pin{letter-spacing:10px;text-align:center;font-size:24px!important;}
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:15px;border-radius:12px;border:1.5px solid var(--point);background:var(--point);color:#fff;font-weight:800;font-size:16px;cursor:pointer;text-decoration:none;}
+.btn.sm{width:auto;padding:9px 14px;font-size:14px;border-radius:9px;display:inline-flex;}
+.btn.outline{background:transparent;color:var(--point);}
+.btn:disabled{opacity:.5;}
+.err{color:var(--red);font-size:13.5px;margin-top:10px;min-height:18px;}
+.tabs{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#fff;border-top:1.5px solid var(--ink);display:flex;padding-bottom:env(safe-area-inset-bottom);}
+.tabs button{flex:1;border:0;background:none;padding:10px 2px 9px;font-size:11.5px;font-weight:700;color:var(--muted);position:relative;cursor:pointer;}
+.tabs button .ic{display:block;font-size:21px;line-height:1.2;}
+.tabs button.on{color:var(--point);}
+.tabs .bd{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;line-height:18px;padding:0 5px;}
+.wide{max-width:560px;margin:0 auto;}
+.banner{border:1.5px solid var(--red);background:#FBEAE7;color:#8F2A1F;padding:12px 14px;border-radius:12px;font-size:14px;line-height:1.5;margin:6px 0 4px;}
+.banner.ok{border-color:var(--ok);background:#e8f5ee;color:#145a32;}
+.ex{display:block;background:#fff;border:1.5px solid var(--ink);border-radius:14px;padding:14px 16px;margin:10px 0;text-decoration:none;color:var(--ink);}
+.ex .t{font-weight:800;font-size:15.5px;line-height:1.4;}
+.ex .m{font-size:12.5px;color:var(--muted);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.chip{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:800;background:var(--soft);color:var(--point);}
+.chip.red{background:#FBEAE7;color:var(--red);}.chip.green{background:#e8f5ee;color:var(--ok);}.chip.amber{background:#FFF4E0;color:var(--warn);}
+.ex.late{border-color:var(--red);}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.score{font-weight:900;font-size:18px;color:var(--point);}
+.q{background:#fff;border:1.5px solid var(--ink);border-radius:14px;margin:14px 0;overflow:hidden;}
+.q .qh{padding:10px 14px;background:var(--soft);font-weight:800;display:flex;justify-content:space-between;}
+.q img{display:block;width:100%;background:#fff;}
+.q .qb{padding:12px 14px;}
+.opts{display:flex;gap:8px;margin:8px 0;}
+.opts button{flex:1;height:48px;border-radius:12px;border:1.5px solid var(--line);background:#fff;font-size:17px;font-weight:800;color:var(--muted);cursor:pointer;}
+.opts button.sel{background:var(--point);color:#fff;border-color:var(--point);}
+.opts button.good{background:var(--ok);color:#fff;border-color:var(--ok);}
+.opts button.bad{background:var(--red);color:#fff;border-color:var(--red);}
+.res{font-weight:800;margin-top:6px;min-height:22px;}
+select{width:100%;padding:13px;border:1.5px solid var(--line);border-radius:10px;font-size:15px;background:#fff;}
+svg text{font-family:inherit;}
+.big{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:#fff;border:1.5px solid var(--ink);border-radius:16px;padding:18px 16px;margin:12px 0;box-shadow:3px 3px 0 var(--line);cursor:pointer;font-family:inherit;color:var(--ink);}
+.big .bi{font-size:34px;line-height:1;}
+.big .bt{font-weight:900;font-size:18px;}
+.big .bs{font-size:13px;color:var(--muted);margin-top:3px;line-height:1.45;}
+.big .bn{margin-left:auto;min-width:28px;height:28px;border-radius:14px;background:var(--red);color:#fff;font-weight:900;font-size:14px;line-height:28px;text-align:center;padding:0 8px;}
+.big.main{border-color:var(--point);background:var(--soft);}
+.hide{display:none!important;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div><b>📝 자동채점 (학생용)</b><small id="ver"></small></div><a href="#" id="logout" class="hide">로그아웃</a></div>
+
+  <!-- 로그인 -->
+  <main id="v-login">
+    <h2 style="margin-top:6px;font-size:22px;">안녕하세요 👋</h2>
+    <p class="muted">이름과 숫자 4자리로 들어와요. 처음이면 숫자를 새로 정하면 돼요.</p>
+    <div class="card">
+      <label for="lg-name" style="margin-top:0;">이름</label>
+      <input type="text" id="lg-name" autocomplete="off" placeholder="예: 홍길동">
+      <div id="lg-pinbox" class="hide">
+        <label for="lg-pin" id="lg-pinlabel">숫자 4자리</label>
+        <input type="password" id="lg-pin" class="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+        <div id="lg-pin2box" class="hide">
+          <label for="lg-pin2">한 번 더</label>
+          <input type="password" id="lg-pin2" class="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+        </div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;font-weight:600;margin-top:16px;"><input type="checkbox" id="lg-keep" checked> 이 기기에서 로그인 유지</label>
+      <div class="hint">친구와 같이 쓰는 기기라면 체크를 풀어 주세요.</div>
+      <button class="btn" id="lg-go" style="margin-top:14px;">다음</button>
+      <div class="err" id="lg-err"></div>
+    </div>
+  </main>
+
+  <!-- 홈 -->
+  <main id="v-home" class="hide">
+    <div id="pend"></div>
+    <section id="t-home"></section>
+    <section id="t-mine" class="hide"></section>
+    <section id="t-list" class="hide"></section>
+    <section id="t-rec" class="hide"></section>
+    <section id="t-wrong" class="hide"></section>
+  </main>
+</div>
+
+<nav class="tabs hide" id="tabs">
+  <button data-t="home" class="on"><span class="ic">🏠</span>홈</button>
+  <button data-t="mine"><span class="ic">📝</span>시험 보기<span class="bd hide" id="bd-mine"></span></button>
+  <button data-t="rec"><span class="ic">📈</span>결과 보기</button>
+  <button data-t="wrong"><span class="ic">🔁</span>다시 풀기</button>
+</nav>
+
+<script src="js/config.js?v=202611050200"></script>
+<script src="js/api.js?v=202611050200"></script>
+<script src="js/common.js?v=202611050200"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+$('ver').textContent = 'v' + window.APP_BUILD;
+const DAYS = ['일', '월', '화', '수', '목', '금', '토'], pad = n => String(n).padStart(2, '0');
+const fmtT = iso => { const d = new Date(iso); if (isNaN(d)) return ''; return (d.getMonth() + 1) + '/' + d.getDate() + '(' + DAYS[d.getDay()] + ') ' + (d.getHours() < 12 ? '오전 ' : '오후 ') + ((d.getHours() % 12) || 12) + ':' + pad(d.getMinutes()); };
+const fmtD = iso => { const d = new Date(iso); return isNaN(d) ? '' : (d.getMonth() + 1) + '/' + d.getDate(); };
+const thumb = (id, w) => 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + (w || 800);
+
+// ── 로그인 정보 보관 (유지 체크 시 이 기기에 저장, 아니면 이 탭에서만) ──
+const KEY = 'stu_login';
+function loadLogin() { try { const a = localStorage.getItem(KEY) || sessionStorage.getItem(KEY); return a ? JSON.parse(a) : null; } catch (e) { return null; } }
+function saveLogin(name, pin, keep) { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); (keep ? localStorage : sessionStorage).setItem(KEY, JSON.stringify({ name: name, pin: pin })); } catch (e) {} }
+function clearLogin() { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); } catch (e) {} }
+let ME = null, DATA = null;
+
+// ── 로그인 화면 ──
+let step = 'name', mode = '';
+$('lg-go').addEventListener('click', loginStep);
+['lg-name', 'lg-pin', 'lg-pin2'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') loginStep(); }));
+$('lg-name').addEventListener('input', () => { if (step !== 'name') { step = 'name'; $('lg-pinbox').classList.add('hide'); $('lg-go').textContent = '다음'; } });
+async function loginStep() {
+  const err = $('lg-err'); err.textContent = ''; err.style.color = '';
+  const name = $('lg-name').value.trim(), btn = $('lg-go');
+  if (!name) { err.textContent = '이름을 입력해 주세요.'; return; }
+  btn.disabled = true;
+  try {
+    if (step === 'name') {
+      const r = await callApi('stuStatus', { name: name });
+      if (!r.ok) throw new Error(r.error);
+      if (!r.allowed && !r.registered) throw new Error('반 명단에 없는 이름이에요. 이름을 다시 확인하거나 선생님께 말씀드리세요.');
+      if (r.pending) throw new Error('가입 신청은 되어 있어요. 선생님이 승인하면 들어올 수 있어요. 조금만 기다려 주세요.');
+      mode = r.registered ? 'login' : 'register';
+      step = 'pin'; $('lg-pinbox').classList.remove('hide');
+      $('lg-pin2box').classList.toggle('hide', mode !== 'register');
+      $('lg-pinlabel').textContent = mode === 'register' ? '처음이네요! 사용할 숫자 4자리를 정해 주세요' : '숫자 4자리';
+      btn.textContent = mode === 'register' ? '가입하고 시작하기' : '들어가기';
+      $('lg-pin').focus();
+    } else {
+      const pin = $('lg-pin').value.trim();
+      if (!/^\d{4}$/.test(pin)) throw new Error('숫자 4자리를 입력해 주세요.');
+      if (mode === 'register') {
+        if (pin !== $('lg-pin2').value.trim()) throw new Error('두 번 입력한 숫자가 달라요.');
+        const r = await callApi('stuRegister', { name: name, pin: pin });
+        if (!r.ok) throw new Error(r.error);
+        step = 'name'; $('lg-pinbox').classList.add('hide'); $('lg-pin').value = ''; $('lg-pin2').value = ''; btn.textContent = '다음';
+        $('lg-err').style.color = '#145a32'; $('lg-err').textContent = '✅ 가입 신청을 했어요! 선생님이 승인하면 이 이름과 숫자로 들어올 수 있어요.';
+        btn.disabled = false; return;
+      } else {
+        const r = await callApi('stuLogin', { name: name, pin: pin });
+        if (!r.ok) throw new Error(r.error);
+      }
+      saveLogin(name, pin, $('lg-keep').checked);
+      ME = { name: name, pin: pin };
+      await enterHome();
+    }
+  } catch (e) { err.textContent = e.message || '연결하지 못했어요.'; }
+  btn.disabled = false;
+}
+$('logout').addEventListener('click', e => { e.preventDefault(); clearLogin(); try { sessionStorage.removeItem('stu_name'); } catch (x) {} setAppBadgeCount(0); location.reload(); });
+
+// ── 홈 ──
+async function enterHome() {
+  $('v-login').classList.add('hide'); $('v-home').classList.remove('hide'); $('tabs').classList.remove('hide'); $('logout').classList.remove('hide');
+  try { sessionStorage.setItem('stu_name', ME.name); } catch (e) {}
+  await refresh();
+  if (location.hash === '#wrong') goTab('wrong'); else if (location.hash === '#mine') goTab('mine');
+}
+async function refresh() {
+  try {
+    const r = await callApi('stuHome', { name: ME.name, pin: ME.pin });
+    if (!r.ok) {
+      if (/맞지 않|가입하지/.test(r.error || '')) { clearLogin(); location.reload(); return; }
+      $('pend').innerHTML = '<div class="banner">' + esc(r.error || '불러오지 못했어요') + '</div>'; return;
+    }
+    DATA = r; ME.display = r.display;
+    setAppBadgeCount(r.pendingCount);                 // 홈 화면 아이콘 배지 = 아직 안 낸 시험 수
+    drawBadge(); drawHome(); drawMine(); drawList(); drawRec(); drawWrongPicker(); if (!window._pc) { window._pc = 1; pushCard(); } else if (PUSHSTATE !== 'on') pushCard();
+  } catch (e) { $('pend').innerHTML = '<div class="banner">서버에 연결하지 못했어요. 인터넷을 확인해 주세요.</div>'; }
+}
+function drawBadge() {
+  const n = DATA.pendingCount, b = $('bd-mine');
+  b.textContent = n; b.classList.toggle('hide', !n);
+  const over = DATA.assignments.filter(a => a.status === 'missed').length;
+  $('pend').innerHTML = n ? '<div class="banner"><b>' + esc(DATA.display) + '</b>님, 아직 제출하지 않은 시험이 <b>' + n + '개</b> 있어요' + (over ? ' (기한이 지난 것 ' + over + '개 포함)' : '') + '. 「시험 보기」에서 지금 바로 제출해요!</div>' : '<div class="banner ok">🎉 제출할 시험이 없어요. 잘하고 있어요!</div>';
+}
+function examHref(id) { return 'student_exam.html?id=' + encodeURIComponent(id) + '&app=1'; }
+function left(deadline) {
+  const ms = new Date(deadline) - new Date(DATA.now), h = ms / 36e5;
+  if (ms < 0) return ['기한 지남', 'red'];
+  if (h < 24) return [Math.max(1, Math.ceil(h)) + '시간 남음', 'red'];
+  return ['D-' + Math.ceil(h / 24), h < 72 ? 'amber' : ''];
+}
+function drawMine() {
+  const pend = DATA.assignments.filter(a => a.status === 'wait' || a.status === 'missed');
+  const done = DATA.assignments.filter(a => a.status === 'done' || a.status === 'late').slice().reverse().slice(0, 15);
+  let h = '<h2>⏰ 제출해야 할 시험</h2>';
+  h += pend.length ? pend.map(a => { const l = left(a.deadline); return '<a class="ex' + (a.status === 'missed' ? ' late' : '') + '" href="' + examHref(a.examId) + '"><div class="row"><div class="t">' + esc(a.title) + '</div><span class="chip ' + l[1] + '">' + l[0] + '</span></div><div class="m">제출 기한 ' + fmtT(a.deadline) + '까지 · <b style="color:var(--point);">시험 보러 가기 ›</b></div></a>'; }).join('') : '<div class="card muted">선생님이 예약해 둔 시험이 없어요. 「시험 목록」에서 직접 골라서 풀 수도 있어요.</div>';
+  if (done.length) h += '<h2>✅ 제출 완료</h2>' + done.map(a => '<div class="ex" style="opacity:.85;"><div class="row"><div class="t" style="font-size:14.5px;">' + esc(a.title) + '</div><span class="chip ' + (a.status === 'late' ? 'amber' : 'green') + '">' + (a.status === 'late' ? '늦게 제출' : '제출함') + '</span></div></div>').join('');
+  $('t-mine').innerHTML = h;
+}
+let LQ = '';
+function drawList() {
+  const box = $('t-list');
+  if (!box.dataset.init) { box.dataset.init = 1; box.innerHTML = '<h2>📚 시험 목록</h2><input type="search" id="lq" placeholder="시험 이름 검색 (예: 대기, 태양계)"><div id="lbody"></div>'; $('lq').addEventListener('input', e => { LQ = e.target.value.trim(); drawListBody(); }); }
+  drawListBody();
+}
+function drawListBody() {
+  const q = LQ.replace(/\s+/g, '').toLowerCase();
+  const arr = DATA.exams.filter(e => !q || e.title.replace(/\s+/g, '').toLowerCase().includes(q));
+  $('lbody').innerHTML = arr.length ? arr.map(e => '<a class="ex" href="' + examHref(e.id) + '"><div class="t">' + esc(e.title) + '</div><div class="m"><span>' + e.count + '문항</span><span>등록 ' + fmtD(e.createdAt) + '</span>' + (e.done ? '<span class="chip green">푼 시험 · 최고 ' + (e.best == null ? '-' : e.best) + '점</span><b style="color:var(--point);">다시 풀기 ›</b>' : '<span class="chip">아직 안 풀었어요</span>') + '</div></a>').join('') : '<div class="card muted">찾는 시험이 없어요.</div>';
+}
+function drawRec() {
+  const R = DATA.records, box = $('t-rec');
+  if (!R.length) { box.innerHTML = '<h2>📈 내 기록</h2><div class="card muted">아직 제출한 시험이 없어요. 시험을 풀면 여기에 쌓여요.</div>'; return; }
+  const asc = R.slice().reverse(), sc = asc.map(r => Number(r.score100) || 0), avg = Math.round(sc.reduce((a, b) => a + b, 0) / sc.length);
+  const W = 520, H = 170, L = 30, Rr = 14, T = 14, B = 26, n = sc.length, X = i => n === 1 ? (L + W - Rr) / 2 : L + (W - L - Rr) * i / (n - 1), Y = v => T + (H - T - B) * (1 - v / 100);
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%">';
+  [0, 50, 100].forEach(v => { svg += '<line x1="' + L + '" x2="' + (W - Rr) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="#E5E1D6"/><text x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" font-size="11" text-anchor="end" fill="#6B7280">' + v + '</text>'; });
+  svg += '<polyline fill="none" stroke="#0B1F5C" stroke-width="2.5" points="' + sc.map((v, i) => X(i) + ',' + Y(v)).join(' ') + '"/>';
+  sc.forEach((v, i) => { svg += '<circle cx="' + X(i) + '" cy="' + Y(v) + '" r="4.5" fill="#0B1F5C"/>'; if (n <= 12) svg += '<text x="' + X(i) + '" y="' + (Y(v) - 9) + '" font-size="11" text-anchor="middle" fill="#0B1F5C" font-weight="700">' + v + '</text>'; });
+  svg += '</svg>';
+  box.innerHTML = '<h2>📈 내 기록</h2><div class="card"><div class="row"><div><div class="hint" style="margin:0;">푼 시험</div><div class="score">' + n + '번</div></div><div><div class="hint" style="margin:0;">평균 점수</div><div class="score">' + avg + '점</div></div><div><div class="hint" style="margin:0;">최고 점수</div><div class="score">' + Math.max.apply(null, sc) + '점</div></div></div>' + svg + '</div><h2>시험별 기록</h2>' +
+    R.map(r => '<div class="ex"><div class="row"><div class="t" style="font-size:14.5px;">' + esc(r.title) + '</div><div class="score">' + r.score100 + '점</div></div><div class="m">' + fmtT(r.submittedAt) + ' · 객관식 ' + r.total + '문항 중 ' + r.score + '개 정답</div></div>').join('');
+}
+// ── 오답 복습 ──
+function drawWrongPicker() {
+  const seen = {}, opts = [];
+  DATA.records.forEach(r => { if (!seen[r.examId]) { seen[r.examId] = 1; opts.push(r); } });
+  const box = $('t-wrong');
+  if (box.dataset.sel && box.querySelector('#wbody') && box.querySelector('#wbody').dataset.loaded) return;
+  box.dataset.sel = 1;
+  box.innerHTML = '<h2>🔁 오답 복습</h2>' + (opts.length ? '<div class="muted" style="margin-bottom:8px;">복습할 시험을 고르면, 틀린 문제만 다시 보여 줘요. 먼저 스스로 다시 풀어 보고 「정답 확인」을 눌러요.</div><select id="wsel"><option value="">시험을 골라 주세요</option>' + opts.map(r => '<option value="' + esc(r.examId) + '">' + esc(r.title) + ' (' + r.score100 + '점, ' + fmtD(r.submittedAt) + ')</option>').join('') + '</select><div id="wbody"></div>' : '<div class="card muted">아직 제출한 시험이 없어요. 시험을 풀면 틀린 문제를 여기서 복습할 수 있어요.</div>');
+  const s = $('wsel'); if (s) s.addEventListener('change', () => loadWrong(s.value));
+}
+async function loadWrong(id) {
+  const body = $('wbody'); body.dataset.loaded = '';
+  if (!id) { body.innerHTML = ''; return; }
+  body.innerHTML = '<div class="muted" style="margin-top:12px;">불러오는 중...</div>';
+  try {
+    const r = await callApi('stuWrong', { name: ME.name, pin: ME.pin, examId: id });
+    if (!r.ok) throw new Error(r.error);
+    body.dataset.loaded = '1';
+    if (!r.wrong.length) { body.innerHTML = '<div class="banner ok" style="margin-top:12px;">🎉 이 시험은 틀린 문제가 없어요!</div>'; return; }
+    body.innerHTML = '<div class="hint" style="margin-top:12px;">틀린 문제 ' + r.wrong.length + '개</div>' + (r.hidden ? '<div class="banner" style="margin-top:8px;">🔒 아직 제출 기한 중인 친구가 있어서 정답은 기한이 끝난 뒤에 볼 수 있어요. 지금은 문제를 다시 풀어 보기만 해요.</div>' : '') + r.wrong.map(w => {
+      const multi = String(w.correct).replace(/\//g, '').length > 1 && !/\//.test(w.correct);
+      return '<div class="q" data-c="' + esc(w.correct) + '" data-n="' + w.n + '"><div class="qh"><span>' + w.n + '번</span><span class="hint" style="margin:0;">내 답 ' + esc(fmtAnswer(w.mine)) + '</span></div>' +
+        (w.fileId ? '<img loading="lazy" src="' + thumb(w.fileId, 900) + '" alt="' + w.n + '번 문제" onclick="window.open(this.src)">' : '<div class="qb muted">이 문제의 그림이 서버에 없어요. ' + (r.pdfUrl ? '<a href="' + r.pdfUrl + '" target="_blank" rel="noopener" style="font-weight:800;color:var(--point);">📄 시험지 PDF 열어서 ' + w.n + '번 보기</a>' : '시험지(종이)를 보고 다시 풀어 보세요.') + '</div>') +
+        '<div class="qb"><div class="hint" style="margin:0 0 4px;">' + (multi ? '정답이 여러 개예요. 모두 눌러 보세요.' : '다시 풀어 보기') + '</div><div class="opts">' + [1, 2, 3, 4, 5].map(v => '<button type="button" data-v="' + v + '">' + v + '</button>').join('') + '</div>' +
+        (r.hidden ? '' : '<button type="button" class="btn sm outline wchk">정답 확인</button>') + '<div class="res"></div>' +
+        (w.explFileId ? '<details style="margin-top:8px;"><summary style="font-weight:700;cursor:pointer;">해설 보기</summary><img loading="lazy" src="' + thumb(w.explFileId, 900) + '" style="margin-top:8px;"></details>' : '') + '</div></div>';
+    }).join('');
+    body.querySelectorAll('.q').forEach(q => {
+      const mult = !/\//.test(q.dataset.c) && q.dataset.c.length > 1;
+      q.querySelectorAll('.opts button').forEach(b => b.addEventListener('click', () => { if (!mult) q.querySelectorAll('.opts button').forEach(x => x.classList.remove('sel')); b.classList.toggle('sel', mult ? !b.classList.contains('sel') : true); }));
+      const wc = q.querySelector('.wchk'); if (wc) wc.addEventListener('click', () => {
+        const c = q.dataset.c, picked = Array.from(q.querySelectorAll('.opts button.sel')).map(b => b.dataset.v).sort().join('');
+        if (!picked) { q.querySelector('.res').textContent = '먼저 답을 골라 주세요.'; return; }
+        const ok = c.indexOf('/') >= 0 ? c.split('/').indexOf(picked) >= 0 : picked === c;
+        q.querySelectorAll('.opts button').forEach(b => { const isC = c.indexOf('/') >= 0 ? c.split('/').indexOf(b.dataset.v) >= 0 : c.indexOf(b.dataset.v) >= 0; b.classList.remove('sel'); if (isC) b.classList.add('good'); else if (picked.indexOf(b.dataset.v) >= 0) b.classList.add('bad'); });
+        q.querySelector('.res').innerHTML = ok ? '<span style="color:var(--ok)">⭕ 맞았어요!</span>' : '<span style="color:var(--red)">❌ 정답은 ' + esc(fmtAnswer(c)) + '번이에요.</span>';
+      });
+    });
+  } catch (e) { body.innerHTML = '<div class="banner" style="margin-top:12px;">' + esc(e.message || '불러오지 못했어요') + '</div>'; }
+}
+
+// ── 탭 ──
+function goTab(t) {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === t));
+  const show = { home: ['home'], mine: ['mine', 'list'], rec: ['rec'], wrong: ['wrong'] }[t] || ['home'];
+  ['home', 'mine', 'list', 'rec', 'wrong'].forEach(x => $('t-' + x).classList.toggle('hide', show.indexOf(x) < 0));
+  $('pend').classList.toggle('hide', t !== 'home' && t !== 'mine');
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => goTab(b.dataset.t)));
+function drawHome() {
+  const n = DATA.pendingCount, R = DATA.records, W = DATA.weak || { repeatQ: [], weakUnits: [] };
+  const last = R[0], seen = {}; R.forEach(r => { seen[r.examId] = 1; });
+  const wk = W.repeatQ.length || W.weakUnits.length;
+  let h = '';
+  if (wk) h += '<div class="banner"><b>🔁 반복해서 틀리는 문제가 있어요</b><br>' + W.repeatQ.slice(0, 3).map(x => esc(x.title || x.examTitle) + ' ' + x.n + '번').join(', ') + (W.repeatQ.length ? ' · ' : '') + W.weakUnits.slice(0, 2).map(u => '「' + esc(u.unit) + '」 단원').join(', ') + '<br>「틀린 것 다시 풀기」에서 복습해 보세요.</div>';
+  h += '<button type="button" class="big main" data-go="mine"><span class="bi">📝</span><div><div class="bt">시험 보기</div><div class="bs">' + (n ? '아직 제출하지 않은 시험이 있어요' : '제출할 시험이 없어요 · 시험 목록 보기') + '</div></div>' + (n ? '<span class="bn">' + n + '</span>' : '') + '</button>';
+  h += '<button type="button" class="big" data-go="rec"><span class="bi">📈</span><div><div class="bt">결과 보기</div><div class="bs">' + (last ? '최근 점수 <b>' + last.score100 + '점</b> · ' + esc(last.title) : '아직 제출한 시험이 없어요') + '</div></div></button>';
+  h += '<button type="button" class="big" data-go="wrong"><span class="bi">🔁</span><div><div class="bt">틀린 것 다시 풀기</div><div class="bs">' + (Object.keys(seen).length ? '시험을 고르면 틀린 문제만 다시 풀 수 있어요' : '시험을 보면 여기서 오답을 복습해요') + '</div></div>' + (wk ? '<span class="bn">!</span>' : '') + '</button>';
+  $('t-home').innerHTML = h;
+  $('t-home').querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTab(b.dataset.go)));
+}
+// 앱으로 돌아오면 다시 불러온다 (선생님이 새 시험을 등록했을 수 있어요)
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ME) refresh(); });
+setInterval(() => { if (!document.hidden && ME) refresh(); }, 60000);
+// ── 푸시 알림 (앱이 닫혀 있어도 폰으로 알림) ──
+let PUSHCFG = null, PUSHSTATE = '';
+function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
+async function setupPush(ask) {
+  const info = await callApi('stuPushInfo', {}); if (!info.ok || !info.enabled || !info.web) return 'off';
+  PUSHCFG = info.web;
+  if (!('serviceWorker' in navigator) || !('Notification' in window) || !('PushManager' in window)) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  if (Notification.permission !== 'granted') { if (!ask) return 'ask'; const p = await Notification.requestPermission(); if (p !== 'granted') return 'denied'; }
+  await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
+  const cfg = Object.assign({}, PUSHCFG), vapid = cfg.vapidKey; delete cfg.vapidKey;
+  if (!firebase.apps.length) firebase.initializeApp(cfg);
+  const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js?cfg=' + encodeURIComponent(JSON.stringify(cfg)));
+  await navigator.serviceWorker.ready;
+  const token = await firebase.messaging().getToken({ vapidKey: vapid, serviceWorkerRegistration: reg });
+  if (!token) return 'fail';
+  const r = await callApi('stuSaveToken', { name: ME.name, pin: ME.pin, token: token, appUrl: new URL('student_app.html', location.href).href });
+  try { firebase.messaging().onMessage(() => { refresh(); }); } catch (e) {}
+  return r.ok ? 'on' : 'fail';
+}
+async function pushCard() {
+  try {
+    const st = await setupPush(false); PUSHSTATE = st;
+    const box = document.createElement('div'); box.className = 'card'; box.id = 'pushcard'; box.style.margin = '14px 0';
+    if (st === 'on') return;
+    if (st === 'ask') {
+      box.innerHTML = '<b>🔔 알림 켜기</b><div class="hint" style="margin:6px 0 10px;">제출 기한이 다가오거나 새 시험이 예약되면 앱이 닫혀 있어도 폰으로 알려 줘요.</div><button class="btn" id="pushbtn">알림 받기</button><div class="err" id="pusherr"></div>';
+      $('t-home').appendChild(box);
+      $('pushbtn').addEventListener('click', async () => { const b = $('pushbtn'); b.disabled = true; try { const r = await setupPush(true); if (r === 'on') box.innerHTML = '<b>✅ 알림을 켰어요!</b>'; else { $('pusherr').textContent = r === 'denied' ? '알림이 막혀 있어요. 폰 설정에서 이 앱의 알림을 허용해 주세요.' : '알림을 켜지 못했어요. 홈 화면에 추가한 앱에서 다시 해 보세요.'; b.disabled = false; } } catch (e) { $('pusherr').textContent = '알림을 켜지 못했어요: ' + (e.message || e); b.disabled = false; } });
+    } else if (st === 'unsupported') {
+      box.innerHTML = '<b>🔔 알림</b><div class="hint" style="margin-top:6px;">이 브라우저에서는 푸시 알림을 쓸 수 없어요. 아이폰은 사파리에서 「홈 화면에 추가」한 뒤 그 앱으로 열어 주세요.</div>';
+      $('t-home').appendChild(box);
+    }
+  } catch (e) {}
+}
+// 아이폰은 배지를 쓰려면 알림 허용이 한 번 필요해요
+function askBadge() {
+  try {
+    if ('Notification' in window && Notification.permission === 'default' && navigator.setAppBadge) {
+      const d = document.createElement('div'); d.className = 'hint'; d.style.cssText = 'text-align:center;margin:10px 0;';
+      d.innerHTML = '📲 홈 화면 아이콘에 안 낸 시험 숫자를 띄우려면 <a href="#" id="bk">여기를 눌러 허용</a>해 주세요.';
+      $('v-home').appendChild(d);
+      $('bk').addEventListener('click', e => { e.preventDefault(); Notification.requestPermission().then(() => { d.remove(); if (DATA) setAppBadgeCount(DATA.pendingCount); }); });
+    }
+  } catch (e) {}
+}
+(async function init() {
+  const s = loadLogin();
+  if (s && s.name && s.pin) {
+    ME = { name: s.name, pin: s.pin };
+    try { const r = await callApi('stuLogin', { name: s.name, pin: s.pin }); if (r.ok) { await enterHome(); askBadge(); return; } if (!r.locked) clearLogin(); } catch (e) { await enterHome(); askBadge(); return; }
+  }
+  ME = null; $('lg-name').focus();
+})();
+</script>
+</body>
+</html>
