@@ -9,14 +9,15 @@ if (cfg.apiKey) {
   messaging.onBackgroundMessage(function (payload) {
     var d = payload.data || {};
     try { var n = Number(d.count) || 0; if (self.navigator && self.navigator.setAppBadge) { if (n > 0) self.navigator.setAppBadge(n); else self.navigator.clearAppBadge(); } } catch (e) {}
-    return self.registration.showNotification(d.title || '자동채점 (학생용)', { body: d.body || '', icon: 'icons/stu-icon-192.png', badge: 'icons/stu-favicon-32.png', data: { url: d.url || '' } });
+    return self.registration.showNotification(d.title || '자동채점 (학생용)', { body: d.body || '', icon: d.icon || 'icons/stu-icon-192.png', badge: 'icons/stu-favicon-32.png', data: { url: d.url || '' } });
   });
 }
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
   var url = (event.notification.data && event.notification.data.url) || './student_app.html';
+  var key = ''; try { key = new URL(url, self.location.href).pathname; } catch (e) {}
   event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
-    for (var i = 0; i < list.length; i++) { if (list[i].url.indexOf('student_app') >= 0 && 'focus' in list[i]) return list[i].focus(); }
+    for (var i = 0; i < list.length; i++) { if (key && list[i].url.indexOf(key) >= 0 && 'focus' in list[i]) return list[i].focus(); }
     return clients.openWindow(url);
   }));
 });

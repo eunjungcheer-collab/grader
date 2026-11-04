@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611050440">
+<link rel="stylesheet" href="css/style.css?v=202611051200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -39,11 +39,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611050440"></script>
-<script src="js/api.js?v=202611050440"></script>
-<script src="js/common.js?v=202611050440"></script>
-<script src="js/bankcore.js?v=202611050440"></script>
-<script src="js/pdfui.js?v=202611050440"></script>
+<script src="js/config.js?v=202611051200"></script>
+<script src="js/api.js?v=202611051200"></script>
+<script src="js/common.js?v=202611051200"></script>
+<script src="js/bankcore.js?v=202611051200"></script>
+<script src="js/pdfui.js?v=202611051200"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -51,6 +51,7 @@ renderHeader();
 (async function () {
   const container = document.getElementById('list-container');
   try {
+    const tocP = ensureToc().catch(() => []);       // 목차 파일은 목록 요청과 동시에 불러온다
     const res = await callApi('listExams', { password: getTeacherPassword() });
     if (!res.ok) { container.innerHTML = '<div class="banner error">' + res.error + '</div>'; return; }
     if (res.exams.length === 0) {
@@ -70,7 +71,7 @@ renderHeader();
       return { grade: grades[0] || '', grades: grades, units: units };
     }
     let toc = [];
-    try { toc = await ensureToc(); } catch (e) { toc = []; }
+    try { toc = await tocP; } catch (e) { toc = []; }
     const unitName = (g, n) => { const t = toc.find(x => x.grade === g && x.no === n); return t ? t.unit : (n + '단원'); };
     const unitKey = u => u.grade + '|' + u.no;
     const exams = res.exams.map(ex => Object.assign({ meta: parseMeta(ex.title), ts: Date.parse(ex.createdAt) || 0 }, ex));

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611050440">
+<link rel="stylesheet" href="css/style.css?v=202611051200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,30 +13,50 @@
 </head>
 <body>
 <template id="page-content">
+  <style>
+  .hm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;}
+  .hm-grid a{display:flex;flex-direction:column;justify-content:center;gap:4px;min-height:84px;padding:12px 14px;border:1.5px solid var(--ink);border-radius:14px;background:#fff;color:var(--ink);text-decoration:none;font-weight:800;font-size:15px;box-shadow:3px 3px 0 var(--line);}
+  .hm-grid a small{font-weight:500;font-size:12px;color:var(--muted);line-height:1.35;}
+  .hm-grid a.main{grid-column:1/-1;background:var(--point);color:#fff;border-color:var(--point);min-height:64px;font-size:17px;}
+  .hm-grid a.main small{color:#DCE3F7;}
+  details.hm{margin:10px 0;border:1.5px solid var(--line);border-radius:14px;background:#fff;}
+  details.hm>summary{cursor:pointer;padding:13px 14px;font-weight:800;font-size:14.5px;list-style:none;}
+  details.hm>summary::-webkit-details-marker{display:none;}
+  details.hm>summary::after{content:'▾';float:right;color:var(--muted);}
+  details.hm[open]>summary::after{content:'▴';}
+  details.hm .hm-list{display:flex;flex-direction:column;gap:6px;padding:0 12px 12px;}
+  details.hm .hm-list a{display:block;padding:11px 12px;border-radius:10px;background:var(--soft,#F3F4F6);color:var(--ink);text-decoration:none;font-weight:700;font-size:14px;}
+  details.hm .hm-list a small{display:block;font-weight:500;font-size:12px;color:var(--muted);margin-top:2px;}
+  </style>
   <h1>학생 답안 자동 채점</h1>
-  <p class="muted">시험지를 등록하고 QR코드를 만들면, 학생들이 스캔해서 답을 제출하고 바로 채점됩니다. 제출 결과는 구글시트에 자동으로 쌓여요.</p>
-  <div class="actions">
-    <a class="btn primary" href="teacher_new.html">➕ 새 시험지 등록</a>
-    <a class="btn outline" href="teacher_list.html">📋 등록된 시험지 목록</a>
-    <a class="btn outline" href="teacher_new.html?review=1">🕘 최근 등록 시험지 정답·단원 확인 (다른 기기 등록분 포함)</a>
-    <a class="btn outline" href="bank_compose.html">🧩 문제은행에서 시험 조합하기</a>
-    <a class="btn outline" href="alerts.html" id="alerts-link">⏰ 시험 예약·알림</a>
-    <a class="btn outline" href="weak.html" id="weak-link">🎯 약점 분석 (오답률 높은 문항 출제·반복 오답 학생)</a>
-    <a class="btn outline" href="stats.html">📊 시험 통계 (자주 틀리는 문항·미제출 학생)</a>
-    <a class="btn outline" href="student_admin.html">📱 학생용 앱 (주소·학생 관리)</a>
-    <a class="btn outline" href="records.html">🗂️ 시험 기록 관리</a>
-    <a class="btn outline" href="trend.html">📈 학생별 성적 추이</a>
-    <a class="btn outline" href="bank_list.html">🗂️ 문제은행</a>
-    <a class="btn outline" href="unit_check.html">🔎 단원 판별 (파일 올리면 단원 알려주기)</a>
-    <a class="btn outline" href="book_register.html">📚 교재 한 권 QR 합본 만들기</a>
+  <div class="hm-grid">
+    <a class="main" href="teacher_new.html">➕ 새 시험지 등록<small>PDF를 올리면 정답·단원이 정리돼요</small></a>
+    <a href="teacher_list.html">📋 시험지 목록<small>등록한 시험지 · 학생 배정</small></a>
+    <a href="records.html">🗂️ 시험 기록<small>제출 결과 · 오답노트 · 유사오답</small></a>
+    <a href="bank_compose.html">🧩 시험 조합<small>문제은행에서 새 시험 만들기</small></a>
+    <a href="alerts.html" id="alerts-link">⏰ 시험 예약·알림<small>학생에게 시험 내기 · 미제출 확인</small></a>
   </div>
+  <div id="tpush" class="hint" style="display:none;margin:10px 0;padding:12px 14px;border:1.5px dashed var(--line);border-radius:12px;background:#fff;"></div>
+  <details class="hm" id="more-box"><summary id="more-sum">🔧 분석 · 문제은행 · 학생 관리</summary><div class="hm-list">
+    <a href="weak.html" id="weak-link">🎯 약점 분석<small>오답률 높은 문항 · 반복 오답 학생</small></a>
+    <a href="review.html">🔁 학생별 복습 현황<small>오답 다시 풀기 진행 · 연속 일수</small></a>
+    <a href="stats.html">📊 시험 통계<small>자주 틀리는 문항 · 미제출 학생</small></a>
+    <a href="trend.html">📈 학생별 성적 추이</a>
+    <a href="student_admin.html">📱 학생용 앱<small>주소 · 가입 승인 · 알림 설정</small></a>
+    <a href="bank_list.html">🗃️ 문제은행 보기</a>
+    <a href="unit_check.html">🔎 단원 판별<small>파일을 올리면 단원을 알려줘요</small></a>
+    <a href="book_register.html">📚 교재 한 권 QR 합본 만들기</a>
+    <a href="teacher_new.html?review=1">🕘 최근 등록 시험지 정답·단원 확인<small>다른 기기에서 등록한 것 포함</small></a>
+  </div></details>
 </template>
 
-<script src="js/config.js?v=202611050440"></script>
-<script src="js/api.js?v=202611050440"></script>
-<script src="js/common.js?v=202611050440"></script>
+<script src="js/config.js?v=202611051200"></script>
+<script src="js/api.js?v=202611051200"></script>
+<script src="js/common.js?v=202611051200"></script>
 <script>
 if (!getTeacherPassword()) { location.replace('teacher_login.html'); }
+const MORE = { appr: 0, weak: 0 };
+function moreSum() { const el = document.getElementById('more-sum'); if (el) el.innerHTML = '🔧 분석 · 문제은행 · 학생 관리' + (MORE.weak ? ' <b style="color:#C1392B;">· 반복 오답 ' + MORE.weak + '명</b>' : '') + (MORE.appr ? ' <b style="color:#C1392B;">· 승인 대기 ' + MORE.appr + '명</b>' : ''); }
 renderHeader();
 // 새 제출·미제출이 있으면 메뉴에 숫자를 띄운다 (알림 서버가 아직 배포 전이면 조용히 넘어간다)
 async function refreshAlertBadge() {
@@ -56,14 +76,53 @@ refreshAlertBadge();
     const r = await callApi('listStudents', { password: getTeacherPassword() });
     const n = r && r.ok ? r.students.filter(function (x) { return x.pending; }).length : 0;
     const a = document.querySelector('a[href="student_admin.html"]');
-    if (n && a) a.innerHTML = '📱 학생용 앱 <b style="color:#C1392B;">· 승인 대기 ' + n + '명</b>';
+    if (n && a) { a.innerHTML = '📱 학생용 앱 <b style="color:#C1392B;">· 승인 대기 ' + n + '명</b>'; MORE.appr = n; moreSum(); }
   } catch (e) {}
 })();
 (async function () {      // 반복 오답 학생이 있으면 메뉴에 숫자를 띄운다
   try {
     const r = await callApi('weakReport', { password: getTeacherPassword() });
     const a = document.getElementById('weak-link');
-    if (r && r.ok && r.count && a) a.innerHTML = '🎯 약점 분석 <b style="color:#C1392B;">· 반복 오답 ' + r.count + '명</b>';
+    if (r && r.ok && r.count && a) { a.innerHTML = '🎯 약점 분석 <b style="color:#C1392B;">· 반복 오답 ' + r.count + '명</b>'; MORE.weak = r.count; moreSum(); }
+  } catch (e) {}
+})();
+// ── 선생님 폰·컴퓨터 푸시 알림 (학생 제출·미제출을 앱이 닫혀 있어도 알려 줘요) ──
+function loadScript(src) { return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
+async function setupTeacherPush(ask, test) {
+  const info = await callApi('teacherPushInfo', { password: getTeacherPassword() });
+  if (!info.ok || !info.enabled || !info.web) return 'off';
+  if (!('serviceWorker' in navigator) || !('Notification' in window) || !('PushManager' in window)) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  if (Notification.permission !== 'granted') { if (!ask) return 'ask'; const pm = await Notification.requestPermission(); if (pm !== 'granted') return 'denied'; }
+  await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
+  const cfg = Object.assign({}, info.web), vapid = cfg.vapidKey; delete cfg.vapidKey;
+  if (!firebase.apps.length) firebase.initializeApp(cfg);
+  const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js?cfg=' + encodeURIComponent(JSON.stringify(cfg)));
+  await navigator.serviceWorker.ready;
+  const token = await firebase.messaging().getToken({ vapidKey: vapid, serviceWorkerRegistration: reg });
+  if (!token) return 'fail';
+  const r = await callApi('teacherSaveToken', { password: getTeacherPassword(), token: token, appUrl: new URL('index.html', location.href).href, test: !!test });
+  try { firebase.messaging().onMessage(function (pl) {
+    refreshAlertBadge(); const d = (pl && pl.data) || {};
+    const t = document.createElement('div'); t.style.cssText = 'position:fixed;top:12px;left:12px;right:12px;max-width:520px;margin:0 auto;z-index:99;background:#0B1F5C;color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.5;white-space:pre-line;box-shadow:0 4px 14px rgba(0,0,0,.3);';
+    t.textContent = (d.title || '알림') + '\n' + (d.body || ''); document.body.appendChild(t); setTimeout(function () { t.remove(); }, 8000);
+    try { reg.showNotification(d.title || '자동채점', { body: d.body || '', icon: 'icons/icon-192.png' }); } catch (e) {}
+  }); } catch (e) {}
+  return r.ok ? (test && !r.tested ? 'notest:' + (r.error || '') : 'on') : 'fail';
+}
+(async function () {
+  const box = document.getElementById('tpush'); if (!box || !getTeacherPassword()) return;
+  try {
+    const st = await setupTeacherPush(false);
+    if (st === 'on') { box.style.display = 'block'; box.innerHTML = '🔔 이 기기는 학생 제출·미제출 알림을 받고 있어요.'; return; }
+    if (st === 'ask') {
+      box.style.display = 'block'; box.innerHTML = '<b>🔔 제출·미제출 알림 받기</b><div style="margin:6px 0 10px;">학생이 시험을 제출하거나 기한을 놓치면 이 기기로 바로 알려 드려요. (기기마다 한 번씩 켜요)</div><button type="button" class="btn primary" id="tpush-go" style="padding:10px 16px;">알림 켜기</button><span id="tpush-msg" style="margin-left:8px;"></span>';
+      document.getElementById('tpush-go').addEventListener('click', async function () {
+        const b = this, m = document.getElementById('tpush-msg'); b.disabled = true; m.textContent = '켜는 중...';
+        try { const r = await setupTeacherPush(true, true); box.innerHTML = r === 'on' ? '✅ 알림을 켰어요. 테스트 알림을 보냈으니 확인해 보세요.' : (r === 'denied' ? '알림이 막혀 있어요. 브라우저 주소창 왼쪽 자물쇠 → 알림 허용으로 바꿔 주세요.' : (r.indexOf('notest') === 0 ? '켜지긴 했는데 테스트 알림 전송에 실패했어요. ' + r.slice(7) : '알림을 켜지 못했어요 (' + r + ')')); }
+        catch (e) { box.textContent = '알림을 켜지 못했어요: ' + e.message; }
+      });
+    } else if (st === 'denied') { box.style.display = 'block'; box.textContent = '🔕 이 기기는 알림이 막혀 있어요. 브라우저 주소창의 자물쇠에서 알림을 허용하면 받을 수 있어요.'; }
   } catch (e) {}
 })();
 document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshAlertBadge(); });

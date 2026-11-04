@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>복습 현황 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611051200">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+.rv{padding:12px 14px;margin:10px 0;}
+.rv .nm{font-weight:900;font-size:16px;}
+.pb{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:8px 0 6px;}
+.pb i{display:block;height:100%;background:#1b9a5a;}
+.tg{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:800;margin:2px 4px 2px 0;background:#EEF2FF;color:var(--point);}
+.tg.r{background:#FBEAE7;color:#C1392B;}.tg.g{background:#e8f5ee;color:#1b7a45;}.tg.y{background:#fff3e0;color:#b45309;}
+</style>
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>🔁 학생별 복습 현황</h1>
+  <p class="muted">학생이 틀린 문제를 얼마나 다시 풀었는지 보여 줘요. 맞힌 문제는 3일 뒤 한 번 더 확인하고, 그때도 맞히면 「완전 해결」이에요. 매일 저녁 6시에 복습할 문제가 남은 학생에게 알림이 가요.</p>
+  <div id="sum" class="hint"></div>
+  <div id="list" class="hint">불러오는 중...</div>
+</template>
+<script src="js/config.js?v=202611051200"></script>
+<script src="js/api.js?v=202611051200"></script>
+<script src="js/common.js?v=202611051200"></script>
+<script>
+requireLogin();
+renderHeader({});
+const $ = id => document.getElementById(id), e = escapeHtml;
+function ago(d) { return d == null ? '아직 복습 안 함' : d === 0 ? '오늘 복습' : d + '일 전 복습'; }
+async function load() {
+  try {
+    const r = await callApi('reviewReport', { password: getTeacherPassword() });
+    if (!r.ok) throw new Error(r.error);
+    const rows = r.rows, idle = rows.filter(x => (x.todo + x.due) > 0 && (x.idleDays == null || x.idleDays >= 3)).length;
+    $('sum').innerHTML = rows.length ? '복습할 오답이 있는 학생 <b>' + rows.length + '명</b>' + (idle ? ' · <b style="color:#C1392B;">3일 이상 복습 안 한 학생 ' + idle + '명</b>' : '') : '';
+    $('list').innerHTML = rows.length ? rows.map(x => {
+      const left = x.todo + x.due, done = x.solved + x.mastered, pct = x.total ? Math.round(done / x.total * 100) : 0, lazy = left > 0 && (x.idleDays == null || x.idleDays >= 3);
+      return '<div class="card rv"' + (lazy ? ' style="border-color:#C1392B;"' : '') + '><div class="nm">' + e(x.name) + (left ? ' <span class="tg r">남은 ' + left + '문제</span>' : ' <span class="tg g">모두 해결 🎉</span>') + (x.due ? '<span class="tg y">다시 확인 ' + x.due + '</span>' : '') + '</div>' +
+        '<div class="pb"><i style="width:' + pct + '%"></i></div><div class="hint" style="margin:0;">' + done + ' / ' + x.total + ' 해결 (' + pct + '%) · 🏆 완전 해결 ' + x.mastered + '</div>' +
+        '<div style="margin-top:6px;">' + (x.streak ? '<span class="tg y">🔥 ' + x.streak + '일 연속</span>' : '') + '<span class="tg' + (lazy ? ' r' : '') + '">' + ago(x.idleDays) + '</span><span class="tg">누적 해결 ' + x.okTotal + '</span></div></div>';
+    }).join('') : '<div class="card muted">아직 복습할 오답이 있는 학생이 없어요.</div>';
+  } catch (err) { $('list').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + ' (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; }
+}
+load();
+</script>
+</body>
+</html>

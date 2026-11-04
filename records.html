@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611050440">
+<link rel="stylesheet" href="css/style.css?v=202611051200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -47,14 +47,14 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611050440"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611050440"></script>
-<script src="js/vendor/qrcode.min.js?v=202611050440"></script>
-<script src="js/config.js?v=202611050440"></script>
-<script src="js/api.js?v=202611050440"></script>
-<script src="js/common.js?v=202611050440"></script>
-<script src="js/bankcore.js?v=202611050440"></script>
-<script src="js/pdfui.js?v=202611050440"></script>
+<script src="js/vendor/pdf.min.js?v=202611051200"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611051200"></script>
+<script src="js/vendor/qrcode.min.js?v=202611051200"></script>
+<script src="js/config.js?v=202611051200"></script>
+<script src="js/api.js?v=202611051200"></script>
+<script src="js/common.js?v=202611051200"></script>
+<script src="js/bankcore.js?v=202611051200"></script>
+<script src="js/pdfui.js?v=202611051200"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -74,19 +74,42 @@ const $ = id => document.getElementById(id);
 const PER_PAGE = 20;
 let all = [], retries = [], examFilter = '', page = 1;
 
-async function load() {
+function hydrate(res) {
+  const ex = res.exams || {};
+  return (res.submissions || []).map(r => {
+    const e = ex[String(r.examId)];
+    if (e) { if (r.examTitle === undefined) r.examTitle = e.title; if (!r.correctAnswers) r.correctAnswers = e.correctAnswers || []; if (!r.sourceQuestionIds) r.sourceQuestionIds = e.sourceQuestionIds || []; }
+    else if (r.examTitle === undefined) { r.examTitle = '(삭제된 시험)'; r.correctAnswers = r.correctAnswers || []; r.sourceQuestionIds = r.sourceQuestionIds || []; }
+    return r;
+  });
+}
+const REC_CACHE = 'rec_cache_v1';
+async function loadBankUnitsBg() {
   try {
-    const res = await callApi('listSubmissions', { password: getTeacherPassword() });
+    const r = await callApi('bankUnitMap', { password: getTeacherPassword() });
+    if (r.ok && r.items) { r.items.forEach(it => { bankUnitOf[it[0]] = it[2] ? it[2] + ' · ' + it[1] : it[1]; }); render(); return; }
+  } catch (e) {}
+  try { await ensureBankUnits(); render(); } catch (e) {}
+}
+async function load() {
+  // 지난번에 받은 기록이 있으면 먼저 바로 보여 주고, 최신 기록은 뒤에서 받아 갈아끼운다
+  try {
+    const c = JSON.parse(localStorage.getItem(REC_CACHE) || 'null');
+    if (c && c.all && c.all.length) { all = c.all; retries = c.retries || []; render(); $('total-text').textContent = '전체 ' + all.length + '건 · 최신 기록 불러오는 중…'; }
+  } catch (e) {}
+  try {
+    const [res, rr] = await Promise.all([
+      callApi('listSubmissions', { password: getTeacherPassword() }),
+      callApi('retryLog', { password: getTeacherPassword() }).catch(() => null)
+    ]);
     if (!res.ok) { $('total-text').textContent = res.error; return; }
-    all = res.submissions;
+    all = hydrate(res);
     retries = [];
-    try {
-      const rr = await callApi('retryLog', { password: getTeacherPassword() });
-      if (rr.ok) retries = rr.rows.map(x => Object.assign(x, { retry: true, correctAnswers: [], score100: x.total ? Math.round(x.score / x.total * 100) : 0 }));
-    } catch (e) {}
-    await ensureBankUnits();
+    if (rr && rr.ok) retries = rr.rows.map(x => Object.assign(x, { retry: true, correctAnswers: [], score100: x.total ? Math.round(x.score / x.total * 100) : 0 }));
     render();
-  } catch (e) { $('total-text').textContent = '서버에 연결할 수 없어요.'; }
+    try { localStorage.setItem(REC_CACHE, JSON.stringify({ all: all.slice(0, 600), retries: retries.slice(0, 200) })); } catch (e) {}
+    loadBankUnitsBg();
+  } catch (e) { if (!all.length) $('total-text').textContent = '서버에 연결할 수 없어요.'; }
 }
 
 function filtered() {

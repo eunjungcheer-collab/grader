@@ -66,6 +66,16 @@ svg text{font-family:inherit;}
 .big .bs{font-size:13px;color:var(--muted);margin-top:3px;line-height:1.45;}
 .big .bn{margin-left:auto;min-width:28px;height:28px;border-radius:14px;background:var(--red);color:#fff;font-weight:900;font-size:14px;line-height:28px;text-align:center;padding:0 8px;}
 .big.main{border-color:var(--point);background:var(--soft);}
+.pbar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:7px;}
+.pbar i{display:block;height:100%;background:var(--ok);transition:width .5s;}
+.q.solved{border-color:var(--ok);}
+.q.solved .qh{background:#e8f5ee;}
+.q.due{border-color:var(--red);}
+.q.due .qh{background:#fdecea;}
+.q.mast{border-color:#b8860b;}
+.q.mast .qh{background:#fff7dc;}
+.streak{display:inline-block;background:#fff3e0;border:1.5px solid #f59e0b;color:#b45309;border-radius:99px;padding:3px 11px;font-weight:900;font-size:13px;margin:2px 6px 2px 0;}
+#praise{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:99px;font-weight:800;font-size:14px;z-index:99;max-width:90%;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.3);}
 .hide{display:none!important;}
 </style>
 </head>
@@ -113,9 +123,9 @@ svg text{font-family:inherit;}
   <button data-t="wrong"><span class="ic">🔁</span>다시 풀기</button>
 </nav>
 
-<script src="js/config.js?v=202611050440"></script>
-<script src="js/api.js?v=202611050440"></script>
-<script src="js/common.js?v=202611050440"></script>
+<script src="js/config.js?v=202611051200"></script>
+<script src="js/api.js?v=202611051200"></script>
+<script src="js/common.js?v=202611051200"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -174,7 +184,7 @@ function loadCache() { try { const c = localStorage.getItem(cacheKey()); return 
 function applyData() {
   ME.display = DATA.display; $('who').textContent = DATA.display + ' 학생';
   setAppBadgeCount(DATA.pendingCount);                 // 홈 화면 아이콘 배지 = 아직 안 낸 시험 수
-  drawBadge(); drawHome(); drawMine(); drawRec(); drawWrongPicker();
+  drawBadge(); drawHome(); drawMine(); drawRec(); drawWrongPicker(); updPickerLabels();
   if (!window._pc) { window._pc = 1; pushCard(); } else if (PUSHSTATE !== 'on') pushCard();
 }
 async function enterHome(fresh) {
@@ -196,7 +206,7 @@ async function refresh() {
   } catch (e) { if (!DATA) $('pend').innerHTML = '<div class="banner">서버에 연결하지 못했어요. 인터넷을 확인해 주세요.</div>'; }
 }
 async function loadWeak() {       // 반복 오답 안내는 느린 계산이라 화면을 먼저 보여 준 뒤 따로 불러온다
-  try { const r = await callApi('stuWeak', { name: ME.name, pin: ME.pin }); if (r.ok && DATA) { DATA.weak = r.weak; saveCache(); drawHome(); } } catch (e) {}
+  try { const r = await callApi('stuWeak', { name: ME.name, pin: ME.pin }); if (r.ok && DATA) { DATA.weak = r.weak; DATA.review = r.review; saveCache(); drawHome(); updPickerLabels(); } } catch (e) {}
 }
 function drawBadge() {
   const n = DATA.pendingCount, b = $('bd-mine');
@@ -255,8 +265,57 @@ function drawWrongPicker() {
   const box = $('t-wrong');
   if (box.dataset.sel && box.querySelector('#wbody') && box.querySelector('#wbody').dataset.loaded) return;
   box.dataset.sel = 1;
-  box.innerHTML = '<h2>🔁 오답 복습</h2>' + (opts.length ? '<div class="muted" style="margin-bottom:8px;">복습할 시험을 고르면, 틀린 문제만 다시 보여 줘요. 먼저 스스로 다시 풀어 보고 「정답 확인」을 눌러요.</div><select id="wsel"><option value="">시험을 골라 주세요</option>' + opts.map(r => '<option value="' + esc(r.examId) + '">' + esc(r.title) + ' (' + r.score100 + '점, ' + fmtD(r.submittedAt) + ')</option>').join('') + '</select><div id="wbody"></div>' : '<div class="card muted">아직 제출한 시험이 없어요. 시험을 풀면 틀린 문제를 여기서 복습할 수 있어요.</div>');
+  box.innerHTML = '<h2>🔁 오답 복습</h2>' + (opts.length ? '<div class="muted" style="margin-bottom:8px;">복습할 시험을 고르면, 틀린 문제만 다시 보여 줘요. 먼저 스스로 다시 풀어 보고 「정답 확인」을 눌러요.</div><select id="wsel"><option value="">시험을 골라 주세요</option>' + opts.map(r => '<option value="' + esc(r.examId) + '" data-t="' + esc(r.title) + ' (' + r.score100 + '점, ' + fmtD(r.submittedAt) + ')">' + esc(r.title) + ' (' + r.score100 + '점, ' + fmtD(r.submittedAt) + ')</option>').join('') + '</select><div id="wbody"></div>' : '<div class="card muted">아직 제출한 시험이 없어요. 시험을 풀면 틀린 문제를 여기서 복습할 수 있어요.</div>');
   const s = $('wsel'); if (s) s.addEventListener('change', () => loadWrong(s.value));
+}
+function updPickerLabels() {
+  const rv = DATA && DATA.review; if (!rv) return;
+  document.querySelectorAll('#wsel option[data-t]').forEach(o => { const b = rv.byExam[o.value]; o.textContent = o.dataset.t + (b ? (b.done >= b.total ? ' ✅ 복습 끝' : ' · 남은 ' + (b.total - b.done) + '문제') : ''); });
+}
+function wprogHtml(id) {
+  const b = DATA && DATA.review && DATA.review.byExam[id]; if (!b) return '';
+  return '<b>' + b.done + ' / ' + b.total + '</b> 복습 완료' + (b.done >= b.total ? ' 🎉 이 시험은 다 했어요!' : ' · ' + (b.total - b.done) + '문제 남았어요') + '<div class="pbar"><i style="width:' + Math.round(b.done / b.total * 100) + '%"></i></div>';
+}
+function badgeOf(st, d) {
+  if (st === 'mastered') return ' <span style="color:#b8860b;font-weight:900;margin-left:6px;">🏆 완전 해결</span>';
+  if (st === 'solved') return ' <span style="color:var(--ok);font-weight:900;margin-left:6px;">✅ 해결' + (d ? ' · ' + d + '일 뒤 다시 확인' : '') + '</span>';
+  if (st === 'due') return ' <span style="color:var(--red);font-weight:900;margin-left:6px;">🔁 다시 확인!</span>';
+  return '';
+}
+function setBadge(q, st, d) {
+  q.dataset.st = st; q.classList.toggle('solved', st === 'solved'); q.classList.toggle('due', st === 'due'); q.classList.toggle('mast', st === 'mastered');
+  const sp = q.querySelector('.qh > span'), old = sp.querySelector('[data-bd]'); if (old) old.remove();
+  const h = badgeOf(st, d); if (h) { sp.insertAdjacentHTML('beforeend', h); sp.lastElementChild.setAttribute('data-bd', '1'); }
+}
+function rvOf() { return DATA.review || (DATA.review = { total: 0, done: 0, todo: 0, due: 0, mastered: 0, streak: 0, okTotal: 0, today: false, byExam: {} }); }
+function praise(msg) {
+  let t = $('praise'); if (!t) { t = document.createElement('div'); t.id = 'praise'; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.remove('hide'); clearTimeout(praise.t); praise.t = setTimeout(() => t.classList.add('hide'), 3200);
+}
+function touchStreak(rv) {
+  rv.okTotal = (rv.okTotal || 0) + 1;
+  if (!rv.today) { rv.today = true; rv.streak = (rv.streak || 0) + 1; }
+}
+function afterChange(id) { saveCache(); drawHome(); updPickerLabels(); const wp = $('wprog'); if (wp) wp.innerHTML = wprogHtml(id); }
+function markSolved(id, q) {          // 처음 맞힘: 못 푼 문제 → 해결(3일 뒤 다시 확인)
+  const rv = rvOf(); setBadge(q, 'solved', 3);
+  rv.done++; rv.todo = Math.max(0, (rv.todo || 0) - 1); if (rv.byExam[id]) rv.byExam[id].done++;
+  touchStreak(rv);
+  const left = rv.total - rv.done, ms = { 1: '첫 해결! 🎉', 5: '벌써 5문제 해결! 👏', 10: '10문제 해결! 대단해요 🔥', 30: '30문제 해결! 복습 왕 👑' }[rv.okTotal];
+  praise(left === 0 ? '🎉 오답을 전부 해결했어요!' : (ms || ('✅ 해결! 이제 ' + left + '문제 남았어요')));
+  afterChange(id);
+}
+function markMastered(id, q) {        // 3일 뒤 다시 맞힘: 완전 해결
+  const rv = rvOf(); setBadge(q, 'mastered', 0);
+  rv.done++; rv.due = Math.max(0, (rv.due || 0) - 1); rv.mastered = (rv.mastered || 0) + 1; if (rv.byExam[id]) rv.byExam[id].done++;
+  touchStreak(rv); praise('🏆 완전 해결! 이 문제는 이제 내 것이에요');
+  afterChange(id);
+}
+function markFailed(id, q) {          // 해결했던 문제를 다시 틀림 → 다시 못 푼 문제로
+  const st = q.dataset.st; if (st !== 'solved' && st !== 'mastered') return;
+  const rv = rvOf(); setBadge(q, 'todo', 0);
+  rv.done = Math.max(0, rv.done - 1); rv.todo = (rv.todo || 0) + 1; if (st === 'mastered') rv.mastered = Math.max(0, (rv.mastered || 1) - 1); if (rv.byExam[id]) rv.byExam[id].done = Math.max(0, rv.byExam[id].done - 1);
+  afterChange(id);
 }
 async function loadWrong(id) {
   const body = $('wbody'); body.dataset.loaded = '';
@@ -267,9 +326,10 @@ async function loadWrong(id) {
     if (!r.ok) throw new Error(r.error);
     body.dataset.loaded = '1';
     if (!r.wrong.length) { body.innerHTML = '<div class="banner ok" style="margin-top:12px;">🎉 이 시험은 틀린 문제가 없어요!</div>'; return; }
-    body.innerHTML = '<div class="hint" style="margin-top:12px;">틀린 문제 ' + r.wrong.length + '개</div>' + (r.hidden ? '<div class="banner" style="margin-top:8px;">🔒 아직 제출 기한 중인 친구가 있어서 정답은 기한이 끝난 뒤에 볼 수 있어요. 지금은 문제를 다시 풀어 보기만 해요.</div>' : '') + r.wrong.map(w => {
+    body.innerHTML = '<div id="wprog" class="card" style="margin:12px 0 4px;padding:12px 14px;">' + (wprogHtml(id) || ('틀린 문제 ' + r.wrong.length + '개')) + '</div>' + (r.hidden ? '<div class="banner" style="margin-top:8px;">🔒 아직 제출 기한 중인 친구가 있어서 정답은 기한이 끝난 뒤에 볼 수 있어요. 지금은 문제를 다시 풀어 보기만 해요.</div>' : '') + r.wrong.map(w => {
       const multi = String(w.correct).replace(/\//g, '').length > 1 && !/\//.test(w.correct);
-      return '<div class="q" data-c="' + esc(w.correct) + '" data-n="' + w.n + '"><div class="qh"><span>' + w.n + '번</span><span class="hint" style="margin:0;">내 답 ' + esc(fmtAnswer(w.mine)) + '</span></div>' +
+      const st = w.state || (w.done ? 'solved' : 'todo');
+      return '<div class="q' + (st === 'solved' ? ' solved' : st === 'due' ? ' due' : st === 'mastered' ? ' mast' : '') + '" data-st="' + st + '" data-c="' + esc(w.correct) + '" data-n="' + w.n + '"><div class="qh"><span>' + w.n + '번' + (badgeOf(st, w.dueInDays) ? badgeOf(st, w.dueInDays).replace('<span ', '<span data-bd="1" ') : '') + '</span><span class="hint" style="margin:0;">내 답 ' + esc(fmtAnswer(w.mine)) + '</span></div>' +
         (w.fileId ? '<img loading="lazy" src="' + thumb(w.fileId, 900) + '" alt="' + w.n + '번 문제" onclick="window.open(this.src)">' : '<div class="qb muted">이 문제의 그림이 서버에 없어요. ' + (r.pdfUrl ? '<a href="' + r.pdfUrl + '" target="_blank" rel="noopener" style="font-weight:800;color:var(--point);">📄 시험지 PDF 열어서 ' + w.n + '번 보기</a>' : '시험지(종이)를 보고 다시 풀어 보세요.') + '</div>') +
         '<div class="qb"><div class="hint" style="margin:0 0 4px;">' + (multi ? '정답이 여러 개예요. 모두 눌러 보세요.' : '다시 풀어 보기') + '</div><div class="opts">' + [1, 2, 3, 4, 5].map(v => '<button type="button" data-v="' + v + '">' + v + '</button>').join('') + '</div>' +
         (r.hidden ? '' : '<button type="button" class="btn sm outline wchk">정답 확인</button>') + '<div class="res"></div>' +
@@ -283,6 +343,15 @@ async function loadWrong(id) {
         if (!picked) { q.querySelector('.res').textContent = '먼저 답을 골라 주세요.'; return; }
         const ok = c.indexOf('/') >= 0 ? c.split('/').indexOf(picked) >= 0 : picked === c;
         q.querySelectorAll('.opts button').forEach(b => { const isC = c.indexOf('/') >= 0 ? c.split('/').indexOf(b.dataset.v) >= 0 : c.indexOf(b.dataset.v) >= 0; b.classList.remove('sel'); if (isC) b.classList.add('good'); else if (picked.indexOf(b.dataset.v) >= 0) b.classList.add('bad'); });
+        const st0 = q.dataset.st || 'todo';
+        if (ok) {
+          if (st0 === 'todo') { markSolved(id, q); callApi('stuClear', { name: ME.name, pin: ME.pin, examId: id, n: +q.dataset.n, ok: true }).then(() => loadWeak()).catch(() => {}); }
+          else if (st0 === 'due') { markMastered(id, q); callApi('stuClear', { name: ME.name, pin: ME.pin, examId: id, n: +q.dataset.n, ok: true }).then(() => loadWeak()).catch(() => {}); }
+          else if (st0 === 'solved') praise('좋아요! ' + (q.querySelector('[data-bd]') ? '3일 뒤에 한 번 더 확인하면 완전 해결이에요' : ''));
+        } else {
+          callApi('stuClear', { name: ME.name, pin: ME.pin, examId: id, n: +q.dataset.n, ok: false }).then(() => loadWeak()).catch(() => {});
+          markFailed(id, q);
+        }
         q.querySelector('.res').innerHTML = ok ? '<span style="color:var(--ok)">⭕ 맞았어요!</span>' : '<span style="color:var(--red)">❌ 정답은 ' + esc(fmtAnswer(c)) + '번이에요.</span>';
       });
     });
@@ -306,7 +375,14 @@ function drawHome() {
   if (wk) h += '<div class="banner"><b>🔁 반복해서 틀리는 문제가 있어요</b><br>' + W.repeatQ.slice(0, 3).map(x => esc(x.title || x.examTitle) + ' ' + x.n + '번').join(', ') + (W.repeatQ.length ? ' · ' : '') + W.weakUnits.slice(0, 2).map(u => '「' + esc(u.unit) + '」 단원').join(', ') + '<br>「틀린 것 다시 풀기」에서 복습해 보세요.</div>';
   h += '<button type="button" class="big main" data-go="mine"><span class="bi">📝</span><div><div class="bt">시험 보기</div><div class="bs">' + (n ? '아직 제출하지 않은 시험이 있어요' : '제출할 시험이 없어요 · 시험 목록 보기') + '</div></div>' + (n ? '<span class="bn">' + n + '</span>' : '') + '</button>';
   h += '<button type="button" class="big" data-go="rec"><span class="bi">📈</span><div><div class="bt">결과 보기</div><div class="bs">' + (last ? '최근 점수 <b>' + last.score100 + '점</b> · ' + esc(last.title) : '아직 제출한 시험이 없어요') + '</div></div></button>';
-  h += '<button type="button" class="big" data-go="wrong"><span class="bi">🔁</span><div><div class="bt">틀린 것 다시 풀기</div><div class="bs">' + (Object.keys(seen).length ? '시험을 고르면 틀린 문제만 다시 풀 수 있어요' : '시험을 보면 여기서 오답을 복습해요') + '</div></div>' + (wk ? '<span class="bn">!</span>' : '') + '</button>';
+  const RV = DATA.review, rem = RV ? RV.total - RV.done : 0;
+  let wsub = Object.keys(seen).length ? '시험을 고르면 틀린 문제만 다시 풀 수 있어요' : '시험을 보면 여기서 오답을 복습해요', wbadge = wk ? '<span class="bn">!</span>' : '';
+  if (RV && RV.total) {
+    wsub = '<b>' + RV.done + ' / ' + RV.total + '</b> 복습 완료 · ' + (rem ? '<b style="color:var(--red);">' + rem + '문제</b> 남았어요' + (RV.due ? ' <span class="muted">(다시 확인할 문제 ' + RV.due + '개 포함)</span>' : '') : '모두 끝! 🎉') + '<div class="pbar"><i style="width:' + Math.round(RV.done / RV.total * 100) + '%"></i></div>';
+    wbadge = rem ? '<span class="bn">' + rem + '</span>' : '<span class="bn" style="background:var(--ok);">✓</span>';
+  }
+  if (RV && (RV.streak > 0 || RV.mastered > 0 || RV.okTotal > 0)) wsub += '<div style="margin-top:7px;">' + (RV.streak > 0 ? '<span class="streak">🔥 ' + RV.streak + '일 연속 복습</span>' : '') + (RV.okTotal ? '<span class="streak" style="background:#e8f5ee;border-color:var(--ok);color:#1b7a45;">누적 해결 ' + RV.okTotal + '</span>' : '') + (RV.mastered ? '<span class="streak" style="background:#fff7dc;border-color:#b8860b;color:#8a6508;">🏆 완전 해결 ' + RV.mastered + '</span>' : '') + '</div>';
+  h += '<button type="button" class="big" data-go="wrong"><span class="bi">🔁</span><div style="flex:1;"><div class="bt">틀린 것 다시 풀기</div><div class="bs">' + wsub + '</div></div>' + wbadge + '</button>';
   $('t-home').innerHTML = h;
   $('t-home').querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => goTab(b.dataset.go)));
 }
