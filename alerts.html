@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 예약·알림 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611051400">
+<link rel="stylesheet" href="css/style.css?v=202611051700">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -60,10 +60,10 @@
     <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
   </div>
 </template>
-<script src="js/config.js?v=202611051400"></script>
-<script src="js/api.js?v=202611051400"></script>
-<script src="js/common.js?v=202611051400"></script>
-<script src="js/clockpicker.js?v=202611051400"></script>
+<script src="js/config.js?v=202611051700"></script>
+<script src="js/api.js?v=202611051700"></script>
+<script src="js/common.js?v=202611051700"></script>
+<script src="js/clockpicker.js?v=202611051700"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -86,7 +86,7 @@ async function loadAlerts() {
   const body = $('al-body');
   let since = ''; try { since = localStorage.getItem(SEEN) || ''; } catch (x) {}
   try {
-    const r = await callApi('listAlerts', { password: pw(), since: since });
+    await callApiSWR('listAlerts', { password: pw(), since: since }, r => {
     if (!r.ok) throw new Error(r.error || '알림을 불러오지 못했어요');
     ALERT_NOW = r.now;
     setAppBadgeCount(r.missed.length);
@@ -101,6 +101,7 @@ async function loadAlerts() {
     body.innerHTML = h;
     body.querySelectorAll('.al-copy').forEach(b => b.addEventListener('click', () => copy(b.dataset.t, b)));
     $('al-seen').addEventListener('click', () => { try { localStorage.setItem(SEEN, ALERT_NOW || new Date().toISOString()); } catch (x) {} loadAlerts(); });
+  });
   } catch (err) { body.innerHTML = '<span style="color:#C1392B;">' + e(err.message) + '</span>'; }
 }
 const STAT = { wait: ['⏳ 대기', '#475569'], done: ['✅ 제출', '#145A32'], late: ['🕒 늦게 제출', '#9A5B00'], missed: ['⚠️ 미제출', '#C1392B'] };
@@ -108,7 +109,7 @@ let ASG = [], asT = null;
 $('as-q').addEventListener('input', () => { clearTimeout(asT); asT = setTimeout(loadAssign, 250); });
 async function loadAssign() {
   try {
-    const r = await callApi('listAssignments', { password: pw() });
+    await callApiSWR('listAssignments', { password: pw() }, r => {
     if (!r.ok) throw new Error(r.error || '목록을 불러오지 못했어요');
     ASG = r.assignments; const qv = ($('as-q').value || '').replace(/\s+/g, '').toLowerCase();
     const L = ASG.filter(a => !qv || (a.studentName + a.examTitle).replace(/\s+/g, '').toLowerCase().includes(qv));
@@ -118,14 +119,16 @@ async function loadAssign() {
       if (!confirm('이 예약을 삭제할까요? (제출 기록은 지워지지 않아요)')) return;
       b.disabled = true; await callApi('deleteAssignment', { password: pw(), id: b.dataset.id }); loadAssign(); loadAlerts();
     }));
+  });
   } catch (err) { $('as-list').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + '</span>'; }
 }
 async function loadExams() {
   try {
-    const r = await callApi('listExams', { password: pw() });
+    await callApiSWR('listExams', { password: pw() }, r => {
     if (!r.ok) throw new Error(r.error);
     $('as-exam').innerHTML = '<option value="">시험지를 고르세요</option>' + (r.exams || []).map(x => '<option value="' + e(x.id) + '">' + e(x.title) + '</option>').join('');
     const q = new URLSearchParams(location.search).get('exam'); if (q) $('as-exam').value = q;
+  });
   } catch (err) { $('as-exam').innerHTML = '<option value="">시험지를 불러오지 못했어요</option>'; }
 }
 // 기한 빠른 선택 + 요일 표시

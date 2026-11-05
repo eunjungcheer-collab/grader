@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611051400">
+<link rel="stylesheet" href="css/style.css?v=202611051700">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611051400"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611051400"></script>
-<script src="js/config.js?v=202611051400"></script>
-<script src="js/api.js?v=202611051400"></script>
-<script src="js/common.js?v=202611051400"></script>
-<script src="js/bankcore.js?v=202611051400"></script>
-<script src="js/pdfui.js?v=202611051400"></script>
+<script src="js/vendor/qrcode.min.js?v=202611051700"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611051700"></script>
+<script src="js/config.js?v=202611051700"></script>
+<script src="js/api.js?v=202611051700"></script>
+<script src="js/common.js?v=202611051700"></script>
+<script src="js/bankcore.js?v=202611051700"></script>
+<script src="js/pdfui.js?v=202611051700"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -576,7 +576,7 @@ function renderReviewList() {
           ${rangeInfo(q, reviewPicks) ? '<span class="hint">문제 ' + rangeInfo(q, reviewPicks).k + '개 묶음 · 정답 ' + rangeInfo(q, reviewPicks).parts.map(a => escapeHtml(fmtAnswer(a))).join(', ') + '</span>' : (q.answer === '-' ? '<span class="tag-sub">서술형</span>' : '<span class="hint">정답 ' + escapeHtml(fmtAnswer(q.answer)) + '</span>')}</span>
         <button type="button" class="btn danger rm-btn" data-i="${i}" style="padding:6px 12px; flex-shrink:0;">빼기</button>
       </div>
-      <img class="review-thumb" src="${driveThumb(q.fileId, 900)}" loading="lazy" title="누르면 크게 보여요">
+      <img class="review-thumb" src="${driveThumb(q.fileId, 640)}" loading="lazy" title="누르면 크게 보여요">
     </div>`).join('');
   $('review-list').querySelectorAll('.review-thumb').forEach(im => im.addEventListener('click', () => zoomImg(im.dataset.full || im.src.replace(/=w\d+$/, '=w1600'))));
   $('review-list').querySelectorAll('.rm-btn').forEach(b => b.addEventListener('click', () => {
@@ -604,7 +604,7 @@ function renderAddResults() {
         <span>${tagsHtml(x)} <span class="diff-tag d-${dKey(x)}">${dKey(x)}</span> ${x.answer === '-' ? '<span class="tag-sub">서술형</span>' : '정답 ' + escapeHtml(fmtAnswer(x.answer))}</span>
         <button type="button" class="btn outline add-btn" data-id="${x.id}" style="padding:6px 12px; flex-shrink:0;">추가</button>
       </div>
-      <img class="review-thumb" src="${driveThumb(x.fileId, 900)}" loading="lazy" title="누르면 크게 보여요">
+      <img class="review-thumb" src="${driveThumb(x.fileId, 640)}" loading="lazy" title="누르면 크게 보여요">
     </div>`).join('') : '<p class="hint">일치하는 문항이 없어요.</p>';
   box.querySelectorAll('.review-thumb').forEach(im => im.addEventListener('click', (e) => { e.stopPropagation(); zoomImg(im.src.replace(/=w\d+$/, '=w1600')); }));
   box.querySelectorAll('.add-btn').forEach(b => b.addEventListener('click', () => {

@@ -21,7 +21,45 @@ function _qcClear() { _qcMem = null; try { sessionStorage.removeItem(_QC_KEY); }
 window.clearQuestionCache = _qcClear;
 const _QC_WRITE_RE = /^(saveQuestions|updateQuestions?|deleteQuestions?)$/;
 
+// ── 미리 받아 두기: 홈 화면에서 자주 가는 화면의 목록을 조용히 받아 두면, 그 화면을 열 때 바로 쓴다 (2분 안, 쓰기 작업이 있으면 버림) ──
+const _PF_KEY = 'pf_v1', _PF_TTL = 120000, _PF_OK = /^(listExams|listAssignments|listSubmissions|retryLog|getRosters|listAlerts)$/;
+const _PF_READ = /^(list|get|stu|weak|review|noticeRoster|bankUnitMap|stats|retryLog|homeBadges|teacher|login|suggestName)/;
+let _pfMem = null;
+function _pfLoad() { if (_pfMem) return _pfMem; try { _pfMem = JSON.parse(sessionStorage.getItem(_PF_KEY) || '{}'); } catch (e) { _pfMem = {}; } return _pfMem; }
+function _pfSave() { try { sessionStorage.setItem(_PF_KEY, JSON.stringify(_pfMem)); } catch (e) { try { sessionStorage.removeItem(_PF_KEY); } catch (e2) {} } }
+function _pfKey(action, params) { return action + '|' + JSON.stringify(params || {}); }
+function _pfGet(action, params) { const m = _pfLoad(), c = m[_pfKey(action, params)]; return c && Date.now() - c.t < _PF_TTL ? c.v : null; }
+function _pfClear() { _pfMem = {}; try { sessionStorage.removeItem(_PF_KEY); } catch (e) {} try { Object.keys(localStorage).forEach(k => { if (k.indexOf('swr_') === 0) localStorage.removeItem(k); }); } catch (e) {} }
+async function prefetchApis(list) {
+  if (!getTeacherPassword()) return;
+  const pw = getTeacherPassword();
+  for (const action of list) {
+    const params = { password: pw };
+    if (_pfGet(action, params)) continue;
+    try { const out = await _callApiRaw(action, params); if (out && out.ok) { _pfLoad()[_pfKey(action, params)] = { t: Date.now(), v: out }; _pfSave(); } } catch (e) {}
+  }
+}
+window.prefetchApis = prefetchApis;
+
+// 지난번 결과가 있으면 먼저 그려 주고(render 한 번), 최신 결과가 오면 달라진 경우에만 다시 그린다(render 두 번째). 오류는 호출한 쪽 catch 로 간다.
+async function callApiSWR(action, params, render) {
+  const p2 = Object.assign({}, params || {}); delete p2.password;
+  const key = 'swr_' + action + '|' + JSON.stringify(p2);
+  let cached = null; try { cached = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+  let drew = false;
+  if (cached && cached.ok) { try { render(cached); drew = true; } catch (e) {} }
+  const fresh = await callApi(action, params);
+  if (fresh && fresh.ok) {
+    try { localStorage.setItem(key, JSON.stringify(fresh)); } catch (e) {}
+    if (!drew || JSON.stringify(cached) !== JSON.stringify(fresh)) render(fresh);
+  } else if (!drew) render(fresh);
+  return fresh;
+}
+window.callApiSWR = callApiSWR;
+
 async function callApi(action, params) {
+  if (_PF_OK.test(action)) { const hit = _pfGet(action, params); if (hit) return JSON.parse(JSON.stringify(hit)); }
+  else if (!_PF_READ.test(action)) _pfClear();
   if (action === 'listQuestions' && !(params && params.fresh)) {
     const c = _qcGet();
     if (c) return { ok: true, questions: c.slice(), cached: true };

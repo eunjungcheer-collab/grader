@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611051400">
+<link rel="stylesheet" href="css/style.css?v=202611051700">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -78,11 +78,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611051400"></script>
-<script src="js/api.js?v=202611051400"></script>
-<script src="js/common.js?v=202611051400"></script>
-<script src="js/bankcore.js?v=202611051400"></script>
-<script src="js/pdfui.js?v=202611051400"></script>
+<script src="js/config.js?v=202611051700"></script>
+<script src="js/api.js?v=202611051700"></script>
+<script src="js/common.js?v=202611051700"></script>
+<script src="js/bankcore.js?v=202611051700"></script>
+<script src="js/pdfui.js?v=202611051700"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -227,8 +227,8 @@ function render() {
   $('list').innerHTML = slice.length ? slice.map(x => `
     <div class="qcard" data-id="${x.id}">
       <label class="qcard-select"><input type="checkbox" class="qsel" data-id="${x.id}"> <span class="hint">선택</span></label>
-      <img class="qimg" src="${driveThumb(x.fileId, 900)}" data-full="${driveThumb(x.fileId, 1600)}" loading="lazy" title="누르면 크게 보여요">
-      ${x.explFileId ? '<div class="expl-peek"><span class="peek-tag">해설 · 클릭해서 펼치기</span><img src="' + driveThumb(x.explFileId, 900) + '" loading="lazy"></div>' : ''}
+      <img class="qimg" src="${driveThumb(x.fileId, 640)}" data-full="${driveThumb(x.fileId, 1600)}" loading="lazy" title="누르면 크게 보여요">
+      ${x.explFileId ? '<div class="expl-peek"><span class="peek-tag">해설 · 클릭해서 펼치기</span><img src="' + driveThumb(x.explFileId, 640) + '" loading="lazy"></div>' : ''}
       <div class="diffrow"><b style="font-size:13px;">난이도</b>
         <div class="seg" data-id="${x.id}">${['상', '중', '하'].map(d => '<button type="button" data-d="' + d + '" class="' + (x.difficulty === d ? 'on' : '') + '">' + d + '</button>').join('')}</div>
         <span class="saved-flash dflash"></span></div>

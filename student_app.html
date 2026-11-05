@@ -123,9 +123,9 @@ svg text{font-family:inherit;}
   <button data-t="wrong"><span class="ic">🔁</span>다시 풀기</button>
 </nav>
 
-<script src="js/config.js?v=202611051400"></script>
-<script src="js/api.js?v=202611051400"></script>
-<script src="js/common.js?v=202611051400"></script>
+<script src="js/config.js?v=202611051700"></script>
+<script src="js/api.js?v=202611051700"></script>
+<script src="js/common.js?v=202611051700"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -330,10 +330,10 @@ async function loadWrong(id) {
       const multi = String(w.correct).replace(/\//g, '').length > 1 && !/\//.test(w.correct);
       const st = w.state || (w.done ? 'solved' : 'todo');
       return '<div class="q' + (st === 'solved' ? ' solved' : st === 'due' ? ' due' : st === 'mastered' ? ' mast' : '') + '" data-st="' + st + '" data-c="' + esc(w.correct) + '" data-n="' + w.n + '"><div class="qh"><span>' + w.n + '번' + (badgeOf(st, w.dueInDays) ? badgeOf(st, w.dueInDays).replace('<span ', '<span data-bd="1" ') : '') + '</span><span class="hint" style="margin:0;">내 답 ' + esc(fmtAnswer(w.mine)) + '</span></div>' +
-        (w.fileId ? '<img loading="lazy" src="' + thumb(w.fileId, 900) + '" alt="' + w.n + '번 문제" onclick="window.open(this.src)">' : '<div class="qb muted">이 문제의 그림이 서버에 없어요. ' + (r.pdfUrl ? '<a href="' + r.pdfUrl + '" target="_blank" rel="noopener" style="font-weight:800;color:var(--point);">📄 시험지 PDF 열어서 ' + w.n + '번 보기</a>' : '시험지(종이)를 보고 다시 풀어 보세요.') + '</div>') +
+        (w.fileId ? '<img loading="lazy" src="' + thumb(w.fileId, 720) + '" alt="' + w.n + '번 문제" onclick="window.open(this.src)">' : '<div class="qb muted">이 문제의 그림이 서버에 없어요. ' + (r.pdfUrl ? '<a href="' + r.pdfUrl + '" target="_blank" rel="noopener" style="font-weight:800;color:var(--point);">📄 시험지 PDF 열어서 ' + w.n + '번 보기</a>' : '시험지(종이)를 보고 다시 풀어 보세요.') + '</div>') +
         '<div class="qb"><div class="hint" style="margin:0 0 4px;">' + (multi ? '정답이 여러 개예요. 모두 눌러 보세요.' : '다시 풀어 보기') + '</div><div class="opts">' + [1, 2, 3, 4, 5].map(v => '<button type="button" data-v="' + v + '">' + v + '</button>').join('') + '</div>' +
         (r.hidden ? '' : '<button type="button" class="btn sm outline wchk">정답 확인</button>') + '<div class="res"></div>' +
-        (w.explFileId ? '<details style="margin-top:8px;"><summary style="font-weight:700;cursor:pointer;">해설 보기</summary><img loading="lazy" src="' + thumb(w.explFileId, 900) + '" style="margin-top:8px;"></details>' : '') + '</div></div>';
+        (w.explFileId ? '<details style="margin-top:8px;"><summary style="font-weight:700;cursor:pointer;">해설 보기</summary><img loading="lazy" src="' + thumb(w.explFileId, 720) + '" style="margin-top:8px;"></details>' : '') + '</div></div>';
     }).join('');
     body.querySelectorAll('.q').forEach(q => {
       const mult = !/\//.test(q.dataset.c) && q.dataset.c.length > 1;

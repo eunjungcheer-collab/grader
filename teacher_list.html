@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611051400">
+<link rel="stylesheet" href="css/style.css?v=202611051700">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -39,11 +39,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611051400"></script>
-<script src="js/api.js?v=202611051400"></script>
-<script src="js/common.js?v=202611051400"></script>
-<script src="js/bankcore.js?v=202611051400"></script>
-<script src="js/pdfui.js?v=202611051400"></script>
+<script src="js/config.js?v=202611051700"></script>
+<script src="js/api.js?v=202611051700"></script>
+<script src="js/common.js?v=202611051700"></script>
+<script src="js/bankcore.js?v=202611051700"></script>
+<script src="js/pdfui.js?v=202611051700"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -52,7 +52,9 @@ renderHeader();
   const container = document.getElementById('list-container');
   try {
     const tocP = ensureToc().catch(() => []);       // 목차 파일은 목록 요청과 동시에 불러온다
-    const res = await callApi('listExams', { password: getTeacherPassword() });
+    const _ck = 'swr_listExams|{}'; let _cached = null; try { _cached = JSON.parse(localStorage.getItem(_ck) || 'null'); } catch (e) {}
+    const freshP = callApi('listExams', { password: getTeacherPassword() });
+    const res = (_cached && _cached.ok && _cached.exams) ? _cached : await freshP;
     if (!res.ok) { container.innerHTML = '<div class="banner error">' + res.error + '</div>'; return; }
     if (res.exams.length === 0) {
       container.innerHTML = '<div class="card center muted">아직 등록된 시험지가 없어요.</div>';
@@ -197,6 +199,11 @@ renderHeader();
       } catch (err) { alert('삭제 중 오류: ' + err.message); b.disabled = false; b.textContent = '삭제'; }
     })); }
     render();
+    freshP.then(f => {      // 지난번 목록을 먼저 보여 줬다면, 최신 목록이 다르면 갈아끼운다
+      if (!f || !f.ok) return;
+      try { localStorage.setItem(_ck, JSON.stringify(f)); } catch (e) {}
+      if (f !== res && JSON.stringify(f.exams) !== JSON.stringify(res.exams)) { exams.length = 0; f.exams.forEach(ex => exams.push(Object.assign({ meta: parseMeta(ex.title), ts: Date.parse(ex.createdAt) || 0 }, ex))); render(); }
+    }).catch(() => {});
   } catch (err) {
     container.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
   }

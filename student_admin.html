@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>학생용 앱 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611051400">
+<link rel="stylesheet" href="css/style.css?v=202611051700">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -74,10 +74,10 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/qrcode.min.js?v=202611051400"></script>
-<script src="js/config.js?v=202611051400"></script>
-<script src="js/api.js?v=202611051400"></script>
-<script src="js/common.js?v=202611051400"></script>
+<script src="js/vendor/qrcode.min.js?v=202611051700"></script>
+<script src="js/config.js?v=202611051700"></script>
+<script src="js/api.js?v=202611051700"></script>
+<script src="js/common.js?v=202611051700"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -91,7 +91,7 @@ const p2 = n => String(n).padStart(2, '0');
 function fmt(iso) { const d = new Date(iso); return isNaN(d) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); }
 async function load() {
   try {
-    const r = await callApi('listStudents', { password: getTeacherPassword() });
+    await callApiSWR('listStudents', { password: getTeacherPassword() }, r => {
     if (!r.ok) throw new Error(r.error);
     document.querySelectorAll('input[name=rv]').forEach(x => { x.checked = x.value === (r.reveal || 'always'); });
     const pend = r.students.filter(s => s.pending), ok = r.students.filter(s => !s.pending);
@@ -104,6 +104,7 @@ async function load() {
       if (!x.ok) alert(x.error); load();
     }));
     document.querySelectorAll('.sa-ok').forEach(b => b.addEventListener('click', async () => { b.disabled = true; const x = await callApi('approveStudent', { password: getTeacherPassword(), name: b.dataset.n }); if (!x.ok) alert(x.error); load(); }));
+  });
   } catch (err) { $('sa-list').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + ' (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; }
 }
 document.querySelectorAll('input[name=rv]').forEach(x => x.addEventListener('change', async () => { const r = await callApi('setStuOptions', { password: getTeacherPassword(), reveal: x.value }); $('rv-msg').textContent = r.ok ? '✅ 저장했어요' : '⚠️ ' + (r.error || '저장하지 못했어요'); }));
