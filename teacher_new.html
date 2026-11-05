@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611051700">
+<link rel="stylesheet" href="css/style.css?v=202611060100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611051700"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611051700"></script>
-<script src="js/vendor/pdf.min.js?v=202611051700"></script>
-<script src="js/config.js?v=202611051700"></script>
-<script src="js/api.js?v=202611051700"></script>
-<script src="js/common.js?v=202611051700"></script>
-<script src="js/bankcore.js?v=202611051700"></script>
-<script src="js/pdfui.js?v=202611051700"></script>
-<script src="js/pdfview.js?v=202611051700"></script>
+<script src="js/vendor/qrcode.min.js?v=202611060100"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611060100"></script>
+<script src="js/vendor/pdf.min.js?v=202611060100"></script>
+<script src="js/config.js?v=202611060100"></script>
+<script src="js/api.js?v=202611060100"></script>
+<script src="js/common.js?v=202611060100"></script>
+<script src="js/bankcore.js?v=202611060100"></script>
+<script src="js/pdfui.js?v=202611060100"></script>
+<script src="js/pdfview.js?v=202611060100"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -843,8 +843,9 @@ async function ensurePair(x) {
   x.pair = { file: new File([bytes], x.title + '.pdf', { type: 'application/pdf' }), ans: null };
   return x.pair;
 }
-async function openSavedReview() {
-  const local = await rvGet();
+async function openSavedReview(onlyIds) {
+  if (!Array.isArray(onlyIds)) onlyIds = null;      // 시험지 목록에서 고른 시험지만 열 때: 서버의 최신 정답·단원으로 연다
+  const local = onlyIds ? [] : await rvGet();
   local.forEach(x => { x.unread = x.unread || []; x.answers = x.answers || []; x.units = x.units || []; });
   const note = $('queue-note'); if (note) { note.style.display = ''; note.textContent = '⏳ 서버에서 최근 등록한 시험지를 불러오는 중...'; }
   let server = [], err = '';
@@ -852,7 +853,7 @@ async function openSavedReview() {
     const le = await callApi('listExams', { password: getTeacherPassword() });
     if (!le.ok) throw new Error(le.error || '목록을 못 불러왔어요');
     const have = {}; local.forEach(x => { have[x.id] = 1; });
-    const todo = (le.exams || []).slice(0, 30).filter(e => !have[e.id]).slice(0, 12);
+    const todo = onlyIds ? onlyIds.map(id => (le.exams || []).find(e => String(e.id) === String(id))).filter(Boolean) : (le.exams || []).slice(0, 30).filter(e => !have[e.id]).slice(0, 12);
     if (todo.length) {
       const lq = await callApi('listQuestions', { password: getTeacherPassword() });
       const qs = (lq && lq.ok) ? lq.questions : [];
@@ -868,13 +869,14 @@ async function openSavedReview() {
           server.push({ title: d.title, id: d.id, answers: ans, units: units, unread: [], dash: ans.map((a, i) => a === '-' ? i + 1 : 0).filter(Boolean), dashImg: {}, pair: null, srv: true, bankIds: bankIds, unreadImg: {}, qinfo: qinfo, tm: {}, qthumb: qthumb, at: e.createdAt });
         } catch (e2) {} } };
       await Promise.all([worker(), worker(), worker(), worker()]);
-      server.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+      if (!onlyIds) server.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+      else server.sort((a, b) => onlyIds.indexOf(String(a.id)) - onlyIds.indexOf(String(b.id)));
     }
   } catch (e) { err = e.message; }
   if (note) note.style.display = 'none';
   const list = local.concat(server);
-  if (!list.length) { alert('최근 등록한 시험지를 찾지 못했어요.' + (err ? ' (' + err + ')' : '')); return; }
-  showAutoReview({ reg: list, skipped: [], stuck: [], notes: ['최근 등록한 시험지 ' + list.length + '개를 열었어요. 이 컴퓨터에서 등록한 ' + local.length + '개는 못 읽은 문항(빨간 칸)과 저장된 그림이 그대로 나와요. 다른 기기에서 등록한 ' + server.length + '개는 서버에서 불러왔고, 정답 그림은 「🔎 정답 이미지로 확인」을 누를 때 PDF를 받아 만들어요. 고치고 「저장」을 누르면 서버에 반영돼요.' + (err ? ' (서버 목록을 못 불러왔어요: ' + err + ')' : '')], unassigned: 0, autoUnits: 0, saved: true });
+  if (!list.length) { alert((onlyIds ? '고른 시험지를 불러오지 못했어요.' : '최근 등록한 시험지를 찾지 못했어요.') + (err ? ' (' + err + ')' : '')); return; }
+  showAutoReview({ reg: list, skipped: [], stuck: [], notes: [(onlyIds ? '고른 시험지 ' : '최근 등록한 시험지 ') + list.length + '개를 열었어요. 이 컴퓨터에서 등록한 ' + local.length + '개는 못 읽은 문항(빨간 칸)과 저장된 그림이 그대로 나와요. 다른 기기에서 등록한 ' + server.length + '개는 서버에서 불러왔고, 정답 그림은 「🔎 정답 이미지로 확인」을 누를 때 PDF를 받아 만들어요. 고치고 「저장」을 누르면 서버에 반영돼요.' + (err ? ' (서버 목록을 못 불러왔어요: ' + err + ')' : '')], unassigned: 0, autoUnits: 0, saved: true });
 }
 // 자동 등록이 끝나면 결과를 한 화면에 펼쳐 보여 준다: 직접 확인할 시험지, 단원 확인할 문항, 등록된 시험지의 정답 전체
 function showAutoReview(R) {
@@ -1661,8 +1663,8 @@ $('new-exam-form').addEventListener('submit', async function (e) {
 });
 handoffInto('pdf-file', el => el.dispatchEvent(new Event('change')));       // 단원 판별 화면에서 넘어온 파일
 
-if ($('open-saved-review')) $('open-saved-review').addEventListener('click', openSavedReview);
-if (new URLSearchParams(location.search).get('review') === '1' && !IS_CHILD) setTimeout(openSavedReview, 50);
+if ($('open-saved-review')) $('open-saved-review').addEventListener('click', () => openSavedReview());
+{ const rv = new URLSearchParams(location.search).get('review'); if (rv && !IS_CHILD) setTimeout(() => openSavedReview(rv === '1' ? null : rv.split(',').filter(Boolean)), 50); }
 </script>
 </body>
 </html>

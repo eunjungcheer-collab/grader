@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611051700">
+<link rel="stylesheet" href="css/style.css?v=202611060100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -34,16 +34,17 @@
   <div id="bulk-bar" class="card" style="display:none; padding:10px 14px; margin-bottom:10px; align-items:center; gap:10px; flex-wrap:wrap;">
     <label class="bank-include-label" style="margin:0;"><input type="checkbox" id="sel-all"> 전체 선택</label>
     <span class="hint" id="sel-count" style="margin:0;">0개 선택</span>
+    <button type="button" class="btn primary" id="bulk-edit" style="padding:8px 14px;" disabled>✏️ 선택한 시험지 단원·정답 수정</button>
     <button type="button" class="btn danger" id="bulk-del" style="padding:8px 14px;" disabled>선택 삭제</button>
   </div>
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611051700"></script>
-<script src="js/api.js?v=202611051700"></script>
-<script src="js/common.js?v=202611051700"></script>
-<script src="js/bankcore.js?v=202611051700"></script>
-<script src="js/pdfui.js?v=202611051700"></script>
+<script src="js/config.js?v=202611060100"></script>
+<script src="js/api.js?v=202611060100"></script>
+<script src="js/common.js?v=202611060100"></script>
+<script src="js/bankcore.js?v=202611060100"></script>
+<script src="js/pdfui.js?v=202611060100"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -142,6 +143,7 @@ renderHeader();
           <div style="margin:4px 0 2px;">${badges(ex)}</div>
           <div class="meta">${ex.answerCount}문항${ex.subjectiveCount ? ' (주관식 ' + ex.subjectiveCount + ')' : ''} · 제출 ${ex.submissionCount}건 · ${formatDate(ex.createdAt)}</div>
         </a>
+        <a class="btn outline" href="teacher_new.html?review=${encodeURIComponent(ex.id)}" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;">✏️ 단원·정답 수정</a>
         <a class="btn outline" href="alerts.html?exam=${encodeURIComponent(ex.id)}#assign" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;">👥 학생에게 배정</a>
         <button type="button" class="btn danger del-exam-btn" data-id="${ex.id}" data-title="${escapeHtml(ex.title)}" style="margin-top:8px; padding:7px 12px; font-size:13px;">삭제</button>
       </div>`).join('') : '<div class="card center muted">조건에 맞는 시험지가 없어요.</div>';
@@ -159,10 +161,15 @@ renderHeader();
       const on = sels().filter(c => c.checked);
       document.getElementById('sel-count').textContent = on.length + '개 선택';
       document.getElementById('bulk-del').disabled = !on.length;
+      document.getElementById('bulk-edit').disabled = !on.length;
       document.getElementById('sel-all').checked = sels().length > 0 && on.length === sels().length;
     }
     container.addEventListener('change', e => { if (e.target.classList.contains('exsel')) upd(); });
     document.getElementById('sel-all').addEventListener('change', e => { sels().forEach(c => { c.checked = e.target.checked; }); upd(); });
+    document.getElementById('bulk-edit').addEventListener('click', () => {
+      const ids = sels().filter(c => c.checked).map(c => c.dataset.id); if (!ids.length) return;
+      location.href = 'teacher_new.html?review=' + ids.map(encodeURIComponent).join(',');
+    });
     document.getElementById('bulk-del').addEventListener('click', async () => {
       const on = sels().filter(c => c.checked), ids = on.map(c => c.dataset.id);
       if (!ids.length) return;
