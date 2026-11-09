@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611091400">
+<link rel="stylesheet" href="css/style.css?v=202611091600">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -64,14 +64,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611091400"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611091400"></script>
-<script src="js/vendor/pdf.min.js?v=202611091400"></script>
-<script src="js/config.js?v=202611091400"></script>
-<script src="js/api.js?v=202611091400"></script>
-<script src="js/common.js?v=202611091400"></script>
-<script src="js/bankcore.js?v=202611091400"></script>
-<script src="js/pdfui.js?v=202611091400"></script>
+<script src="js/vendor/qrcode.min.js?v=202611091600"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611091600"></script>
+<script src="js/vendor/pdf.min.js?v=202611091600"></script>
+<script src="js/config.js?v=202611091600"></script>
+<script src="js/api.js?v=202611091600"></script>
+<script src="js/common.js?v=202611091600"></script>
+<script src="js/bankcore.js?v=202611091600"></script>
+<script src="js/pdfui.js?v=202611091600"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -90,8 +90,29 @@ function hash36(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((
 const secTitle = s => ($('book-name').value.trim() ? $('book-name').value.trim() + ' ' : '') + s.name + ' ' + s.tag + '공략';
 
 let genToc = false;
+// 교재에 원래 찍혀 있는 쪽 번호(「- 12 -」 같은 가장자리의 숫자)의 위치를 쪽마다 찾는다 — 지우고 새 번호로 다시 쓰려고
+async function detectPageNumBoxes(doc, onProgress) {
+  const out = {};
+  for (let p = 1; p <= doc.numPages; p++) {
+    if (onProgress && p % 20 === 0) onProgress(p, doc.numPages);
+    try {
+      const pg = await doc.getPage(p), H = pg.getViewport({ scale: 1 }).height, tc = await pg.getTextContent();
+      const its = tc.items.filter(it => String(it.str).trim()).map(it => ({ s: String(it.str).trim(), x: it.transform[4], y: it.transform[5], w: it.width, h: Math.max(it.height || 0, 7) }));
+      const edge = it => it.y < H * 0.075 || it.y > H * 0.93;
+      const boxes = [];
+      its.forEach(it => {
+        if (!edge(it) || !/^[-–—]?\s*\d{1,4}\s*[-–—]?$/.test(it.s)) return;
+        let x0 = it.x, x1 = it.x + it.w, dash = /[-–—]/.test(it.s);
+        its.forEach(o => { if (o !== it && /^[-–—]$/.test(o.s) && Math.abs(o.y - it.y) < 3 && Math.abs(o.x - it.x) < 28 && Math.abs(o.x + o.w - it.x) < 28) { x0 = Math.min(x0, o.x); x1 = Math.max(x1, o.x + o.w); dash = true; } });
+        boxes.push({ x0: x0, x1: x1, y0: it.y - 2, y1: it.y + it.h, dash: dash });
+      });
+      if (boxes.length) out[p - 1] = boxes.slice(0, 2);
+    } catch (e) {}
+  }
+  return out;
+}
 // 목차가 없는 교재: 합본 맨 앞에 목차 쪽을 새로 만들어 끼운다 (단원 이름 · 문제 쪽 · 정답 쪽). 끼운 쪽 수를 돌려준다.
-async function insertGeneratedToc(pdf, secs, bookName) {
+async function insertGeneratedToc(pdf, secs, bookName, pos, withAns) {
   const ref = pdf.getPage(0).getSize(), W = ref.width, H = ref.height;
   const rows = []; let lastU = null;
   secs.slice().sort((a, b) => a.order - b.order).forEach(sec => {
@@ -113,7 +134,7 @@ async function insertGeneratedToc(pdf, secs, bookName) {
       const sec = r.sec; g.fillStyle = '#111827'; g.font = '12px ' + FONT; g.textAlign = 'left';
       let t = '[' + sec.tag + ' 공략] ' + sec.name; while (g.measureText(t).width > W - 80 - 190 && t.length > 8) t = t.slice(0, -2);
       g.fillText(t, 56, y); g.textAlign = 'right'; g.fillStyle = '#374151';
-      g.fillText('문제 ' + (sec.qa + nIns) + '~' + (sec.qb + nIns) + '쪽 · 정답 ' + (sec.aa + nIns) + '~' + (sec.ab + nIns) + '쪽', W - 46, y); g.textAlign = 'left';
+      g.fillText('문제 ' + (pos(sec.qa) + nIns) + '~' + (pos(sec.qb) + nIns) + '쪽' + (withAns ? ' · 정답 ' + (pos(sec.aa) + nIns) + '~' + (pos(sec.ab) + nIns) + '쪽' : ''), W - 46, y); g.textAlign = 'left';
     });
     const img = await pdf.embedPng(await (await fetch(cv.toDataURL('image/png'))).arrayBuffer().then(b => new Uint8Array(b)));
     const page = pdf.insertPage(pi, [W, H]); page.drawImage(img, { x: 0, y: 0, width: W, height: H });
@@ -298,28 +319,45 @@ $('go-btn').addEventListener('click', async () => {
       msg('QR 찍는 중... ' + (++i) + '/' + chosen.length);
       await stampQrOnPage(pdf, s.qa - 1, studentLinkFor(ids[s.order]), { size: size, corner: corner, margin: 8, caption: 'QR코드로 답안 입력하세요' });
     }
-    let shift = 0;
-    if (genToc) { msg('목차 쪽을 만드는 중...'); shift = await insertGeneratedToc(pdf, chosen, $('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '')); }
-    if ($('multi-qr').checked && (tocPage || genToc)) {
-      const base = location.origin + location.pathname.replace(/[^/]*$/, '');
-      await stampQrOnPage(pdf, genToc ? 0 : tocPage - 1, base + 'student_multi.html?book=' + bookId, { size: 56, corner: 'top-right', margin: 8, caption: '여러 단원 한꺼번에 채점 → QR' });
-    }
-    msg('PDF를 저장하는 중...');
-    const out = await pdf.save();
+    msg('교재에 원래 있던 쪽 번호를 찾는 중...');
+    const numBoxes = await detectPageNumBoxes(bookDoc, (i, n) => msg('원래 쪽 번호 찾는 중... ' + i + '/' + n));
+    const stampedBytes = await pdf.save();
     const stem = bookFileName.replace(/\.pdf$/i, '');
+    const bookNm = $('book-name').value.trim() || stem;
+    // 한 가지 버전 만들기: 정답·해설 쪽을 뺄지 정하고 → 원래 쪽 번호를 하얗게 지우고 → (목차가 없던 교재면) 목차 쪽을 앞에 끼우고 → 새 쪽 번호를 쓴다
+    const makeVersion = async (withAns) => {
+      const doc = await PDFLib.PDFDocument.load(stampedBytes, { ignoreEncryption: true, updateMetadata: false });
+      const drop = new Set(); if (!withAns) sections.forEach(s => { for (let p = s.aa; p <= s.ab; p++) drop.add(p - 1); });
+      const kept = doc.getPageIndices().filter(i => !drop.has(i));
+      for (let i = doc.getPageCount() - 1; i >= 0; i--) if (drop.has(i)) doc.removePage(i);
+      const white = PDFLib.rgb(1, 1, 1);
+      kept.forEach((orig, j) => { const pgj = doc.getPage(j); (numBoxes[orig] || []).forEach(bx => pgj.drawRectangle({ x: bx.x0 - 3, y: bx.y0 - 1, width: bx.x1 - bx.x0 + 6, height: bx.y1 - bx.y0 + 3, color: white, borderWidth: 0 })); });
+      const posOf = p => kept.indexOf(p - 1) + 1;
+      let nIns = 0;
+      if (genToc) nIns = await insertGeneratedToc(doc, chosen, bookNm, posOf, withAns);
+      if ($('multi-qr').checked && (tocPage || genToc)) {
+        const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+        const ti = genToc ? 0 : kept.indexOf(tocPage - 1);
+        if (ti >= 0) await stampQrOnPage(doc, ti, base + 'student_multi.html?book=' + bookId, { size: 56, corner: 'top-right', margin: 8, caption: '여러 단원 한꺼번에 채점 → QR' });
+      }
+      const font = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+      doc.getPages().forEach((pgj, j) => {
+        const orig = j - nIns >= 0 ? kept[j - nIns] : -1, bx = (numBoxes[orig] || [])[0];
+        const t = (bx && bx.dash ? '- ' + (j + 1) + ' -' : String(j + 1)), fs = 9.5, tw = font.widthOfTextAtSize(t, fs);
+        const cx = bx ? (bx.x0 + bx.x1) / 2 : pgj.getWidth() / 2, y = bx ? bx.y0 + 1 : 16;
+        pgj.drawText(t, { x: cx - tw / 2, y: y, size: fs, font: font, color: PDFLib.rgb(0.1, 0.1, 0.1) });
+      });
+      return await doc.save();
+    };
     const dl = (bytes, name) => { const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
     const wantStu = $('stu-ver').checked;
-    // 강사용: 문제편 + 정답·해설편이 모두 들어 있는 전체 합본 (QR 포함)
-    dl(out, stem + (wantStu ? ' (QR 강사용 전체).pdf' : ' (QR).pdf'));
+    msg('강사용 전체 합본을 만드는 중...');
+    dl(await makeVersion(true), stem + (wantStu ? ' (QR 강사용 전체).pdf' : ' (QR).pdf'));
     if (wantStu) {
       msg('학생용 합본(정답·해설 쪽 제외)을 만드는 중...');
-      const drop = new Set(); sections.forEach(s => { for (let p = s.aa; p <= s.ab; p++) drop.add(p - 1 + shift); });
-      const full = await PDFLib.PDFDocument.load(out, { ignoreEncryption: true, updateMetadata: false });
-      const keep = full.getPageIndices().filter(i => !drop.has(i));
-      const stu = await PDFLib.PDFDocument.create();
-      (await stu.copyPages(full, keep)).forEach(pg => stu.addPage(pg));
+      const stuBytes = await makeVersion(false);
       await new Promise(r => setTimeout(r, 800));       // 브라우저가 두 번째 내려받기를 막지 않게 잠깐 쉰다
-      dl(await stu.save(), stem + ' (QR 학생용).pdf');
+      dl(stuBytes, stem + ' (QR 학생용).pdf');
     }
     const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
     $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (wantStu ? '강사용 전체 합본과 학생용 합본, 두 파일이' : 'QR 합본 PDF가') + ' 내려받아졌어요.<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
