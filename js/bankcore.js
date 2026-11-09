@@ -1728,7 +1728,6 @@
     newPage();
     const blank = opts.blank || 0;
     for (const it of items) {
-      if (opts.hideExplAnswer !== false && opts.withExpl && it.explBase64) { try { it.explBase64 = await hideExplAnswer(it.explBase64); } catch (e) {} }
       const img = await doc.embedPng(b64ToBytes(it.base64));
       const wide = (it.naturalW || 0) > colW * 1.45, fullW = wide ? areaW : colW;
       let dw = Math.min(fullW, it.naturalW || fullW), dh = it.height * (dw / it.width);
@@ -1752,28 +1751,32 @@
         page.drawRectangle({ x: p.x, y: p.top - used - blank, width: dw, height: blank, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.6, borderDashArray: [3, 3] });
         used += blank + 4;
       }
-      if (opts.withExpl && it.explBase64) {
-        const eimg = await doc.embedPng(b64ToBytes(it.explBase64));
-        let ew = Math.min(fullW, it.explW / 2.2), eh = it.explH * (ew / it.explW);
-        if (eh > maxH) { ew *= maxH / eh; eh = maxH; }
-        if (p.top - used - 4 - eh >= marginBottom) {
-          page.drawImage(eimg, { x: p.x, y: p.top - used - 4 - eh, width: ew, height: eh });
-          used += 4 + eh; advance(p, used);
-        } else {
-          advance(p, used);
-          let ew2 = Math.min(ew, colW), eh2 = it.explH * (ew2 / it.explW);
-          if (eh2 > maxH) { ew2 *= maxH / eh2; eh2 = maxH; }
-          const p2 = place(eh2, false);
-          page.drawImage(eimg, { x: p2.x, y: p2.top - eh2, width: ew2, height: eh2 });
-          advance(p2, eh2);
-        }
-      } else advance(p, used);
+      advance(p, used);
     }
     if (opts.answersAtEnd !== false) {
       const seen = {}, all = [];
       items.forEach(it => (it.entries || []).forEach(e => { if (!seen[e.n]) { seen[e.n] = 1; all.push(e); } }));
       all.sort((x, y) => x.n - y.n);
+      const withEx = !!opts.withExpl && items.some(it => it.explBase64);
+      // 정답·해설은 뒤쪽에 따로 모은다. 양면으로 인쇄하면 오답노트가 홀수 쪽에서 끝날 때 해설이 그 뒷면에 붙어 버리니, 빈 쪽을 한 장 끼워 해설이 새 장의 앞면부터 시작하게 한다.
+      if (withEx && doc.getPageCount() % 2 === 1) doc.addPage([W, H]);
       if (all.length) await wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, all, qrImg, opts);
+      if (withEx) {
+        newPage();
+        for (const it of items) {
+          if (!it.explBase64) continue;
+          const eimg = await doc.embedPng(b64ToBytes(it.explBase64));
+          const tag = (it.num != null && it.num !== '') ? it.num : (it.entries && it.entries[0] ? it.entries[0].n : '');
+          const lab = wrongNoteQrLabelPng(tag + '번 해설', 90, 10), labImg = await doc.embedPng(b64ToBytes(lab.base64));
+          let ew = Math.min(colW, it.explW / 2.2), eh = it.explH * (ew / it.explW);
+          const lim = maxH - lab.h - 6;
+          if (eh > lim) { ew *= lim / eh; eh = lim; }
+          const p = place(eh + lab.h + 6, false);
+          page.drawImage(labImg, { x: p.x, y: p.top - lab.h, width: lab.w, height: lab.h });
+          page.drawImage(eimg, { x: p.x, y: p.top - lab.h - 4 - eh, width: ew, height: eh });
+          advance(p, eh + lab.h + 4);
+        }
+      }
     }
     return doc;
   }

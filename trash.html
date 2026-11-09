@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>최근 삭제 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611091000">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+.tr{padding:12px 14px;margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;}
+.tr .lb{flex:1 1 220px;min-width:0;}
+.tg{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:800;margin-right:6px;background:#EEF2FF;color:var(--point);}
+</style>
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>♻️ 최근 삭제 · 되살리기</h1>
+  <p class="muted">실수로 지운 시험지, 문제은행 문항, 제출 기록을 <b>30일 안</b>에는 되살릴 수 있어요. (시험지를 지울 때 함께 지운 제출 기록도 같이 돌아와요)</p>
+  <div id="list" class="hint">불러오는 중...</div>
+</template>
+<script src="js/config.js?v=202611091000"></script>
+<script src="js/api.js?v=202611091000"></script>
+<script src="js/common.js?v=202611091000"></script>
+<script>
+requireLogin();
+renderHeader({});
+const $ = id => document.getElementById(id), e = escapeHtml;
+const KIND = { exam: ['📄 시험지', '#EEF2FF'], question: ['🗃️ 문항', '#FEF3C7'], submission: ['📝 제출 기록', '#E8F5EE'] };
+function when(iso) { const d = new Date(iso); return isNaN(d) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+async function load() {
+  try {
+    const r = await callApi('listTrash', { password: getTeacherPassword() });
+    if (!r.ok) throw new Error(r.error);
+    $('list').innerHTML = r.items.length ? r.items.map(x => '<div class="card tr"><div class="lb"><span class="tg">' + (KIND[x.kind] || KIND.exam)[0] + '</span><b>' + e(x.label) + '</b><div class="hint" style="margin:3px 0 0;">' + when(x.at) + ' 삭제</div></div><button type="button" class="btn primary rs" data-g="' + e(x.gid) + '" style="padding:8px 14px;">되살리기</button></div>').join('') : '<div class="card muted">최근 30일 안에 지운 것이 없어요.</div>';
+    document.querySelectorAll('.rs').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = '되살리는 중...';
+      try {
+        const x = await callApi('restoreTrash', { password: getTeacherPassword(), gid: b.dataset.g });
+        if (!x.ok) throw new Error(x.error);
+        const o = x.restored, bits = [];
+        if (o.exams) bits.push('시험지 ' + o.exams + '개'); if (o.scores) bits.push('제출 기록 ' + o.scores + '건'); if (o.questions) bits.push('문항 ' + o.questions + '개'); if (o.submissions) bits.push('제출 기록 ' + o.submissions + '건');
+        alert((bits.length ? bits.join(', ') + '을(를) 되살렸어요.' : '되살릴 것이 없었어요.') + (o.skipped ? '\n(같은 것이 이미 있어서 ' + o.skipped + '개는 건너뛰었어요.)' : ''));
+        try { Object.keys(localStorage).forEach(k => { if (k.indexOf('swr_') === 0) localStorage.removeItem(k); }); } catch (e2) {}
+        load();
+      } catch (err) { alert('되살리지 못했어요: ' + err.message); b.disabled = false; b.textContent = '되살리기'; }
+    }));
+  } catch (err) { $('list').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + ' (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; }
+}
+load();
+</script>
+</body>
+</html>

@@ -164,6 +164,12 @@ function handle_(e) {
       case 'stuClear': result = actionStuClear_(params); break;
       case 'reviewReport': result = actionReviewReport_(params); break;
       case 'homeBadges': result = actionHomeBadges_(params); break;
+      case 'updateExamTitle': result = actionUpdateExamTitle_(params); break;
+      case 'addHomework': result = actionAddHomework_(params); break;
+      case 'homeworkDone': result = actionStuHomeworkDone_(params); break;
+      case 'listHomework': result = actionListHomework_(params); break;
+      case 'listTrash': result = actionListTrash_(params); break;
+      case 'restoreTrash': result = actionRestoreTrash_(params); break;
       case 'bankUnitMap': result = actionBankUnitMap_(params); break;
       case 'suggestName': result = actionSuggestName_(params); break;
       case 'setStuOptions': result = actionSetStuOptions_(params); break;
@@ -592,6 +598,7 @@ function actionDeleteQuestion_(p) {
   const sheet = questionsSheet_();
   const row = findQuestionRow_(sheet, p.id);
   if (row < 0) return { ok: true };
+  try { const lc = sheet.getLastColumn(), v = sheet.getRange(row, 1, 1, lc).getValues()[0]; trashPut_(SpreadsheetApp.getActiveSpreadsheet(), Utilities.getUuid(), 'question', trashQLabel_(v), v); } catch (e) {}
   const fileId = sheet.getRange(row, 7).getValue();
   try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {}
   const explId = sheet.getRange(row, 8).getValue();
@@ -885,11 +892,36 @@ function actionDeleteSubmission_(p) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SCORES);
   const found = findSubmissionRow_(sheet, p.examId, p.studentName, p.submittedAt);
   if (!found) return { ok: false, error: '기록을 찾을 수 없어요. (이미 삭제되었거나 목록이 바뀌었을 수 있어요)' };
+  try { const v = sheet.getRange(found.rowIndex, 1, 1, Math.max(7, sheet.getLastColumn())).getValues()[0]; const ss0 = SpreadsheetApp.getActiveSpreadsheet(); trashPut_(ss0, Utilities.getUuid(), 'submission', String(v[1]) + ' · ' + examTitleOf_(ss0, v[0]) + ' · ' + v[6] + '점', v); } catch (e) {}
   sheet.deleteRow(found.rowIndex);
   return { ok: true };
 }
 
 // 이미 등록한 시험의 정답을 고친다. 문항 수는 그대로여야 하고, 이미 제출된 학생 기록도 새 정답으로 다시 채점한다.
+// 시험지 이름 바꾸기: 시험 시트의 이름과, 문제은행 문항의 「출처」(시험지 이름과 맞춰 찾기 때문에)를 함께 바꾼다
+function actionUpdateExamTitle_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const nt = cleanText_(p.title, 120); if (!nt) return { ok: false, error: '새 이름을 입력해 주세요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
+  const found = findExamRow_(exams, p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const oldT = String(found.row[1]);
+  if (oldT === nt) return { ok: true, title: nt, renamedQuestions: 0 };
+  const all = exams.getDataRange().getValues();
+  for (let i = 1; i < all.length; i++) if (String(all[i][0]) !== String(p.id) && String(all[i][1]).trim() === nt) return { ok: false, error: '같은 이름의 시험지가 이미 있어요.' };
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  let n = 0;
+  try {
+    exams.getRange(found.rowIndex, 2).setValue(nt);
+    const qs = questionsSheet_(), last = qs.getLastRow();
+    if (last >= 2) {
+      const col = qs.getRange(2, 4, last - 1, 1).getValues(); let changed = false;
+      for (let i = 0; i < col.length; i++) if (String(col[i][0]) === oldT) { col[i][0] = nt; n++; changed = true; }
+      if (changed) qs.getRange(2, 4, last - 1, 1).setValues(col);
+    }
+  } finally { lock.releaseLock(); }
+  return { ok: true, title: nt, renamedQuestions: n };
+}
 function actionUpdateExamAnswers_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -959,10 +991,11 @@ function actionDeleteQuestions_(p) {
     if (last < 2) return { ok: true, deleted: 0 };
     const data = sheet.getRange(2, 1, last - 1, 8).getValues();
     const want = {}; ids.forEach(function (id) { want[String(id)] = true; });
-    const rowsToDelete = [];
+    const rowsToDelete = [], gidQ = Utilities.getUuid(), lcQ = sheet.getLastColumn(), fullQ = sheet.getRange(2, 1, last - 1, lcQ).getValues();
     for (let i = 0; i < data.length; i++) {
       if (!want[String(data[i][0])]) continue;
       rowsToDelete.push(i + 2);
+      try { trashPut_(SpreadsheetApp.getActiveSpreadsheet(), gidQ, 'question', trashQLabel_(fullQ[i]), fullQ[i]); } catch (e) {}
       const fileId = data[i][6], explId = data[i][7];
       if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
       if (explId) { try { DriveApp.getFileById(explId).setTrashed(true); } catch (e) {} }
@@ -989,10 +1022,11 @@ function actionDeleteExams_(p) {
     const examsSheet = ss.getSheetByName(SHEET_EXAMS);
     const want = {}; ids.forEach(function (id) { want[String(id)] = true; });
     const data = examsSheet.getDataRange().getValues();
-    const rows = [];
+    const rows = [], gidE = Utilities.getUuid();
     for (let i = 1; i < data.length; i++) {
       if (!want[String(data[i][0])]) continue;
       rows.push(i + 1);
+      try { trashPut_(ss, gidE, 'exam', String(data[i][1]), data[i]); } catch (e) {}
       const pdfId = data[i][4], explId = fileIdFromUrl_(data[i][6]);
       if (pdfId) { try { DriveApp.getFileById(pdfId).setTrashed(true); } catch (e) {} }
       if (explId) { try { DriveApp.getFileById(explId).setTrashed(true); } catch (e) {} }
@@ -1001,10 +1035,11 @@ function actionDeleteExams_(p) {
     let removedScores = 0;
     if (p.deleteSubmissions) {
       const scoresSheet = ss.getSheetByName(SHEET_SCORES);
-      const sd = scoresSheet.getDataRange().getValues();
+      const sd = scoresSheet.getDataRange().getValues(), keep = [];
       for (let i = sd.length - 1; i >= 1; i--) {
-        if (want[String(sd[i][0])]) { scoresSheet.deleteRow(i + 1); removedScores++; }
+        if (want[String(sd[i][0])]) { keep.push(sd[i]); scoresSheet.deleteRow(i + 1); removedScores++; }
       }
+      if (keep.length) { try { trashPut_(ss, gidE, 'scores', '제출 기록 ' + keep.length + '건', keep); } catch (e) {} }
     }
     return { ok: true, deleted: rows.length, removedScores: removedScores };
   } finally {
@@ -1019,7 +1054,8 @@ function actionDeleteExam_(p) {
   const examsSheet = ss.getSheetByName(SHEET_EXAMS);
   const found = findExamRow_(examsSheet, p.id);
   if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
-  const fileId = found.row[4], explId1 = fileIdFromUrl_(found.row[6]);
+  const fileId = found.row[4], explId1 = fileIdFromUrl_(found.row[6]), gid1 = Utilities.getUuid();
+  try { trashPut_(ss, gid1, 'exam', String(found.row[1]), found.row); } catch (e) {}
   if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
   if (explId1) { try { DriveApp.getFileById(explId1).setTrashed(true); } catch (e) {} }
   examsSheet.deleteRow(found.rowIndex);
@@ -1027,10 +1063,11 @@ function actionDeleteExam_(p) {
   let removedScores = 0;
   if (p.deleteSubmissions) {
     const scoresSheet = ss.getSheetByName(SHEET_SCORES);
-    const data = scoresSheet.getDataRange().getValues();
+    const data = scoresSheet.getDataRange().getValues(), keep1 = [];
     for (let i = data.length - 1; i >= 1; i--) {
-      if (String(data[i][0]) === String(p.id)) { scoresSheet.deleteRow(i + 1); removedScores++; }
+      if (String(data[i][0]) === String(p.id)) { keep1.push(data[i]); scoresSheet.deleteRow(i + 1); removedScores++; }
     }
+    if (keep1.length) { try { trashPut_(ss, gid1, 'scores', '제출 기록 ' + keep1.length + '건', keep1); } catch (e) {} }
   }
   return { ok: true, removedScores: removedScores };
 }
@@ -1520,7 +1557,7 @@ function actionStuHome_(p) {
   exams.sort(function (x, y) { return new Date(y.createdAt) - new Date(x.createdAt); });
   const list = exams.slice(0, 120).map(function (e) { e.done = !!doneIds[e.id]; e.best = best[e.id] === undefined ? null : best[e.id]; return e; });
   const pending = asg.filter(function (x) { return x.status === 'wait' || x.status === 'missed'; });
-  return { ok: true, display: a.display, now: new Date().toISOString(), assignments: asg, pendingCount: pending.length, exams: [], records: records.slice(0, 300) };
+  return { ok: true, display: a.display, now: new Date().toISOString(), assignments: asg, pendingCount: pending.length, exams: [], records: records.slice(0, 300), homework: hwItemsFor_(key) };
 }
 // 오답 복습: 이 시험의 내 가장 최근 제출에서 틀린 문항 (문제 그림 + 내 답 + 정답)
 
@@ -2122,4 +2159,136 @@ function actionHomeBadges_(p) {
   try { const r = actionListStudents_(p); out.pending = r.ok ? r.students.filter(function (x) { return x.pending; }).length : 0; } catch (e) { out.pending = 0; }
   try { const w = actionWeakReport_({ password: p.password, countOnly: true }); out.weak = w.ok ? w.count : 0; } catch (e) { out.weak = 0; }
   return out;
+}
+
+
+// ────────────── 최근 삭제 (휴지통): 시험지·문항·제출 기록을 지울 때 내용을 「Trash」 시트에 남겨 두었다가 30일 안에 되살린다 ──
+const TRASH_HEADERS = ['gid', 'itemId', 'type', 'label', 'deletedAt', 'idx', 'n', 'data'];
+const TRASH_DAYS = 30;
+function trashSheet_(ss) { return ensureSheet_(ss, 'Trash', TRASH_HEADERS); }
+function trashQLabel_(v) { return (String(v[3] || '') + (v[16] ? ' ' + v[16] + '번' : '') + ' · ' + String(v[1] || '')).trim(); }
+// 내용을 JSON 으로 만들어 4만 자씩 나눠 저장한다 (한 칸에는 5만 자까지만 들어가요). 숫자처럼 보이는 조각이 숫자로 바뀌지 않게 앞에 J 를 붙인다.
+function trashPut_(ss, gid, type, label, payload) {
+  const sh = trashSheet_(ss), t = JSON.stringify(payload), size = 40000, n = Math.max(1, Math.ceil(t.length / size));
+  const itemId = Utilities.getUuid().slice(0, 8), now = new Date().toISOString(), rows = [];
+  for (let i = 0; i < n; i++) rows.push([gid, itemId, type, label, now, i, n, 'J' + t.substr(i * size, size)]);
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, TRASH_HEADERS.length).setValues(rows);
+}
+function trashRead_(ss) {
+  const sh = trashSheet_(ss), last = sh.getLastRow(); if (last < 2) return { sh: sh, items: [] };
+  const vals = sh.getRange(2, 1, last - 1, TRASH_HEADERS.length).getValues(), by = {}, order = [];
+  vals.forEach(function (r, i) {
+    const id = String(r[1]); if (!by[id]) { by[id] = { gid: String(r[0]), itemId: id, type: String(r[2]), label: String(r[3]), at: String(r[4]), parts: [], rows: [] }; order.push(id); }
+    by[id].parts[Number(r[5])] = String(r[7]).slice(1); by[id].rows.push(i + 2);
+  });
+  return { sh: sh, items: order.map(function (id) { return by[id]; }) };
+}
+function actionListTrash_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), tr = trashRead_(ss), cutoff = Date.now() - TRASH_DAYS * 86400000;
+  // 30일이 지난 것은 비운다 (드라이브 휴지통도 30일 뒤에 비워져요)
+  const old = []; tr.items.forEach(function (it) { if (new Date(it.at).getTime() < cutoff) it.rows.forEach(function (r) { old.push(r); }); });
+  if (old.length) { old.sort(function (a, b) { return b - a; }).forEach(function (r) { try { tr.sh.deleteRow(r); } catch (e) {} }); return actionListTrash_(p); }
+  const groups = {}, order = [];
+  tr.items.forEach(function (it) {
+    const g = groups[it.gid] || (groups[it.gid] = { gid: it.gid, at: it.at, exams: [], questions: 0, submissions: 0, scores: 0, qLabels: [] }); if (!groups[it.gid].seen) { groups[it.gid].seen = 1; order.push(it.gid); }
+    if (it.type === 'exam') g.exams.push(it.label); else if (it.type === 'question') { g.questions++; if (g.qLabels.length < 3) g.qLabels.push(it.label); } else if (it.type === 'submission') { g.submissions++; g.qLabels.push(it.label); } else if (it.type === 'scores') { const m = it.label.match(/\d+/); g.scores += m ? Number(m[0]) : 0; }
+    if (it.at > g.at) g.at = it.at;
+  });
+  const list = order.map(function (gid) {
+    const g = groups[gid]; let kind, label;
+    if (g.exams.length) { kind = 'exam'; label = g.exams.length === 1 ? g.exams[0] : g.exams[0] + ' 외 ' + (g.exams.length - 1) + '개'; if (g.scores) label += ' (제출 기록 ' + g.scores + '건 포함)'; }
+    else if (g.questions) { kind = 'question'; label = '문제은행 문항 ' + g.questions + '개 · ' + g.qLabels.join(', ') + (g.questions > 3 ? ' …' : ''); }
+    else { kind = 'submission'; label = g.qLabels.join(', '); }
+    return { gid: gid, kind: kind, label: label, at: g.at, count: g.exams.length || g.questions || g.submissions || 1 };
+  }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+  return { ok: true, items: list, days: TRASH_DAYS };
+}
+function actionRestoreTrash_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const gid = String(p.gid || ''); if (!gid) return { ok: false, error: '되살릴 항목이 없어요.' };
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), tr = trashRead_(ss), mine = tr.items.filter(function (it) { return it.gid === gid; });
+  if (!mine.length) { lock.releaseLock(); return { ok: false, error: '이미 되살렸거나 보관 기간(30일)이 지난 항목이에요.' }; }
+  const out = { exams: 0, questions: 0, submissions: 0, scores: 0, skipped: 0 }, doneRows = [];
+  try {
+    const untrash = function (id) { if (id) { try { DriveApp.getFileById(id).setTrashed(false); } catch (e) {} } };
+    const appendRows = function (sheet, rows) { if (!rows.length) return; const w = Math.max.apply(null, rows.map(function (r) { return r.length; })); const fixed = rows.map(function (r) { const c = r.slice(); while (c.length < w) c.push(''); return c; }); sheet.getRange(sheet.getLastRow() + 1, 1, fixed.length, w).setValues(fixed); };
+    const examsSheet = ss.getSheetByName(SHEET_EXAMS), haveExam = {};
+    examsSheet.getDataRange().getValues().slice(1).forEach(function (r) { haveExam[String(r[0])] = 1; });
+    mine.forEach(function (it) {
+      let payload; try { payload = JSON.parse(it.parts.join('')); } catch (e) { return; }
+      if (it.type === 'exam') {
+        if (haveExam[String(payload[0])]) { out.skipped++; } else { appendRows(examsSheet, [payload]); untrash(payload[4]); untrash(fileIdFromUrl_(payload[6])); out.exams++; haveExam[String(payload[0])] = 1; }
+      } else if (it.type === 'scores') { appendRows(ss.getSheetByName(SHEET_SCORES), payload); out.scores += payload.length; }
+      else if (it.type === 'question') {
+        const qs = questionsSheet_(); const exist = {}; if (qs.getLastRow() >= 2) qs.getRange(2, 1, qs.getLastRow() - 1, 1).getValues().forEach(function (r) { exist[String(r[0])] = 1; });
+        if (exist[String(payload[0])]) { out.skipped++; } else { appendRows(qs, [payload]); untrash(payload[6]); untrash(payload[7]); out.questions++; }
+      } else if (it.type === 'submission') { appendRows(ss.getSheetByName(SHEET_SCORES), [payload]); out.submissions++; }
+      it.rows.forEach(function (r) { doneRows.push(r); });
+    });
+    doneRows.sort(function (a, b) { return b - a; }).forEach(function (r) { try { tr.sh.deleteRow(r); } catch (e) {} });
+  } finally { lock.releaseLock(); }
+  return { ok: true, restored: out };
+}
+
+
+// ────────────── 숙제 (알림장 앱 → 학생 앱) ──────────────
+// 알림장 앱에서 「카톡/문자로 공유할 내용 복사」를 누를 때 같은 내용이 학생 앱 숙제란에도 올라오고 푸시 알림이 가요.
+const HW_HEADERS = ['id', 'studentName', 'createdAt', 'date', 'bookLesson', 'homework', 'text', 'doneAt', 'pushedAt'];
+function hwSheet_() { return ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Homework', HW_HEADERS); }
+function hwItemsFor_(key) {
+  try {
+    const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return [];
+    const cut = Date.now() - 21 * 86400000, out = [];
+    sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) {
+      if (nameKey_(r[1]) !== key) return;
+      if (new Date(r[2]).getTime() < cut) return;
+      out.push({ id: String(r[0]), date: String(r[3]), bookLesson: String(r[4]), homework: String(r[5]), text: String(r[6]), doneAt: String(r[7] || '') });
+    });
+    out.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
+    return out.slice(0, 30);
+  } catch (e) { return []; }
+}
+function actionAddHomework_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const name = cleanText_(p.studentName, 40), hw = cleanText_(p.homework, 2000), bl = cleanText_(p.bookLesson, 200), text = cleanText_(p.text, 3000);
+  if (!name) return { ok: false, error: '학생 이름이 없어요.' };
+  if (!hw || hw === '-') return { ok: true, skipped: true };
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  let changed = true, isNew = true;
+  try {
+    const sh = hwSheet_(), last = sh.getLastRow(), key = nameKey_(name), today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+    let row = 0;
+    if (last >= 2) {
+      const vals = sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues();
+      for (let i = vals.length - 1; i >= 0; i--) if (nameKey_(vals[i][1]) === key && String(vals[i][3]) === today && String(vals[i][4]) === bl) { row = i + 2; changed = String(vals[i][5]) !== hw; break; }
+    }
+    if (row) { isNew = false; if (changed) { sh.getRange(row, 6, 1, 4).setValues([[hw, text, '', '']]); } else sh.getRange(row, 7).setValue(text); }
+    else sh.appendRow([Utilities.getUuid().slice(0, 12), name, new Date().toISOString(), today, bl, hw, text, '', '']);
+  } finally { lock.releaseLock(); }
+  let pushed = false;
+  if (isNew || changed) { try { pushed = pushToStudent_(name, '📚 오늘 숙제가 올라왔어요', (bl ? bl + ' · ' : '') + hw.replace(/\s+/g, ' ').slice(0, 90)); } catch (e) {} }
+  return { ok: true, isNew: isNew, pushed: pushed, registered: !!stuFind_(name) };
+}
+function actionStuHomeworkDone_(p) {
+  const a = stuAuth_(p); if (!a.ok) return a;
+  const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return { ok: false, error: '숙제를 찾지 못했어요.' };
+  const vals = sh.getRange(2, 1, last - 1, 1).getValues(), key = nameKey_(a.display);
+  for (let i = 0; i < vals.length; i++) if (String(vals[i][0]) === String(p.id)) {
+    if (nameKey_(sh.getRange(i + 2, 2).getValue()) !== key) return { ok: false, error: '내 숙제가 아니에요.' };
+    const done = !(p.done === false || p.done === 'false');
+    sh.getRange(i + 2, 8).setValue(done ? new Date().toISOString() : '');
+    return { ok: true, doneAt: done ? 'now' : '' };
+  }
+  return { ok: false, error: '숙제를 찾지 못했어요.' };
+}
+// 선생님용: 최근 숙제와 학생별 확인 여부
+function actionListHomework_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return { ok: true, items: [] };
+  const cut = Date.now() - 14 * 86400000, out = [];
+  sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) { if (new Date(r[2]).getTime() >= cut) out.push({ name: String(r[1]), date: String(r[3]), bookLesson: String(r[4]), homework: String(r[5]), doneAt: String(r[7] || '') }); });
+  out.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  return { ok: true, items: out.slice(0, 300) };
 }

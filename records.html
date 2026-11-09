@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611060100">
+<link rel="stylesheet" href="css/style.css?v=202611091000">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -47,14 +47,14 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611060100"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611060100"></script>
-<script src="js/vendor/qrcode.min.js?v=202611060100"></script>
-<script src="js/config.js?v=202611060100"></script>
-<script src="js/api.js?v=202611060100"></script>
-<script src="js/common.js?v=202611060100"></script>
-<script src="js/bankcore.js?v=202611060100"></script>
-<script src="js/pdfui.js?v=202611060100"></script>
+<script src="js/vendor/pdf.min.js?v=202611091000"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611091000"></script>
+<script src="js/vendor/qrcode.min.js?v=202611091000"></script>
+<script src="js/config.js?v=202611091000"></script>
+<script src="js/api.js?v=202611091000"></script>
+<script src="js/common.js?v=202611091000"></script>
+<script src="js/bankcore.js?v=202611091000"></script>
+<script src="js/pdfui.js?v=202611091000"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -401,7 +401,7 @@ function render() {
       </div>
       <div class="note-panel" id="note-${i}" style="display:none; margin-top:10px; padding:10px 12px; background:#F3F4F6; border-radius:8px;">
         <b>📓 ${escapeHtml(s.studentName)} 오답노트</b> <span class="hint">틀린 문항의 문제·내 답(정답은 맨 뒤 쪽에 모아서)·해설(정답 표시 없이)을 PDF로 만들어요.</span><br>
-        <label style="margin-right:14px;"><input type="checkbox" id="note-expl-${i}" checked> 해설 포함</label>
+        <label style="margin-right:14px;"><input type="checkbox" id="note-expl-${i}" checked> 해설 포함 (뒤쪽에 따로)</label>
         <label style="margin-right:14px;">다시 풀 빈칸 <select id="note-blank-${i}"><option value="0">없음</option><option value="60">작게</option><option value="110" selected>보통</option><option value="170">넓게</option></select></label>
         <button type="button" class="btn primary note-go" data-i="${i}" style="padding:7px 12px;">PDF 만들기</button>
         <span class="hint" id="note-msg-${i}"></span>

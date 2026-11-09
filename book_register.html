@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611060100">
+<link rel="stylesheet" href="css/style.css?v=202611091000">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -56,6 +56,7 @@
         <select id="qr-corner" style="width:auto;"><option value="top-right" selected>맨 위 오른쪽</option><option value="top-left">맨 위 왼쪽</option></select>
       </div>
       <label class="field-label-spaced"><input type="checkbox" id="to-bank" checked> 문제도 <b>문제은행에 「내신교재」 문제로 저장</b> (오답노트·유사오답이 일반 시험지처럼 돼요. 시간이 더 걸려요)</label>
+      <label class="field-label-spaced"><input type="checkbox" id="stu-ver" checked> <b>학생용 합본</b>(정답·해설 쪽을 뺀 것)도 따로 만들기 — 끄면 <b>강사용 전체 합본</b> 한 파일만 만들어요</label>
       <label class="field-label-spaced"><input type="checkbox" id="multi-qr" checked> 목차 쪽에 「여러 단원 한꺼번에 채점」 QR도 찍기</label>
       <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 QR 합본 PDF 만들기</button>
       <p class="hint" id="go-msg" style="margin:8px 0 0;"></p>
@@ -63,14 +64,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611060100"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611060100"></script>
-<script src="js/vendor/pdf.min.js?v=202611060100"></script>
-<script src="js/config.js?v=202611060100"></script>
-<script src="js/api.js?v=202611060100"></script>
-<script src="js/common.js?v=202611060100"></script>
-<script src="js/bankcore.js?v=202611060100"></script>
-<script src="js/pdfui.js?v=202611060100"></script>
+<script src="js/vendor/qrcode.min.js?v=202611091000"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611091000"></script>
+<script src="js/vendor/pdf.min.js?v=202611091000"></script>
+<script src="js/config.js?v=202611091000"></script>
+<script src="js/api.js?v=202611091000"></script>
+<script src="js/common.js?v=202611091000"></script>
+<script src="js/bankcore.js?v=202611091000"></script>
+<script src="js/pdfui.js?v=202611091000"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -265,11 +266,23 @@ $('go-btn').addEventListener('click', async () => {
     }
     msg('PDF를 저장하는 중...');
     const out = await pdf.save();
-    const url = URL.createObjectURL(new Blob([out], { type: 'application/pdf' }));
-    const a = document.createElement('a'); a.href = url; a.download = bookFileName.replace(/\.pdf$/i, '') + ' (QR).pdf';
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const stem = bookFileName.replace(/\.pdf$/i, '');
+    const dl = (bytes, name) => { const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+    const wantStu = $('stu-ver').checked;
+    // 강사용: 문제편 + 정답·해설편이 모두 들어 있는 전체 합본 (QR 포함)
+    dl(out, stem + (wantStu ? ' (QR 강사용 전체).pdf' : ' (QR).pdf'));
+    if (wantStu) {
+      msg('학생용 합본(정답·해설 쪽 제외)을 만드는 중...');
+      const drop = new Set(); sections.forEach(s => { for (let p = s.aa; p <= s.ab; p++) drop.add(p - 1); });
+      const full = await PDFLib.PDFDocument.load(out, { ignoreEncryption: true, updateMetadata: false });
+      const keep = full.getPageIndices().filter(i => !drop.has(i));
+      const stu = await PDFLib.PDFDocument.create();
+      (await stu.copyPages(full, keep)).forEach(pg => stu.addPage(pg));
+      await new Promise(r => setTimeout(r, 800));       // 브라우저가 두 번째 내려받기를 막지 않게 잠깐 쉰다
+      dl(await stu.save(), stem + ' (QR 학생용).pdf');
+    }
     const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
-    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. QR 합본 PDF가 내려받아졌어요.<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
+    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (wantStu ? '강사용 전체 합본과 학생용 합본, 두 파일이' : 'QR 합본 PDF가') + ' 내려받아졌어요.<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
   } catch (e) {
     err.innerHTML = '<div class="banner error">' + escapeHtml(e.message) + '</div>';
     $('go-msg').textContent = '';

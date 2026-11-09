@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611060100">
+<link rel="stylesheet" href="css/style.css?v=202611091000">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611060100"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611060100"></script>
-<script src="js/config.js?v=202611060100"></script>
-<script src="js/api.js?v=202611060100"></script>
-<script src="js/common.js?v=202611060100"></script>
-<script src="js/bankcore.js?v=202611060100"></script>
-<script src="js/pdfui.js?v=202611060100"></script>
+<script src="js/vendor/qrcode.min.js?v=202611091000"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611091000"></script>
+<script src="js/config.js?v=202611091000"></script>
+<script src="js/api.js?v=202611091000"></script>
+<script src="js/common.js?v=202611091000"></script>
+<script src="js/bankcore.js?v=202611091000"></script>
+<script src="js/pdfui.js?v=202611091000"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -138,7 +138,30 @@ let schoolFilter = new Set();   // 기출문제를 학교·시험별로 좁힐 �
 let yearFilter = new Set();     // 기출문제를 출제년도별로 좁힐 때(비어있으면 전체 연도)
 const yearName = q => q.year || '(연도 없음)';
 const schoolName = q => q.school || '(학교·시험 이름 없음)';
+// ───────── 검색: "불암중", "중1 2단원", "전기 2022" 처럼 띄어 쓴 낱말이 모두 들어 있는 문항만 (검색 중에는 일반·기출·교재 구분 없이 찾는다) ─────────
+let searchTokens = [];
+const _norm = x => String(x == null ? '' : x).replace(/\s+/g, '').toLowerCase();
+// 대단원 번호: 단원 이름 맨 앞 숫자("2. 생물의 구성", "4-1. …") → 없으면 출처/소단원 글자의 "2-2-1. …"·"2단원" 모양에서 첫 숫자
+function unitNoOf(q) {
+  let m = String(q.unit || '').match(/^\s*(\d{1,2})(?:\s*-\s*\d+)*\s*(?:단원|[.)])/);
+  if (m) return +m[1];
+  const t = String(q.source || '') + ' ' + String(q.sub || '') + ' ' + String(q.unit || '');
+  m = t.match(/(?:^|[^\d])(\d{1,2})\s*-\s*\d{1,2}\s*-\s*\d{1,2}\s*[.)]?/) || t.match(/(?:^|[^\d])(\d{1,2})\s*단원/);
+  return m ? +m[1] : 0;
+}
+function matchesSearch(q) {
+  if (!searchTokens.length) return true;
+  const hay = _norm([q.grade, q.unit, q.sub, q.school, q.year, q.source, q.kind === '기출' ? '기출 기출문제' : (q.kind === '교재' ? '교재 내신교재' : '일반'), q.textPreview].join(' '));
+  return searchTokens.every(t => {
+    let m = t.match(/^(\d{1,2})(?:단원|대단원)$/);
+    if (m) return unitNoOf(q) === +m[1];
+    m = t.match(/^중([123])$/);
+    if (m) return q.grade === '중' + m[1] || (!q.grade && hay.indexOf(t) >= 0);
+    return hay.indexOf(t) >= 0;
+  });
+}
 function passesFilters(q) {
+  if (searchTokens.length) return matchesSearch(q);
   if (kindFilter && q.kind !== kindFilter) return false;
   if (schoolFilter.size && q.kind === '기출' && !schoolFilter.has(schoolName(q))) return false;   // 학교 선택은 기출문제에만 적용
   if (yearFilter.size && q.kind === '기출' && !yearFilter.has(yearName(q))) return false;       // 연도 선택도 기출문제에만 적용
@@ -284,7 +307,15 @@ async function loadRegenParams() {
     allQuestions = res.questions;
     try { await ensureToc(); } catch (e) {}
     if (allQuestions.length && !allQuestions.some(q => 'kind' in q)) { $('error-banner').innerHTML = '<div class="banner error">⚠️ 서버(Apps Script)가 옛날 버전이라 기출/일반 구분이 저장·표시되지 않아요. 새 AppsScript_Code.gs로 다시 배포해주세요.</div>'; }
-    res.questions.forEach(q => { const k = unitKey(q); (groups[k] = groups[k] || []).push(q); if (!groupMeta[k]) groupMeta[k] = { grade: q.grade || '', unit: String(q.unit) }; });
+    // 단원이 비어 있는 문항도 출처 이름이 "2-2-1. 생물의 구성 대표문제"처럼 번호로 시작하면, 그 번호의 대단원(예: 2단원)으로 묶어서 보여 준다 (저장된 값은 바꾸지 않아요)
+    const toc0 = (typeof _tocParsed !== 'undefined' && _tocParsed) || [];
+    const noUnit = q => !q.unit || /미지정/.test(String(q.unit));
+    res.questions.forEach(q => {
+      let g = q.grade || '', u = String(q.unit);
+      if (noUnit(q)) { const n = unitNoOf(q), gg = g || ((String(q.source || '').match(/중\s*([123])/) || [])[1] ? '중' + String(q.source).match(/중\s*([123])/)[1] : ''); const tu = n ? tocUnitByNo(toc0, gg, n) : null; if (tu) { g = tu.grade || gg; u = tu.unit; } }
+      const k = g ? g + ' · ' + u : u;
+      (groups[k] = groups[k] || []).push(q); if (!groupMeta[k]) groupMeta[k] = { grade: g, unit: u };
+    });
     if (!Object.keys(groups).length) { $('content').innerHTML = '<div class="card center muted">문제은행에 문항이 없어요. 먼저 <a href="bank_upload.html">PDF에서 문항을 가져와</a> 주세요.</div>'; return; }
 
     const presetUnits = await loadRegenParams();
@@ -346,6 +377,8 @@ async function loadRegenParams() {
           <div id="year-filter" class="school-filter"></div>
         </details>
         <label class="field-label-spaced">학년 · 단원 선택 (개수를 비워두면 그 단원 문항을 모두 사용해요)</label>
+        <div style="margin:6px 0 8px;"><input type="text" id="unit-search" placeholder="🔍 검색해서 고르기 — 예: 불암중 · 중1 2단원 · 전기 · 2022 · 대표문제" autocomplete="off" style="margin:0;">
+          <div class="hint" id="search-info" style="margin:4px 0 0;">띄어 쓴 낱말이 모두 들어간 문항만 보여요. 검색 중에는 일반·기출·내신교재 구분 없이 찾아요.</div></div>
         <div class="bank-compose-units" id="unit-box"></div>
         <p class="hint">아래 "전체 문항 수"를 입력하면, 단원별 개수 대신 선택한 단원들에서 고르게 자동으로 뽑아요.</p>
         <label>전체 문항 수 (선택)</label>
@@ -407,6 +440,16 @@ async function loadRegenParams() {
       (regenFrom.recipe.years || []).forEach(x => yearFilter.add(x));
     }
     renderKindChips(); renderSchoolFilter(); renderYearFilter(); renderUnits();
+    { let st = null; const inp = $('unit-search'), info = $('search-info');
+      inp.addEventListener('input', () => { clearTimeout(st); st = setTimeout(() => {
+        searchTokens = inp.value.split(/\s+/).map(_norm).filter(Boolean);
+        renderUnits(); showAvail();
+        if (searchTokens.length) {
+          const n = allQuestions.filter(matchesSearch).length, units = document.querySelectorAll('#unit-box .use').length;
+          info.innerHTML = '검색 결과 <b>' + n + '문항</b> · 단원 ' + units + '개 ' + (units ? '<button type="button" class="btn ghost" id="sr-all" style="padding:2px 10px; font-size:12px;">검색된 단원 모두 선택</button>' : '');
+          const b = $('sr-all'); if (b) b.addEventListener('click', () => { document.querySelectorAll('#unit-box .use').forEach(c => { c.checked = true; unitState.checked.add(c.dataset.u); }); syncGradeBoxes(); showAvail(); });
+        } else info.textContent = '띄어 쓴 낱말이 모두 들어간 문항만 보여요. 검색 중에는 일반·기출·내신교재 구분 없이 찾아요.';
+      }, 200); }); }
     const excludeChk = $('exclude-prev');
     if (excludeChk) excludeChk.addEventListener('change', showAvail);
     showAvail();
