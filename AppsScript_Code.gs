@@ -2245,7 +2245,7 @@ function hwStr_(v, fmt) { return v instanceof Date ? Utilities.formatDate(v, 'As
 function hwItemsFor_(key) {
   try {
     const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return [];
-    const cut = Date.now() - 21 * 86400000, out = [];
+    const cut = Date.now() - 30 * 86400000, out = [];
     sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) {
       if (nameKey_(r[1]) !== key) return;
       if (new Date(r[2]).getTime() < cut) return;
@@ -2254,6 +2254,14 @@ function hwItemsFor_(key) {
     out.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
     return out.slice(0, 30);
   } catch (e) { return []; }
+}
+// 한 달(30일) 지난 숙제는 시트에서 지운다 (숙제를 올릴 때마다 함께 정리)
+function hwPurgeOld_(sh) {
+  try {
+    const last = sh.getLastRow(); if (last < 2) return;
+    const cut = Date.now() - 30 * 86400000, vals = sh.getRange(2, 3, last - 1, 1).getValues();
+    for (let i = vals.length - 1; i >= 0; i--) { const t = new Date(vals[i][0]).getTime(); if (t && t < cut) sh.deleteRow(i + 2); }
+  } catch (e) {}
 }
 function actionAddHomework_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
@@ -2271,6 +2279,7 @@ function actionAddHomework_(p) {
     }
     if (row) { isNew = false; if (changed) { sh.getRange(row, 6, 1, 4).setValues([[hw, text, '', '']]); } else sh.getRange(row, 7).setValue(text); }
     else sh.appendRow([Utilities.getUuid().slice(0, 12), name, new Date().toISOString(), today, bl, hw, text, '', '']);
+    hwPurgeOld_(sh);
   } finally { lock.releaseLock(); }
   let pushed = false;
   if (isNew || changed) { try { pushed = pushToStudent_(name, '📚 오늘 숙제가 올라왔어요', (bl ? bl + ' · ' : '') + hw.replace(/\s+/g, ' ').slice(0, 90)); } catch (e) {} }
