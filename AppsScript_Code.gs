@@ -2236,7 +2236,12 @@ function actionRestoreTrash_(p) {
 // ────────────── 숙제 (알림장 앱 → 학생 앱) ──────────────
 // 알림장 앱에서 「카톡/문자로 공유할 내용 복사」를 누를 때 같은 내용이 학생 앱 숙제란에도 올라오고 푸시 알림이 가요.
 const HW_HEADERS = ['id', 'studentName', 'createdAt', 'date', 'bookLesson', 'homework', 'text', 'doneAt', 'pushedAt'];
-function hwSheet_() { return ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Homework', HW_HEADERS); }
+function hwSheet_() {
+  const sh = ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Homework', HW_HEADERS);
+  try { sh.getRange(1, 1, sh.getMaxRows(), HW_HEADERS.length).setNumberFormat('@'); } catch (e) {}   // 날짜·'1-1' 같은 글자가 시트에서 날짜로 바뀌지 않게 글자 서식으로
+  return sh;
+}
+function hwStr_(v, fmt) { return v instanceof Date ? Utilities.formatDate(v, 'Asia/Seoul', fmt || 'yyyy-MM-dd') : String(v == null ? '' : v); }
 function hwItemsFor_(key) {
   try {
     const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return [];
@@ -2244,7 +2249,7 @@ function hwItemsFor_(key) {
     sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) {
       if (nameKey_(r[1]) !== key) return;
       if (new Date(r[2]).getTime() < cut) return;
-      out.push({ id: String(r[0]), date: String(r[3]), bookLesson: String(r[4]), homework: String(r[5]), text: String(r[6]), doneAt: String(r[7] || '') });
+      out.push({ id: String(r[0]), date: hwStr_(r[3]), bookLesson: hwStr_(r[4]), homework: String(r[5]), text: String(r[6]), doneAt: hwStr_(r[7], "yyyy-MM-dd'T'HH:mm:ss") });
     });
     out.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
     return out.slice(0, 30);
@@ -2262,7 +2267,7 @@ function actionAddHomework_(p) {
     let row = 0;
     if (last >= 2) {
       const vals = sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues();
-      for (let i = vals.length - 1; i >= 0; i--) if (nameKey_(vals[i][1]) === key && String(vals[i][3]) === today && String(vals[i][4]) === bl) { row = i + 2; changed = String(vals[i][5]) !== hw; break; }
+      for (let i = vals.length - 1; i >= 0; i--) if (nameKey_(vals[i][1]) === key && hwStr_(vals[i][3]) === today && hwStr_(vals[i][4]) === bl) { row = i + 2; changed = String(vals[i][5]) !== hw; break; }
     }
     if (row) { isNew = false; if (changed) { sh.getRange(row, 6, 1, 4).setValues([[hw, text, '', '']]); } else sh.getRange(row, 7).setValue(text); }
     else sh.appendRow([Utilities.getUuid().slice(0, 12), name, new Date().toISOString(), today, bl, hw, text, '', '']);
@@ -2288,7 +2293,7 @@ function actionListHomework_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return { ok: true, items: [] };
   const cut = Date.now() - 14 * 86400000, out = [];
-  sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) { if (new Date(r[2]).getTime() >= cut) out.push({ name: String(r[1]), date: String(r[3]), bookLesson: String(r[4]), homework: String(r[5]), doneAt: String(r[7] || '') }); });
+  sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) { if (new Date(r[2]).getTime() >= cut) out.push({ name: String(r[1]), date: hwStr_(r[3]), bookLesson: hwStr_(r[4]), homework: String(r[5]), doneAt: hwStr_(r[7]) }); });
   out.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   return { ok: true, items: out.slice(0, 300) };
 }
