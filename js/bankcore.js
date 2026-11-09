@@ -2752,6 +2752,7 @@
   // 숫자 모양은 같은 표의 「문항」 칸(1,2,3…)에서 배운다 — 그래서 글꼴이 달라도 같은 표 안에서는 맞는다.
   async function readScannedAnswerSheet(doc, pageNums) {
     const out = { answers: {}, count: 0, pages: [], note: '' };
+    let best = { count: 0 };
     for (const pn of pageNums) {
       let cv;
       try {
@@ -2764,9 +2765,10 @@
         await page.render({ canvasContext: cx, viewport: vp, canvas: cv }).promise;
       } catch (e) { out.note = 'render: ' + (e && e.message); continue; }
       const r = readSheetCanvas(cv);
-      if (r && r.count) { Object.keys(r.answers).forEach(n => { if (!out.answers[n]) out.answers[n] = r.answers[n]; }); out.pages.push(pn); }
+      if (r && r.count >= 5) { if (r.count > best.count) best = { count: r.count, answers: r.answers, pn: pn }; }          // 정답표는 한 쪽이다: 가장 많이 읽힌 쪽 하나만 쓴다 (문제 쪽의 표·그림이 정답표로 잘못 읽혀 번호가 섞이는 것 방지)
       else if (r && r.note) out.note = r.note;
     }
+    if (best.count) { out.answers = best.answers; out.pages.push(best.pn); }
     out.count = Object.keys(out.answers).length;
     return out;
   }
@@ -2792,10 +2794,14 @@
     const vr = runs(true);
     let maxV = 0; vr.forEach(r => { if (r.len > maxV) maxV = r.len; });
     if (maxV < H * 0.15) return { note: '표 선을 못 찾았어요' };
-    // 가장 긴 세로선 무리(표 본체) — 길이가 비슷한 것만
-    const cand = []; for (let x = 0; x < W; x++) if (vr[x].len >= maxV * 0.8) cand.push(x);
-    const vx = []; cand.forEach(x => { if (vx.length && x - vx[vx.length - 1].hi <= 3) vx[vx.length - 1].hi = x; else vx.push({ lo: x, hi: x }); });
-    const xs = vx.map(g => Math.round((g.lo + g.hi) / 2));
+    // 가장 긴 세로선 무리(표 본체) — 길이가 비슷한 것만. 흐리게 스캔돼 선이 끊긴 표는 기준을 조금씩 낮춰서 칸 수가 맞는(4묶음 + 1) 때까지 본다
+    let cand = [], xs = [];
+    for (const fr of [0.8, 0.7, 0.6, 0.5, 0.4]) {
+      cand = []; for (let x = 0; x < W; x++) if (vr[x].len >= maxV * fr) cand.push(x);
+      const vx = []; cand.forEach(x => { if (vx.length && x - vx[vx.length - 1].hi <= 3) vx[vx.length - 1].hi = x; else vx.push({ lo: x, hi: x }); });
+      xs = vx.map(g => Math.round((g.lo + g.hi) / 2));
+      if (xs.length >= 5 && (xs.length - 1) % 4 === 0) break;
+    }
     if (xs.length < 5 || (xs.length - 1) % 4 !== 0) return { note: '칸 구분선이 예상과 달라요(' + xs.length + '개)' };
     const top = Math.min.apply(null, cand.map(x => vr[x].start)), bot = Math.max.apply(null, cand.map(x => vr[x].start + vr[x].len));
     // 가로선
@@ -3022,6 +3028,50 @@
       });
     }
     return { sections: secs, tocPage: tocPage };
+  }
+  // 목차가 없는 교재: 쪽 맨 위의 머리글 「[최다빈출 공략] 1-1.○○(01)」로 단원을 찾아 목차를 만든다.
+  // 같은 머리글이 붙은 쪽들 중 문제(zb1 ) 같은 문항 번호표가 있는 쪽)은 문제 쪽, 「N) 정답」·「1등급 공략 Tip」이 있는 쪽은 정답·해설 쪽으로 본다.
+  async function buildBookTocFromHeaders(doc, onProgress) {
+    const n = doc.numPages, groups = [], byKey = {};
+    let pendingBare = null;          // 첫 쪽엔 「[공략]」 표시 없이 「중1 과학 2.생물…(02)」만 있는 책이 있어서, 표시 없는 쪽은 다음 표시 쪽의 문제 쪽으로 붙여 준다
+    const NAME_RE = /(\d{1,2}(?:\s*-\s*\d{1,2})?\s*[.．]\s*[^()\[\]]*?\(\s*\d{1,3}\s*\))\s*$/;
+    for (let p = 1; p <= n; p++) {
+      if (onProgress) onProgress(p, n);
+      let pg, tc; try { pg = await doc.getPage(p); tc = await pg.getTextContent(); } catch (e) { continue; }
+      const H = pg.getViewport({ scale: 1 }).height;
+      const rows = [];
+      tc.items.forEach(it => { if (!String(it.str).trim()) return; const y = H - it.transform[5], x = it.transform[4]; let r = rows.find(q => Math.abs(q.y - y) < 3); if (!r) { r = { y: y, its: [] }; rows.push(r); } r.its.push({ x: x, s: it.str }); });
+      rows.sort((a, b) => a.y - b.y);
+      const line = r => r.its.sort((a, b) => a.x - b.x).map(i => i.s).join(' ').replace(/\s+/g, ' ').trim();
+      const head = rows.filter(r => r.y < H * 0.13).slice(0, 3).map(line);
+      const all = rows.map(line).join('\n');
+      let tag = '', name = '';
+      for (const l of head) {
+        let m = l.match(/\[\s*([^\]]*?)\s*공략\s*\]\s*(.+)$/);
+        if (m) { tag = m[1].replace(/\s+/g, ''); const nm = m[2].match(NAME_RE); name = (nm ? nm[1] : m[2]).replace(/\s*([.．])\s*/, '.').replace(/\s*\(\s*(\d+)\s*\)\s*$/, '($1)').trim(); break; }
+      }
+      const isQ = /z\s*b\s*\d/.test(all);
+      let isA = !isQ && /\d+\s*\)\s*\[?\s*정답|1\s*등급\s*공략|정답\s*및\s*해설/.test(all);
+      if (!tag) {
+        for (const l of head) { const nm = l.match(NAME_RE); if (nm) { pendingBare = { p: p, name: nm[1].replace(/\s*([.．])\s*/, '.').replace(/\s*\(\s*(\d+)\s*\)\s*$/, '($1)').trim(), isQ: isQ }; break; } }
+        continue;
+      }
+      const key = tag + '|' + name;
+      let g = byKey[key];
+      if (!g || (isQ && g.apages.length && p > Math.max.apply(null, g.apages) + 400)) { g = { tag: tag, name: name, qpages: [], apages: [], first: p }; byKey[key] = g; groups.push(g); }
+      if (!isQ && !isA && g.apages.length) isA = true;          // 정답·해설이 시작된 뒤에 이어지는 쪽(해설이 길어서 번호 표시가 없는 쪽)은 정답 쪽
+      if (pendingBare && pendingBare.name === name && pendingBare.p === p - 1 && !g.qpages.length) { g.qpages.push(pendingBare.p); g.first = pendingBare.p; }
+      pendingBare = null;
+      if (isA) g.apages.push(p); else g.qpages.push(p);
+    }
+    const secs = [];
+    groups.sort((a, b) => a.first - b.first).forEach(g => {
+      if (!g.qpages.length || !g.apages.length) return;
+      const um = g.name.match(/^(\d{1,2})/), unit = um ? parseInt(um[1], 10) : 0;
+      const unitName = g.name.replace(/^\d{1,2}(?:\s*-\s*\d{1,2})?\s*[.．]\s*/, '').replace(/\s*\(\s*\d+\s*\)\s*$/, '').trim() || g.name;
+      secs.push({ unit: unit, unitName: unitName, tag: g.tag, name: g.name, qa: Math.min.apply(null, g.qpages), qb: Math.max.apply(null, g.qpages), aa: Math.min.apply(null, g.apages), ab: Math.max.apply(null, g.apages) });
+    });
+    return { sections: secs, tocPage: 0, generated: true };
   }
   async function readCircledAnswers(doc, scan) {
     const targets = Object.keys(scan.answers || {}).map(Number).filter(n => { const a = scan.answers[n]; return a && !a.text && !a.written && a.mr && a.page; });
@@ -3481,7 +3531,7 @@
   }
 
   root.BankCore = {
-    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, parseBookToc: parseBookToc, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
+    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
     _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,

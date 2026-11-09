@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611091000">
+<link rel="stylesheet" href="css/style.css?v=202611091400">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -23,7 +23,7 @@
       <label>시험지 PDF (문제 + 정답 페이지가 같이 있어도 돼요 · 여러 개를 한꺼번에 골라도 돼요)</label>
       <input type="file" id="pdf-file" accept="application/pdf" multiple required>
       <div id="queue-note" class="banner" style="display:none; margin:8px 0 0;"></div>
-      <label class="bank-include-label" style="margin-top:10px;"><input type="checkbox" id="auto-reg" checked> ⚡ <b>확인 없이 자동 등록</b> — 여러 시험지를 한꺼번에 고르면 기다릴 필요 없이 정답 읽기·단원 추정·QR 찍기·등록·문제은행 저장까지 알아서 해요. 못 읽은 정답은 비워 두고 등록한 뒤, 끝나면 나오는 결과 화면에서 문제 있는 것만 모아서 고치면 돼요. 같은 이름·내용의 시험지는 건너뛰어요. (시험지를 1개만 고르면 이 설정과 상관없이 하나씩 확인하며 등록해요) (단원·소단원은 확신 있는 것만 채우고 🤖 표시가 붙어요)</label>
+      <label class="bank-include-label" style="margin-top:10px;"><input type="checkbox" id="auto-reg" checked> ⚡ <b>확인 없이 자동 등록</b> (시험지를 2개 이상 고르면 이 칸과 상관없이 항상 이렇게 해요) — 여러 시험지를 한꺼번에 고르면 기다릴 필요 없이 정답 읽기·단원 추정·QR 찍기·등록·문제은행 저장까지 알아서 해요. 못 읽은 정답은 비워 두고 등록한 뒤, 끝나면 나오는 결과 화면에서 문제 있는 것만 모아서 고치면 돼요. 같은 이름·내용의 시험지는 건너뛰어요. (시험지를 1개만 고르면 이 설정과 상관없이 하나씩 확인하며 등록해요) (단원·소단원은 확신 있는 것만 채우고 🤖 표시가 붙어요)</label>
       <div style="margin-top:8px;"><button type="button" class="btn outline" id="open-saved-review" style="padding:8px 14px;">🕘 최근 등록한 시험지 다시 확인 (정답·단원 · 다른 기기에서 등록한 것도)</button></div>
       <div style="margin:4px 0 0 24px; font-size:13px;">동시에 처리할 시험지 수 <select id="auto-pool" style="width:auto; display:inline-block; margin:0; padding:4px 8px;"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select> <span class="hint" style="margin:0;">많을수록 서버 저장을 더 많이 겹치지만, 컴퓨터가 느려지고 구글 서버가 거부할 수 있어요. 막히면 줄이세요.</span></div>
       <label class="field-label-spaced">정답지 PDF <span class="muted" style="font-weight:400;">(문제지와 따로 있을 때만 · 없으면 비워두세요)</span></label>
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611091000"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611091000"></script>
-<script src="js/vendor/pdf.min.js?v=202611091000"></script>
-<script src="js/config.js?v=202611091000"></script>
-<script src="js/api.js?v=202611091000"></script>
-<script src="js/common.js?v=202611091000"></script>
-<script src="js/bankcore.js?v=202611091000"></script>
-<script src="js/pdfui.js?v=202611091000"></script>
-<script src="js/pdfview.js?v=202611091000"></script>
+<script src="js/vendor/qrcode.min.js?v=202611091400"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611091400"></script>
+<script src="js/vendor/pdf.min.js?v=202611091400"></script>
+<script src="js/config.js?v=202611091400"></script>
+<script src="js/api.js?v=202611091400"></script>
+<script src="js/common.js?v=202611091400"></script>
+<script src="js/bankcore.js?v=202611091400"></script>
+<script src="js/pdfui.js?v=202611091400"></script>
+<script src="js/pdfview.js?v=202611091400"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -204,7 +204,10 @@ async function looksLikeAnswerSheet(file) {
     let chars = 0, txt = '';
     for (let p = 1; p <= n; p++) { const tc = await (await info.doc.getPage(p)).getTextContent(); const t = tc.items.map(i => i.str).join(' '); chars += t.replace(/\s/g, '').length; txt += t + ' '; }
     if (/정답\s*\/?\s*배점|교과목별\s*정답|정\s*답\s*표/.test(txt)) return true;
-    return chars < 60 * n;
+    if (chars >= 60 * n) return false;
+    // 글자가 거의 없는 사진 PDF: 사진 문제지(3~4쪽)와 사진 정답표(1~2쪽)를 구별하려고, 정답표 모양(칸 4묶음)이 실제로 읽히는지 본다
+    if (n > 2) return false;
+    try { const rs = await BankCore.readScannedAnswerSheet(info.doc, Array.from({ length: n }, (_, i) => i + 1)); return rs.count >= 5; } catch (e) { return false; }
   } catch (e) { return false; }
 }
 function showQueueNote() {
@@ -228,7 +231,7 @@ $('pdf-file').addEventListener('change', async function () {
     if (ov.every(x => x)) ov = null;      // 전부 짧은 PDF로 보이면 이름으로만 짝짓는다
   }
   const pairs = pairByName(fl, ov);
-  if (pairs.length > 1 && autoOn() && !IS_CHILD) { await runParallelAuto(pairs); return; }
+  if (pairs.length > 1 && !IS_CHILD) { await runParallelAuto(pairs); return; }     // 시험지를 2개 이상 고르면 항상 한꺼번에 읽어서 「여러 시험지 정답 확인」 화면으로 보여 준다
   fileQueue = pairs.slice(1); queueTotal = pairs.length; queueDoneTitles = []; queueDoneIds = []; queueSkipped = []; queueNotes = []; unassignedCount = 0;
   if (pairs.length > 1 || (fl.length > 1 && pairs[0].ans)) $('pdf-answer-file').value = '';
   await loadExamFile(pairs[0].file, pairs[0].ans);
@@ -237,9 +240,9 @@ $('pdf-file').addEventListener('change', async function () {
 async function mergeQuestionAnswer(qFile, aFile) {
   const out = await PDFLib.PDFDocument.create();
   let appended = 0;
-  const q = await PDFLib.PDFDocument.load(await qFile.arrayBuffer(), { ignoreEncryption: true });
+  const q = await PDFLib.PDFDocument.load(new Uint8Array(await qFile.arrayBuffer()), { ignoreEncryption: true });
   (await out.copyPages(q, q.getPageIndices())).forEach(p => out.addPage(p));
-  const a = await PDFLib.PDFDocument.load(await aFile.arrayBuffer(), { ignoreEncryption: true });
+  const a = await PDFLib.PDFDocument.load(new Uint8Array(await aFile.arrayBuffer()), { ignoreEncryption: true });
   (await out.copyPages(a, a.getPageIndices())).forEach(p => { out.addPage(p); appended++; });
   const bytes = await out.save();
   return { file: new File([bytes], qFile.name, { type: 'application/pdf' }), appended: appended };
@@ -329,6 +332,7 @@ async function loadExamFile(file, ansOverride) {
           const rs = await BankCore.readScannedAnswerSheet(pdfInfo.doc, cand.sort((a, b) => a - b));
           sheetNote = rs.note || '';
           Object.keys(rs.answers).forEach(n => { const cur = scanned.answers[n]; if (!cur || !cur.text) { scanned.answers[n] = { page: null, rect: null, text: rs.answers[n].text, fromTable: true, fromSheet: true, multi: !!rs.answers[n].multi }; sheetCount++; } });
+          if (sheetCount && !scanned.questionCount) scanned.questionCount = Math.max.apply(null, Object.keys(scanned.answers).filter(n => scanned.answers[n] && scanned.answers[n].text).map(Number));   // 글자가 없는 사진 시험지: 정답표에 적힌 마지막 번호가 문항 수
           if (sheetCount) { const ps = scanned.answerPages.slice(); rs.pages.forEach(p => { if (ps.indexOf(p) < 0) ps.push(p); }); scanned.answerPages = ps.sort((a, b) => a - b); }
         }
       }

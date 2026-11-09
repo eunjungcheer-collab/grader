@@ -8,7 +8,7 @@ function setupPdfJs() {
 }
 
 async function loadPdfDoc(file) {
-  const bytes = await file.arrayBuffer();
+  const bytes = new Uint8Array(await file.arrayBuffer());     // 숨은 창(iframe)에서 부모 창의 파일을 열 때 ArrayBuffer가 다른 창 소속이라 pdf-lib가 거부하므로, 이 창의 Uint8Array로 바꿔 둔다
   // pdf.js가 버퍼를 가져가 버리므로 원본은 복사해 둔다
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise;
   return { doc: doc, bytes: bytes };
