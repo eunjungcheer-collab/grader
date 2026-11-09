@@ -3011,7 +3011,7 @@
       tc.items.forEach(it => {
         const y = it.transform[5], x = it.transform[4];
         let r = rows.find(q => Math.abs(q.y - y) < 2.5); if (!r) { r = { y: y, its: [] }; rows.push(r); }
-        r.its.push({ x: x, s: it.str, w: it.width });
+        r.its.push({ x: x, s: it.str, w: it.width, h: Math.abs(it.transform[3]) || it.height || 9 });
       });
       rows.sort((a, b) => b.y - a.y).forEach(r => {
         let line = '', prevEnd = null;       // 글자가 한 자씩 따로 들어 있는 목차도 있어서, 공백 조각은 살리고 틈이 벌어지면 띄운다
@@ -3023,7 +3023,25 @@
         if (m && unit) {
           const key = m[1] + m[2] + m[3];
           if (seen[key]) return; seen[key] = 1; if (!tocPage) tocPage = p;
-          secs.push({ unit: unit.no, unitName: unit.name, tag: m[1], name: m[2].trim(), qa: parseInt(m[3], 10), qb: parseInt(m[4], 10), aa: parseInt(m[5], 10), ab: parseInt(m[6], 10) });
+          // 목차에서 이 줄의 위치 (합본에서 쪽 번호를 누르면 그 쪽으로 가는 링크를 달기 위해)
+          // 글자마다 x 위치를 어림해 두고, 줄 끝의 「정답 쪽 c~d」가 시작하는 x를 찾는다 (한 줄이 한 조각이든 한 글자씩이든)
+          const its = r.its.slice().sort((a, b) => a.x - b.x), chs = [], xs = [];
+          let pe = null;
+          its.forEach(i => {
+            const str = String(i.s || ''); if (!str) return;
+            if (pe !== null && i.x - pe > 1.5 && chs.length && !/\s/.test(chs[chs.length - 1]) && !/^\s/.test(str)) { chs.push(' '); xs.push(pe); }
+            // 한글은 숫자·기호보다 넓으므로 글자 폭을 어림해서 나눈다 (한글 1, 그 밖 0.55)
+            const wt = ch => /[\u3131-\uD79D\u4E00-\u9FFF]/.test(ch) ? 1 : 0.55, tot = Array.from(str).reduce((a, ch) => a + wt(ch), 0) || 1;
+            let acc = 0;
+            for (let c = 0; c < str.length; c++) { chs.push(str[c]); xs.push(i.x + (i.w || 0) * acc / tot); acc += wt(str[c]); }
+            pe = i.x + (i.w || 0);
+          });
+          const raw = chs.join(''), am = raw.match(/(\d+)\s*~\s*(\d+)\s+(\d+)\s*~\s*(\d+)\s*$/);
+          let ansX = null;
+          if (am) { const k = am.index + am[0].search(/\s(\d+)\s*~\s*(\d+)\s*$/) + 1; if (xs[k] != null) ansX = xs[k] - 3; }
+          const hMax = Math.max.apply(null, its.map(i => i.h || 9)), lastIt = its[its.length - 1];
+          const link = { page: p, x0: its[0].x - 2, x1: lastIt.x + (lastIt.w || 0) + 2, y0: r.y - 3, y1: r.y + hMax + 2, ansX: ansX };
+          secs.push({ unit: unit.no, unitName: unit.name, tag: m[1], name: m[2].trim(), qa: parseInt(m[3], 10), qb: parseInt(m[4], 10), aa: parseInt(m[5], 10), ab: parseInt(m[6], 10), tocLink: link });
         }
       });
     }

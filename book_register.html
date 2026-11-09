@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611091800">
+<link rel="stylesheet" href="css/style.css?v=202611092010">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -64,14 +64,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611091800"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611091800"></script>
-<script src="js/vendor/pdf.min.js?v=202611091800"></script>
-<script src="js/config.js?v=202611091800"></script>
-<script src="js/api.js?v=202611091800"></script>
-<script src="js/common.js?v=202611091800"></script>
-<script src="js/bankcore.js?v=202611091800"></script>
-<script src="js/pdfui.js?v=202611091800"></script>
+<script src="js/vendor/qrcode.min.js?v=202611092010"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611092010"></script>
+<script src="js/vendor/pdf.min.js?v=202611092010"></script>
+<script src="js/config.js?v=202611092010"></script>
+<script src="js/api.js?v=202611092010"></script>
+<script src="js/common.js?v=202611092010"></script>
+<script src="js/bankcore.js?v=202611092010"></script>
+<script src="js/pdfui.js?v=202611092010"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -111,6 +111,13 @@ async function detectPageNumBoxes(doc, onProgress) {
   }
   return out;
 }
+// PDF 안에서 누르면 다른 쪽으로 가는 링크 (rect = [왼쪽, 아래, 오른쪽, 위], PDF 좌표)
+function addPageLink(pdf, fromIdx, rect, toIdx) {
+  if (toIdx == null || toIdx < 0 || toIdx >= pdf.getPageCount() || fromIdx < 0 || fromIdx >= pdf.getPageCount()) return;
+  const target = pdf.getPage(toIdx), page = pdf.getPage(fromIdx);
+  const annot = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: rect, Border: [0, 0, 0], Dest: [target.ref, PDFLib.PDFName.of('Fit')] });
+  page.node.addAnnot(pdf.context.register(annot));
+}
 // 목차가 없는 교재: 표지 바로 뒤(표지가 없으면 맨 앞)에 목차 쪽을 새로 만들어 끼운다 (단원 이름 · 문제 쪽 · 정답 쪽). 끼운 쪽 수를 돌려준다.
 // at = 목차를 끼울 자리(0이면 맨 앞, 1이면 표지 뒤). 끼운 자리 뒤의 쪽 번호만 nIns만큼 밀린다.
 async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at) {
@@ -124,24 +131,32 @@ async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at) {
   const ROW = 21, TOP = 96, perPage = Math.max(10, Math.floor((H - TOP - 40) / ROW));
   const nIns = Math.max(1, Math.ceil(rows.length / perPage));
   const shift = p => p + (p > at ? nIns : 0); // 목차가 끼워진 뒤의 실제 쪽 번호
+  const links = [];
   const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif', K = 3;
   for (let pi = 0; pi < nIns; pi++) {
     const cv = document.createElement('canvas'); cv.width = Math.round(W * K); cv.height = Math.round(H * K);
     const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.scale(K, K); g.textBaseline = 'middle';
     g.fillStyle = '#0B1F5C'; g.font = 'bold 22px ' + FONT; g.fillText(bookName + ' 목차' + (nIns > 1 ? ' (' + (pi + 1) + '/' + nIns + ')' : ''), 40, 46);
-    g.fillStyle = '#6B7280'; g.font = '11px ' + FONT; g.fillText('각 단원 첫 쪽의 QR로 답안을 입력해요 · 쪽 번호는 이 합본 PDF 기준이에요', 40, 70);
+    g.fillStyle = '#6B7280'; g.font = '11px ' + FONT; g.fillText('각 단원 첫 쪽의 QR로 답안을 입력해요 · 단원이나 쪽 번호를 누르면 그 쪽으로 가요', 40, 70);
     g.fillStyle = '#0B1F5C'; g.fillRect(40, 82, W - 80, 1.5);
     rows.slice(pi * perPage, (pi + 1) * perPage).forEach((r, k) => {
       const y = TOP + k * ROW + ROW / 2;
       if (r.unit) { g.fillStyle = '#EEF2FF'; g.fillRect(40, y - ROW / 2 + 1, W - 80, ROW - 2); g.fillStyle = '#0B1F5C'; g.font = 'bold 13px ' + FONT; g.textAlign = 'left'; g.fillText(r.text, 46, y); return; }
       const sec = r.sec; g.fillStyle = '#111827'; g.font = '12px ' + FONT; g.textAlign = 'left';
       let t = (sec.tag ? '[' + sec.tag + ' 공략] ' : '') + sec.name; while (g.measureText(t).width > W - 80 - 190 && t.length > 8) t = t.slice(0, -2);
-      g.fillText(t, 56, y); g.textAlign = 'right'; g.fillStyle = '#374151';
-      g.fillText('문제 ' + shift(pos(sec.qa)) + '~' + shift(pos(sec.qb)) + '쪽' + (withAns ? ' · 정답 ' + shift(pos(sec.aa)) + '~' + shift(pos(sec.ab)) + '쪽' : ''), W - 46, y); g.textAlign = 'left';
+      g.fillText(t, 56, y);
+      // 쪽 번호는 파란 글씨 (누르면 그 쪽으로 이동)
+      const qStr = '문제 ' + shift(pos(sec.qa)) + '~' + shift(pos(sec.qb)) + '쪽', aStr = withAns && pos(sec.aa) > 0 ? '  정답 ' + shift(pos(sec.aa)) + '~' + shift(pos(sec.ab)) + '쪽' : '';
+      const qW = g.measureText(qStr).width, aW = aStr ? g.measureText(aStr).width : 0, xq = W - 46 - qW - aW, xa = xq + qW;
+      g.fillStyle = '#1D4ED8'; g.fillText(qStr, xq, y); if (aStr) { g.fillStyle = '#047857'; g.fillText(aStr, xa, y); }
+      const yTop = H - (y - ROW / 2), yBot = H - (y + ROW / 2);
+      links.push({ from: at + pi, rect: [40, yBot, aStr ? xa : W - 40, yTop], to: shift(pos(sec.qa)) - 1 });
+      if (aStr) links.push({ from: at + pi, rect: [xa, yBot, W - 40, yTop], to: shift(pos(sec.aa)) - 1 });
     });
     const img = await pdf.embedPng(await (await fetch(cv.toDataURL('image/png'))).arrayBuffer().then(b => new Uint8Array(b)));
     const page = pdf.insertPage(at + pi, [W, H]); page.drawImage(img, { x: 0, y: 0, width: W, height: H });
   }
+  links.forEach(l => addPageLink(pdf, l.from, l.rect, l.to));
   return nIns;
 }
 
@@ -343,6 +358,16 @@ $('go-btn').addEventListener('click', async () => {
       const firstQ = Math.min.apply(null, chosen.map(s => posOf(s.qa)).filter(n => n > 0));
       const tocAt = (isFinite(firstQ) && firstQ > 1) ? 1 : 0;
       if (genToc) nIns = await insertGeneratedToc(doc, chosen, bookNm, posOf, withAns, tocAt);
+      if (!genToc) {
+        // 교재에 원래 있던 목차: 각 줄(단원·문제 쪽)을 누르면 문제 첫 쪽, 정답 쪽 숫자를 누르면 정답 첫 쪽으로
+        sections.forEach(s => {
+          const L = s.tocLink; if (!L) return;
+          const from = kept.indexOf(L.page - 1); if (from < 0) return;
+          const q = posOf(s.qa) - 1, a = posOf(s.aa) - 1;
+          if (L.ansX && a >= 0) { addPageLink(doc, from, [L.x0, L.y0, L.ansX, L.y1], q); addPageLink(doc, from, [L.ansX, L.y0, L.x1, L.y1], a); }
+          else addPageLink(doc, from, [L.x0, L.y0, L.x1, L.y1], q);
+        });
+      }
       if ($('multi-qr').checked && (tocPage || genToc)) {
         const base = location.origin + location.pathname.replace(/[^/]*$/, '');
         const ti = genToc ? tocAt : kept.indexOf(tocPage - 1);
