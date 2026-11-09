@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611091600">
+<link rel="stylesheet" href="css/style.css?v=202611091800">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -64,14 +64,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611091600"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611091600"></script>
-<script src="js/vendor/pdf.min.js?v=202611091600"></script>
-<script src="js/config.js?v=202611091600"></script>
-<script src="js/api.js?v=202611091600"></script>
-<script src="js/common.js?v=202611091600"></script>
-<script src="js/bankcore.js?v=202611091600"></script>
-<script src="js/pdfui.js?v=202611091600"></script>
+<script src="js/vendor/qrcode.min.js?v=202611091800"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611091800"></script>
+<script src="js/vendor/pdf.min.js?v=202611091800"></script>
+<script src="js/config.js?v=202611091800"></script>
+<script src="js/api.js?v=202611091800"></script>
+<script src="js/common.js?v=202611091800"></script>
+<script src="js/bankcore.js?v=202611091800"></script>
+<script src="js/pdfui.js?v=202611091800"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -87,7 +87,7 @@ $('book-file').addEventListener('change', () => {
 });
 
 function hash36(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
-const secTitle = s => ($('book-name').value.trim() ? $('book-name').value.trim() + ' ' : '') + s.name + ' ' + s.tag + '공략';
+const secTitle = s => ($('book-name').value.trim() ? $('book-name').value.trim() + ' ' : '') + s.name + (s.tag ? ' ' + s.tag + '공략' : '');
 
 let genToc = false;
 // 교재에 원래 찍혀 있는 쪽 번호(「- 12 -」 같은 가장자리의 숫자)의 위치를 쪽마다 찾는다 — 지우고 새 번호로 다시 쓰려고
@@ -132,7 +132,7 @@ async function insertGeneratedToc(pdf, secs, bookName, pos, withAns) {
       const y = TOP + k * ROW + ROW / 2;
       if (r.unit) { g.fillStyle = '#EEF2FF'; g.fillRect(40, y - ROW / 2 + 1, W - 80, ROW - 2); g.fillStyle = '#0B1F5C'; g.font = 'bold 13px ' + FONT; g.textAlign = 'left'; g.fillText(r.text, 46, y); return; }
       const sec = r.sec; g.fillStyle = '#111827'; g.font = '12px ' + FONT; g.textAlign = 'left';
-      let t = '[' + sec.tag + ' 공략] ' + sec.name; while (g.measureText(t).width > W - 80 - 190 && t.length > 8) t = t.slice(0, -2);
+      let t = (sec.tag ? '[' + sec.tag + ' 공략] ' : '') + sec.name; while (g.measureText(t).width > W - 80 - 190 && t.length > 8) t = t.slice(0, -2);
       g.fillText(t, 56, y); g.textAlign = 'right'; g.fillStyle = '#374151';
       g.fillText('문제 ' + (pos(sec.qa) + nIns) + '~' + (pos(sec.qb) + nIns) + '쪽' + (withAns ? ' · 정답 ' + (pos(sec.aa) + nIns) + '~' + (pos(sec.ab) + nIns) + '쪽' : ''), W - 46, y); g.textAlign = 'left';
     });
@@ -156,6 +156,7 @@ $('read-btn').addEventListener('click', async () => {
     genToc = false;
     if (!toc.sections.length) {          // 목차가 없는 교재: 쪽 위쪽의 「[최다빈출 공략] 1-1.○○(01)」 머리글로 단원을 찾아 목차를 직접 만든다
       toc = await BankCore.buildBookTocFromHeaders(bookDoc, (i, n) => { $('read-msg').textContent = '목차가 없어서 쪽 머리글로 단원을 찾는 중... ' + i + '/' + n + '쪽'; });
+      if (!toc.sections.length) toc = await BankCore.buildBookTocFromSectionStarts(bookDoc, (i, n) => { $('read-msg').textContent = '소단원 시작 쪽(「학원 이름 :」 머리글)을 찾는 중... ' + i + '/' + n + '쪽'; });
       genToc = toc.sections.length > 0;
     }
     if (!toc.sections.length) throw new Error('목차도, 쪽 위쪽의 「[최다빈출 공략] 1-1.○○(01)」 같은 단원 머리글도 찾지 못했어요. 이 교재는 단원 쪽 범위를 직접 알려 주셔야 해요.');
@@ -166,10 +167,11 @@ $('read-btn').addEventListener('click', async () => {
     const pages = []; const lo = Math.min.apply(null, sections.map(s => s.aa)), hi = Math.max.apply(null, sections.map(s => s.ab));
     for (let p = lo; p <= hi; p++) pages.push(p);
     const t0 = Date.now();
-    const rows = await BankCore.readLabeledImageAnswers(bookDoc, pages, (i, n) => {
+    let rows = await BankCore.readLabeledImageAnswers(bookDoc, pages, (i, n) => {
       const sec = Math.round((Date.now() - t0) / 1000);
       $('read-msg').textContent = '정답을 읽는 중... ' + i + '/' + n + '쪽 (' + sec + '초)';
     });
+    if (!rows.length) rows = await BankCore.readDapAnswers(bookDoc, pages, (i, n) => { $('read-msg').textContent = '정답(「N. (답) ④」 모양)을 읽는 중... ' + i + '/' + n + '쪽'; });
     sections.forEach(s => {
       const rr = rows.filter(r => r.p >= s.aa && r.p <= s.ab);
       const N = rr.reduce((m, r) => Math.max(m, r.n), 0);

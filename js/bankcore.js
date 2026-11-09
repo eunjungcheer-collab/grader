@@ -3073,6 +3073,67 @@
     });
     return { sections: secs, tocPage: 0, generated: true };
   }
+  // 「[공략]」 머리글이 없는 교재(예: 「중1-1 내신 400제」): 각 소단원 첫 쪽 맨 위의 「1학년_Ⅱ.생물의 구성과 다양성_ 학원 이름 : 01.생물의 구성(1)」로 단원을 찾고,
+  // 「[정답과 해설]」이 처음 나오는 쪽부터 다음 소단원 앞 쪽까지를 그 소단원의 정답·해설 쪽으로 본다.
+  async function buildBookTocFromSectionStarts(doc, onProgress) {
+    const n = doc.numPages, ROMAN = { 'Ⅰ': 1, 'Ⅱ': 2, 'Ⅲ': 3, 'Ⅳ': 4, 'Ⅴ': 5, 'Ⅵ': 6, 'Ⅶ': 7, 'Ⅷ': 8, 'Ⅸ': 9, 'Ⅹ': 10 };
+    const starts = [], ansFirst = {};
+    let cur = null;
+    for (let p = 1; p <= n; p++) {
+      if (onProgress) onProgress(p, n);
+      let pg, tc; try { pg = await doc.getPage(p); tc = await pg.getTextContent(); } catch (e) { continue; }
+      const H = pg.getViewport({ scale: 1 }).height, rows = [];
+      tc.items.forEach(it => { if (!String(it.str).trim()) return; const y = H - it.transform[5]; let r = rows.find(q => Math.abs(q.y - y) < 3); if (!r) { r = { y: y, its: [] }; rows.push(r); } r.its.push({ x: it.transform[4], s: it.str }); });
+      rows.sort((a, b) => a.y - b.y);
+      const line = r => r.its.sort((a, b) => a.x - b.x).map(i => i.s).join(' ').replace(/\s+/g, ' ').trim();
+      const top = rows.filter(r => r.y < H * 0.2).map(line), hi = top.findIndex(t => /학원\s*이름/.test(t));
+      const SECRE = /(?:^|[\s_])\d{1,2}\s*\.\s*[^\d\s]/;
+      // 머리글은 「학원 이름 :」 줄까지, 그 줄에 소단원(01.○○)이 없으면 바로 다음 줄까지만 쓴다 (그 아래는 문제 글이다)
+      const hrow = hi < 0 ? '' : top[hi].replace(/학원\s*이름\s*:?/, ' ').replace(/^.*?[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\s*\.[^_]*?(?:_|$)/, ' ');
+      const head = hi < 0 ? '' : top.slice(0, hi + 1 + (SECRE.test(hrow) ? 0 : 1)).join(' ');
+      const all = rows.map(line).join(' ');
+      if (hi >= 0) {
+        const um = head.match(/([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ])\s*\.\s*([^_]+?)\s*(?:_|학원)/);
+        let rest = head.replace(/학원\s*이름\s*:?/, ' ').replace(/\s+/g, ' ');
+        const sm = rest.match(/(?:^|[\s_])(\d{1,2})\s*\.\s*([^\d\s][^_]*?)\s*$/);
+        if (um && sm) { cur = { p: p, unit: ROMAN[um[1]] || 0, unitName: um[2].replace(/[_\s]+$/, '').trim(), no: parseInt(sm[1], 10), title: sm[2].replace(/[_\s]+$/, '').trim(), aa: 0 }; starts.push(cur); continue; }
+      }
+      if (cur && !cur.aa && /\[\s*정답과\s*해설\s*\]/.test(all)) cur.aa = p;
+    }
+    const secs = [];
+    starts.forEach((st, i) => {
+      if (!st.aa) return;
+      const nextP = i + 1 < starts.length ? starts[i + 1].p : n + 1;
+      secs.push({ unit: st.unit, unitName: st.unitName, tag: '', name: st.unit + '-' + st.no + '.' + st.title.replace(/\s+\(/g, '('), qa: st.p, qb: st.aa - 1, aa: st.aa, ab: nextP - 1 });
+    });
+    return { sections: secs, tocPage: 0, generated: true };
+  }
+  // 「1. (답) ④」 모양으로 정답이 글자로 적힌 교재(예: 내신 400제): 「답」 글자와 같은 줄에서 번호(「1.」)와 정답(①~⑤)을 읽는다.
+  // ①이 아닌 글(서술형 답, 「해설 참조」)은 서술형('-')으로 돌려준다.
+  async function readDapAnswers(doc, pages, onProgress) {
+    const rows = []; let pi = 0;
+    for (const p of pages) {
+      if (onProgress) onProgress(++pi, pages.length);
+      let pg, tc; try { pg = await doc.getPage(p); tc = await pg.getTextContent(); } catch (e) { continue; }
+      const vp = pg.getViewport({ scale: 1 }), H = vp.height, W = vp.width;
+      const its = tc.items.filter(i => String(i.str).trim()).map(i => ({ s: String(i.str), x: i.transform[4], y: H - i.transform[5] }));
+      const daps = its.filter(i => /^답(?:[\s)]|$)/.test(i.s.trim()));
+      for (const d of daps) {
+        const same = its.filter(i => Math.abs(i.y - d.y) < 4);
+        const lab = same.filter(i => /^\d{1,2}\s*\.$/.test(i.s.trim()) && i.x < d.x && d.x - i.x < 40).sort((u, v) => v.x - u.x)[0];
+        if (!lab) continue;
+        const others = daps.filter(o => o !== d && Math.abs(o.y - d.y) < 4 && o.x > d.x).map(o => o.x).sort((u, v) => u - v);
+        const xEnd = others.length ? others[0] - 30 : W;
+        const txt = same.filter(i => i.x >= d.x - 4 && i.x < xEnd).sort((u, v) => u.x - v.x).map(i => i.s).join(' ');
+        const after = txt.replace(/^[\s\S]*?답\s*/, '').replace(/^[\s(]*\)\s*/, '').trim();
+        let dd = '-';
+        const m = after.match(/^([①-⑨](?:[\s,，、·]*[①-⑨])*)/);
+        if (m) dd = m[1].split('').filter(ch => /[①-⑨]/.test(ch)).map(ch => String(ch.charCodeAt(0) - 0x2460 + 1)).join('');
+        rows.push({ p: p, n: parseInt(lab.s, 10), d: dd, conf: 1, text: true, rect: [Math.max(0, lab.x - 10), Math.max(0, d.y - 10), Math.min(W, lab.x + 300), Math.min(H, d.y + 60)] });
+      }
+    }
+    return rows;
+  }
   async function readCircledAnswers(doc, scan) {
     const targets = Object.keys(scan.answers || {}).map(Number).filter(n => { const a = scan.answers[n]; return a && !a.text && !a.written && a.mr && a.page; });
     if (targets.length < 3) return 0;
@@ -3531,7 +3592,7 @@
   }
 
   root.BankCore = {
-    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
+    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
     _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
