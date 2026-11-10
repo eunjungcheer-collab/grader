@@ -147,8 +147,46 @@
       const cv = document.createElement('canvas'); cv.width = Math.ceil(v2.width); cv.height = Math.ceil(v2.height);
       const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
       await page.render({ canvasContext: cx, viewport: v2, canvas: cv }).promise;
-      const ws = await root.OcrLite.words(cv), H = vp.height;
-      return ws.map(w => { const top = w.y0 / sc, bot = w.y1 / sc, hgt = bot - top; return { str: w.text, x: w.x0 / sc, w: (w.x1 - w.x0) / sc, size: Math.round(hgt * 0.9 * 2) / 2, top: top, bottom: bot, base: bot - hgt * 0.15 }; });
+      const H = vp.height, W = vp.width;
+      if (root.__ocrFull) {       // (비교용) 쪽 전체를 읽는 예전 방식
+        const ws0 = await root.OcrLite.words(cv);
+        return ws0.map(w => { const top = w.y0 / sc, bot = w.y1 / sc, hgt = bot - top; return { str: w.text, x: w.x0 / sc, w: (w.x1 - w.x0) / sc, size: Math.round(hgt * 0.9 * 2) / 2, top: top, bottom: bot, base: bot - hgt * 0.15 }; });
+      }
+      // 빠른 방식: 단(칸)마다 왼쪽 끝 띠만 읽는다. 문항 번호("12.")와 공통 지문 머리글("[3~5]")은 단의 왼쪽 끝에 있으므로 본문 전체를 읽을 필요가 없다.
+      const id = cx.getImageData(0, 0, cv.width, cv.height).data, wpx = cv.width, hpx = cv.height;
+      const y0 = Math.floor(hpx * 0.07), y1 = Math.floor(hpx * 0.93), dens = new Float32Array(wpx);
+      for (let y = y0; y < y1; y += 2) { const ro = y * wpx * 4; for (let x = 0; x < wpx; x++) if (id[ro + x * 4] < 140) dens[x]++; }
+      const sm = new Float32Array(wpx); const R = Math.max(2, Math.round(sc * 1.5));
+      for (let x = 0; x < wpx; x++) { let t = 0, c = 0; for (let k = Math.max(0, x - R); k <= Math.min(wpx - 1, x + R); k++) { t += dens[k]; c++; } sm[x] = t / c; }
+      const srt = Array.from(sm).sort((a, b) => a - b), mx = srt[Math.floor(srt.length * 0.92)] || 1, on = x => sm[x] > mx * 0.12;
+      let xs = Math.floor(wpx * 0.045); while (xs < wpx && !on(xs)) xs++;       // 스캔 가장자리의 검은 테두리는 건너뛴다
+      const lefts = [xs];
+      let x = xs, inGap = false, gs = 0;
+      for (; x < wpx; x++) {
+        if (!on(x)) { if (!inGap) { inGap = true; gs = x; } }
+        else if (inGap) { inGap = false; if ((x - gs) >= 7 * sc && gs > wpx * 0.2 && x < wpx * 0.9) lefts.push(x); }
+      }
+      if (lefts.length < 2) {       // 가운데 계곡(글자가 드문 세로 띠)이 뚜렷하면 2단으로 본다 — 그림·표가 틈 위로 걸쳐 있어도 찾도록
+        let mi = Math.floor(wpx * 0.4); for (let q = mi; q < wpx * 0.62; q++) if (sm[q] < sm[mi]) mi = q;
+        if (sm[mi] < mx * 0.4) { let q = mi; while (q < wpx && sm[q] <= Math.max(sm[mi] * 1.6, mx * 0.12)) q++; while (q < wpx && !on(q)) q++; if (q < wpx * 0.8) lefts.push(q); }
+      }
+      const strips = lefts.map(l => ({ l: l, x0: Math.max(0, Math.floor(l - 10 * sc)), x1: Math.min(wpx, Math.ceil(l + 78 * sc)) }));
+      const outs = await Promise.all(strips.map(async st => {
+        const sc2 = document.createElement('canvas'); sc2.width = st.x1 - st.x0; sc2.height = hpx;
+        const g = sc2.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, sc2.width, sc2.height); g.drawImage(cv, st.x0, 0, st.x1 - st.x0, hpx, 0, 0, st.x1 - st.x0, hpx);
+        const ws = await root.OcrLite.words(sc2, 11);
+        return ws.map(w => {
+          const top = w.y0 / sc, bot = w.y1 / sc, hgt = bot - top, x = (st.x0 + w.x0) / sc, lf = st.l / sc;
+          let str = w.text, size = Math.round(hgt * 0.9 * 2) / 2;
+          const nm = /^(\d{1,2})[.,;:)]?$/.exec(str);
+          if (nm && x >= lf - 8 && x <= lf + 18 && hgt < 26) { str = nm[1] + '.'; size = 7; }       // 단 왼쪽 끝의 숫자 = 문항 번호 후보 (점이 안 읽혔어도 번호로 본다. 크기는 같게 맞춘다)
+          return { str: str, x: x, w: (w.x1 - w.x0) / sc, size: size, top: top, bottom: bot, base: bot - hgt * 0.15 };
+        });
+      }));
+      const items = [].concat.apply([], outs);
+      // 단 맨 아래 문항을 어디까지 자를지 정하도록, 단마다 바닥 근처에 표시를 하나 둔다
+      lefts.forEach(l => items.push({ str: '.', x: l / sc, w: 2, size: 6, top: H - 62, bottom: H - 56, base: H - 57, sentinel: 1 }));
+      return items;
     })();
     return m[pageNum];
   }

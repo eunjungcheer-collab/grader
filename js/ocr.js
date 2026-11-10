@@ -19,9 +19,11 @@
     return job;
   }
   // canvas → [{ text, x0, y0, x1, y1, conf }] (캔버스 픽셀 좌표)
-  async function words(canvas) {
+  async function words(canvas, psm) {
     return run(async w => {
+    if (psm) await w.setParameters({ tessedit_pageseg_mode: String(psm) });
     const r = await w.recognize(canvas, {}, { blocks: true });
+    if (psm) await w.setParameters({ tessedit_pageseg_mode: '3' });
     const out = [];
     ((r.data && r.data.blocks) || []).forEach(b => b.paragraphs.forEach(p => p.lines.forEach(l => l.words.forEach(x => { if (x.text && x.text.trim()) out.push({ text: x.text.trim(), x0: x.bbox.x0, y0: x.bbox.y0, x1: x.bbox.x1, y1: x.bbox.y1, conf: x.confidence }); }))));
     return out;
