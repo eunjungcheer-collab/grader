@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611102350">
+<link rel="stylesheet" href="css/style.css?v=202611102310">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611102350"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611102350"></script>
-<script src="js/vendor/pdf.min.js?v=202611102350"></script>
-<script src="js/config.js?v=202611102350"></script>
-<script src="js/api.js?v=202611102350"></script>
-<script src="js/common.js?v=202611102350"></script>
-<script src="js/bankcore.js?v=202611102350"></script>
-<script src="js/pdfui.js?v=202611102350"></script>
-<script src="js/pdfview.js?v=202611102350"></script>
+<script src="js/vendor/qrcode.min.js?v=202611102310"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611102310"></script>
+<script src="js/vendor/pdf.min.js?v=202611102310"></script>
+<script src="js/config.js?v=202611102310"></script>
+<script src="js/api.js?v=202611102310"></script>
+<script src="js/common.js?v=202611102310"></script>
+<script src="js/bankcore.js?v=202611102310"></script>
+<script src="js/pdfui.js?v=202611102310"></script>
+<script src="js/pdfview.js?v=202611102310"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -811,7 +811,13 @@ async function runParallelAuto(pairs) {
   });
   const worker = async () => { while (next < pairs.length) { const i = next++; await runOne(i); } };
   await Promise.all(Array.from({ length: Math.min(POOL, pairs.length) }, worker));
-  const RR = { reg: reg, skipped: skipped, stuck: stuck, notes: notes, unassigned: unassigned, autoUnits: autoUnits };
+  let RR = { reg: reg, skipped: skipped, stuck: stuck, notes: notes, unassigned: unassigned, autoUnits: autoUnits };
+  // 이어서 시험지를 더 올리면, 이전에 올린 시험지 결과 위에 계속 쌓아서 보여 준다 (새로 올린 것만 남기지 않는다)
+  const prev = (!IS_CHILD && window.__RR && window.__RR.reg) ? window.__RR : null;
+  if (prev) {
+    const seen = {}; prev.reg.forEach(x => { seen[x.id] = 1; });
+    RR = { reg: prev.reg.concat(reg.filter(x => !seen[x.id])), skipped: (prev.skipped || []).concat(skipped), stuck: stuck.concat((prev.stuck || []).filter(o => !stuck.some(n => n.name === o.name))), notes: (prev.notes || []).concat(notes), unassigned: (prev.unassigned || 0) + unassigned, autoUnits: (prev.autoUnits || 0) + autoUnits };
+  }
   showAutoReview(RR); persistReview(RR);
   window.__RR = RR;
 }
