@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611102345">
+<link rel="stylesheet" href="css/style.css?v=202611110010">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611102345"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611102345"></script>
-<script src="js/vendor/pdf.min.js?v=202611102345"></script>
-<script src="js/config.js?v=202611102345"></script>
-<script src="js/api.js?v=202611102345"></script>
-<script src="js/common.js?v=202611102345"></script>
-<script src="js/bankcore.js?v=202611102345"></script>
-<script src="js/pdfui.js?v=202611102345"></script>
-<script src="js/pdfview.js?v=202611102345"></script>
+<script src="js/vendor/qrcode.min.js?v=202611110010"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611110010"></script>
+<script src="js/vendor/pdf.min.js?v=202611110010"></script>
+<script src="js/config.js?v=202611110010"></script>
+<script src="js/api.js?v=202611110010"></script>
+<script src="js/common.js?v=202611110010"></script>
+<script src="js/bankcore.js?v=202611110010"></script>
+<script src="js/pdfui.js?v=202611110010"></script>
+<script src="js/pdfview.js?v=202611110010"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -242,7 +242,12 @@ async function onPickFiles(newFiles) {
   if (fl.length > 1) {
     showSpinner('파일 짝짓는 중...');
     ov = [];
-    for (let fi = 0; fi < fl.length; fi++) { const f = fl[fi]; ov.push(fi < keepOv.length ? keepOv[fi] : (ANS_NAME_RE.test(f.name) ? true : await looksLikeAnswerSheet(f))); }
+    // 정답지인지 내용으로 보는 검사는 파일마다 PDF를 열어야 해서, 4개씩 동시에 하고 용량이 큰 파일(정답지로 보기엔 큼)은 건너뛴다
+    ov = fl.map((f, fi) => fi < keepOv.length ? keepOv[fi] : (ANS_NAME_RE.test(f.name) ? true : null));
+    const todo = fl.map((f, fi) => fi).filter(fi => ov[fi] === null);
+    let ti = 0;
+    const lk = async () => { while (ti < todo.length) { const fi = todo[ti++]; ov[fi] = fl[fi].size > 12 * 1024 * 1024 ? false : await looksLikeAnswerSheet(fl[fi]); } };
+    await Promise.all(Array.from({ length: Math.min(4, todo.length) }, lk));
     hideSpinner();
     if (ov.every(x => x)) ov = null;      // 전부 짧은 PDF로 보이면 이름으로만 짝짓는다
   }
@@ -345,9 +350,11 @@ async function loadExamFile(file, ansOverride) {
         const cand = [];
         for (let p = Math.max(1, lastQ0 + 1); p <= scanned.pageCount; p++) { const tc = await (await pdfInfo.doc.getPage(p)).getTextContent(); if (tc.items.filter(i => String(i.str).trim()).length < 12) cand.push(p); }
         if (appendedPages) for (let p = scanned.pageCount - appendedPages + 1; p <= scanned.pageCount; p++) if (cand.indexOf(p) < 0) cand.push(p);
+        // 정답지를 따로 붙였으면 정답표는 붙인 쪽 안에만 있다: 문제 쪽까지 읽지 않는다. 그 외에는 뒤쪽부터 읽어 찾으면 멈춘다.
+        const sheetPages = appendedPages ? cand.filter(p => p > scanned.pageCount - appendedPages) : cand.slice();
         if (cand.length) {
           updateSpinner('사진으로 된 정답표 읽는 중...');
-          const rs = await BankCore.readScannedAnswerSheet(pdfInfo.doc, cand.sort((a, b) => a - b));
+          const rs = await BankCore.readScannedAnswerSheet(pdfInfo.doc, sheetPages.sort((a, b) => b - a), { stopAtFirst: true });
           sheetNote = rs.note || '';
           Object.keys(rs.answers).forEach(n => { const cur = scanned.answers[n]; if (!cur || !cur.text) { scanned.answers[n] = { page: null, rect: null, text: rs.answers[n].text, fromTable: true, fromSheet: true, multi: !!rs.answers[n].multi }; sheetCount++; } });
           if (sheetCount && !scanned.questionCount) scanned.questionCount = Math.max.apply(null, Object.keys(scanned.answers).filter(n => scanned.answers[n] && scanned.answers[n].text).map(Number));   // 글자가 없는 사진 시험지: 정답표에 적힌 마지막 번호가 문항 수
@@ -1024,6 +1031,28 @@ function showAutoReview(R) {
       body.className = 'rv-ubody'; body.innerHTML = '<div class="qunit-row" style="flex-wrap:wrap;"><b>전체</b><select class="rv-allu" style="width:auto; max-width:100%;">' + unitSelectOptions(g0, '', '') + '</select><span class="sub-wrap"><select class="rv-alls" style="width:auto; max-width:100%;"></select></span><button type="button" class="btn outline rv-allbtn" style="padding:4px 10px;">이 시험지 전체에 적용</button><span class="hint rv-umsg" style="margin:0;"></span></div>' +
         q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b>' + o.n + '번</b>' + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span></div>').join('');
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
+      if (!x.qthumb || !Object.keys(x.qthumb).length) {       // 사진(스캔) 시험지는 문항별로 오려 낼 수 없어서, 대신 시험지 쪽 그림을 펼쳐 보면서 단원을 고르게 한다
+        const pv = document.createElement('details'); pv.style.cssText = 'margin:6px 0 10px; border:1px solid var(--line); border-radius:10px; padding:6px 10px; background:#F8FAFC;';
+        pv.innerHTML = '<summary style="cursor:pointer; font-weight:700;">📄 시험지 쪽 그림 보기 (문제를 보면서 단원을 고르세요)</summary><div class="pv-box" style="margin-top:8px;"><span class="hint">여기를 펼치면 시험지 쪽 그림을 불러와요.</span></div>';
+        body.insertBefore(pv, body.firstChild);
+        pv.addEventListener('toggle', async () => {
+          const bx = pv.querySelector('.pv-box'); if (!pv.open || pv.dataset.done) return; pv.dataset.done = '1';
+          bx.innerHTML = '<span class="hint">⏳ 시험지를 불러오는 중...</span>';
+          try {
+            const pr = await ensurePair(x); if (!pr) throw new Error('원본 PDF를 다시 찾지 못했어요.');
+            const info = await loadPdfDoc(pr.file), doc = info.doc, n = doc.numPages; bx.innerHTML = '';
+            for (let p = 1; p <= n; p++) {
+              const page = await doc.getPage(p), vp0 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(2, 1100 / vp0.width) });
+              const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+              const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+              await page.render({ canvasContext: cx, viewport: vp, canvas: cv }).promise;
+              const im = new Image(); im.src = cv.toDataURL('image/jpeg', 0.8); im.alt = p + '쪽'; im.style.cssText = 'width:min(760px,100%); display:block; margin:6px 0; border:1px solid var(--line);';
+              const lb = document.createElement('div'); lb.className = 'hint'; lb.style.margin = '6px 0 0'; lb.textContent = p + '쪽 / ' + n + '쪽';
+              bx.appendChild(lb); bx.appendChild(im);
+            }
+          } catch (err) { bx.innerHTML = '<span class="hint" style="color:#C1392B;">시험지 그림을 만들지 못했어요: ' + escapeHtml(err.message) + '</span>'; delete pv.dataset.done; }
+        });
+      }
       refreshSubSelect(alls, null, ''); alls.closest('.sub-wrap').style.display = 'none';
       allu.addEventListener('change', () => { const v = unitSelectValue(allu); refreshSubSelect(alls, tocEntryFor(v.grade, v.unit), ''); });
       const upSum = () => { const d = row.querySelector('.rv-usum'); if (d) d.innerHTML = unitSumHtml(x); };

@@ -2750,7 +2750,7 @@
   // ── 사진(스캔)으로 된 「교과목별 정답/배점」 표 읽기 ──
   // 학교가 나눠 주는 표(문항·배점·정답·복수구분 칸이 4묶음)를 칸 선을 따라 잘라서 숫자 모양을 비교해 읽는다.
   // 숫자 모양은 같은 표의 「문항」 칸(1,2,3…)에서 배운다 — 그래서 글꼴이 달라도 같은 표 안에서는 맞는다.
-  async function readScannedAnswerSheet(doc, pageNums) {
+  async function readScannedAnswerSheet(doc, pageNums, opts) {
     const out = { answers: {}, count: 0, pages: [], note: '' };
     let best = { count: 0 };
     for (const pn of pageNums) {
@@ -2765,7 +2765,8 @@
         await page.render({ canvasContext: cx, viewport: vp, canvas: cv }).promise;
       } catch (e) { out.note = 'render: ' + (e && e.message); continue; }
       const r = readSheetCanvas(cv);
-      if (r && r.count >= 5) { if (r.count > best.count) best = { count: r.count, answers: r.answers, pn: pn }; }          // 정답표는 한 쪽이다: 가장 많이 읽힌 쪽 하나만 쓴다 (문제 쪽의 표·그림이 정답표로 잘못 읽혀 번호가 섞이는 것 방지)
+      if (r && r.count >= 5) { if (r.count > best.count) best = { count: r.count, answers: r.answers, pn: pn }; }
+      if (opts && opts.stopAtFirst && best.count >= 5) break;      // 정답표는 한 쪽: 찾았으면 나머지 쪽은 읽지 않는다(속도)          // 정답표는 한 쪽이다: 가장 많이 읽힌 쪽 하나만 쓴다 (문제 쪽의 표·그림이 정답표로 잘못 읽혀 번호가 섞이는 것 방지)
       else if (r && r.note) out.note = r.note;
     }
     if (best.count) { out.answers = best.answers; out.pages.push(best.pn); }
