@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611110022">
+<link rel="stylesheet" href="css/style.css?v=202611110032">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611110022"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611110022"></script>
-<script src="js/vendor/pdf.min.js?v=202611110022"></script>
-<script src="js/config.js?v=202611110022"></script>
-<script src="js/api.js?v=202611110022"></script>
-<script src="js/common.js?v=202611110022"></script>
-<script src="js/bankcore.js?v=202611110022"></script>
-<script src="js/pdfui.js?v=202611110022"></script>
-<script src="js/pdfview.js?v=202611110022"></script>
+<script src="js/vendor/qrcode.min.js?v=202611110032"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611110032"></script>
+<script src="js/vendor/pdf.min.js?v=202611110032"></script>
+<script src="js/config.js?v=202611110032"></script>
+<script src="js/api.js?v=202611110032"></script>
+<script src="js/common.js?v=202611110032"></script>
+<script src="js/bankcore.js?v=202611110032"></script>
+<script src="js/pdfui.js?v=202611110032"></script>
+<script src="js/pdfview.js?v=202611110032"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -234,6 +234,10 @@ $('pdf-file').addEventListener('change', function () { onPickFiles(Array.from(th
 async function onPickFiles(newFiles) {
   let fl = newFiles.slice();
   if (!fl.length) return;
+  if (!IS_CHILD && window.__liveAdd) {      // 등록이 진행 중이면 기다리게 하지 않고 지금 돌아가는 줄에 바로 이어 붙인다
+    const ps = pairByName(fl, fl.map(f => ANS_NAME_RE.test(f.name) ? true : (f.size > 12 * 1024 * 1024 ? false : null)).map(v => v === null ? false : v));
+    if (ps.length && window.__liveAdd) { window.__liveAdd(ps); return; }
+  }
   const inReview = !IS_CHILD && !!(window.__RR && window.__RR.reg && $('auto-review') && $('new-exam-form').style.display === 'none');      // 결과 화면이 떠 있을 때
   if (!IS_CHILD && (newFiles.length > 1 || inReview || (curPair && curPair.file))) {      // 시험지가 2개 이상이 되면 1개용 화면을 보이지 않고 곧바로 여러 시험지 화면으로 간다
     { const fm0 = $('new-exam-form'); if (fm0) fm0.style.display = ''; const ar0 = $('auto-review'); if (ar0) ar0.style.display = 'none'; }
@@ -848,8 +852,19 @@ async function runParallelAuto(pairs) {
     }, { once: true });
     document.body.appendChild(fr);
   });
-  const worker = async () => { while (next < pairs.length) { const i = next++; await runOne(i); } };
-  await Promise.all(Array.from({ length: Math.min(POOL, pairs.length) }, worker));
+  // 등록하는 도중에 시험지를 더 올리면 같은 줄에 바로 이어 붙여서 함께 처리한다 (진행 중 새 파일은 window.__liveAdd 로 들어온다)
+  await new Promise(resolveAll => {
+    let active = 0;
+    const spawn = () => {
+      while (active < POOL && next < pairs.length) {
+        active++;
+        (async () => { while (next < pairs.length) { const i = next++; await runOne(i); } active--; if (!active && next >= pairs.length) { window.__liveAdd = null; resolveAll(); } else spawn(); })();
+      }
+    };
+    if (!IS_CHILD) window.__liveAdd = ps => { ps.forEach(pp => { pairs.push(pp); state.push({ name: pp.file.name, st: '대기' }); }); paint(); spawn(); };
+    spawn();
+  });
+  window.__liveAdd = null;
   let RR = { reg: reg, skipped: skipped, stuck: stuck, notes: notes, unassigned: unassigned, autoUnits: autoUnits };
   // 이어서 시험지를 더 올리면, 이전에 올린 시험지 결과 위에 계속 쌓아서 보여 준다 (새로 올린 것만 남기지 않는다)
   const prev = (!IS_CHILD && window.__RR && window.__RR.reg) ? window.__RR : null;
@@ -1052,7 +1067,7 @@ function showAutoReview(R) {
         q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b>' + o.n + '번</b>' + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span></div>').join('');
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
       if (noBank) { const w = document.createElement('div'); w.className = 'banner'; w.style.cssText = 'margin:6px 0;'; w.innerHTML = '⚠️ 이 시험지의 문항이 <b>문제은행에 저장돼 있지 않아서</b> 여기서 고른 단원은 저장되지 않아요. (문제은행 저장을 끄고 등록했거나, 문제 그림을 만들지 못한 시험지예요.) 문제은행에 넣으려면 「문제은행에 저장」을 켜고 다시 등록해 주세요.'; body.insertBefore(w, body.firstChild); }
-      if (!x.qthumb || Object.keys(x.qthumb).length < q.length) {       // 문항 그림이 하나라도 없으면(사진 시험지 등) 시험지 쪽 그림을 왼쪽에 둔다. 사진(스캔) 시험지는 문항별로 오려 낼 수 없어서, 왼쪽에 시험지 쪽 그림을 두고 오른쪽에서 단원을 고르게 한다 (위아래로 오가지 않도록)
+      if (!x.qthumb || !Object.keys(x.qthumb).length) {       // 문항 그림이 하나라도 없으면(사진 시험지 등) 시험지 쪽 그림을 왼쪽에 둔다. 사진(스캔) 시험지는 문항별로 오려 낼 수 없어서, 왼쪽에 시험지 쪽 그림을 두고 오른쪽에서 단원을 고르게 한다 (위아래로 오가지 않도록)
         const right = document.createElement('div'); right.style.cssText = 'flex:1 1 420px; min-width:0;';
         while (body.firstChild) right.appendChild(body.firstChild);
         const left = document.createElement('div');
