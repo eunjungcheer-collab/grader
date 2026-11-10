@@ -42,9 +42,17 @@
   // 사진 시험지: 본문 읽기에서 놓친 문항 번호를, 번호가 모여 있는 세로 띠만 숫자 모드로 다시 읽어서 보충한다
   async function ocrFillNumbers(doc, pages) {
     pages.forEach(pd => { if (pd.ocr) pd.items.forEach(it => { const m = /^(\d{1,2})[,;:]$/.exec(it.str); if (m) it.str = m[1] + '.'; }); });      // "10," 처럼 점이 쉼표로 읽힌 번호
+    pages.forEach(pd => {       // 표의 번호 칸·머리글 목록("1. 2. 3. …")처럼 촘촘히 줄지은 번호(3개 이상이 28pt 안 간격으로 이어짐)는 문항 번호가 아니다
+      if (!pd.ocr) return;
+      const nl = pd.items.filter(it => /^\d{1,2}[.)]$/.test(it.str)).sort((a, b) => a.top - b.top), drop = new Set();
+      let run = [];
+      const flush = () => { if (run.length >= 3) run.forEach(it => drop.add(it)); run = []; };
+      nl.forEach(it => { const l = run[run.length - 1]; if (l && it.top - l.top < 28 && Math.abs(it.x - l.x) < 20) run.push(it); else { flush(); run = [it]; } });
+      flush();
+      if (drop.size) pd.items = pd.items.filter(it => !drop.has(it));
+    });
     let spansBy = pages.map(pd => pd.ocr ? numberSpans(pd) : []);
     let all = [].concat.apply([], spansBy);
-    if (all.length < 3) return;
     { // 번호 글자 크기는 읽을 때마다 조금씩 달라지니(6, 6.5, 7), 가장 흔한 크기로 통일한다
       const c0 = {}; all.forEach(sp => { const k = Math.round(sp.size * 2) / 2; c0[k] = (c0[k] || 0) + 1; });
       const m0 = Number(Object.keys(c0).sort((a, b) => c0[b] - c0[a])[0]);
@@ -54,10 +62,14 @@
     const cnt = {}; all.forEach(sp => { const k = Math.round(sp.size * 2) / 2; cnt[k] = (cnt[k] || 0) + 1; });
     const qs = Number(Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0]);
     const good = all.filter(sp => Math.abs(sp.size - qs) <= 1.5);
-    const xs0 = good.map(sp => sp.x).sort((a, b) => a - b), groups = [];
-    xs0.forEach(x => { const g = groups[groups.length - 1]; if (g && x - g[g.length - 1] < 60) g.push(x); else groups.push([x]); });       // 왼쪽 단·오른쪽 단처럼 멀리 떨어진 것끼리 묶는다
-    const gs = groups.filter(g => g.length >= 2); if (!gs.length) return;
-    const med = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)], cols = gs.map(g => med(g)), colLo = cols.map(c => c - 2), colHi = cols.map(c => c + 2);       // 번호는 단의 왼쪽 끝에 일정하게 찍혀 있다 (중앙값 ±9pt 밖은 머리글 목록 같은 다른 번호)
+    // 번호가 줄지어 찍힌 세로 위치(단 왼쪽 끝)를 찾는다: 6pt 칸마다 번호 개수를 세어 가장 많이 몰린 곳부터, 서로 80pt 넘게 떨어진 것만 고른다
+    const hist = {}; good.forEach(sp => { const k = Math.round(sp.x / 6); hist[k] = (hist[k] || 0) + 1; });
+    const sm = k => (hist[k - 1] || 0) + (hist[k] || 0) + (hist[k + 1] || 0);
+    const peaks = Object.keys(hist).map(Number).sort((a, b) => sm(b) - sm(a));
+    const med = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+    const picked = []; peaks.forEach(k => { if (sm(k) >= 3 && picked.every(q => Math.abs(q - k) * 6 > 80)) picked.push(k); });
+    const colsRaw = picked.map(k => med(good.filter(sp => Math.abs(sp.x / 6 - k) <= 1.5).map(sp => sp.x))).sort((a, b) => a - b);
+    const cols = colsRaw, colLo = cols.map(c => c - 2), colHi = cols.map(c => c + 2);
     const colOf = x => { let bi = 0; cols.forEach((c, i) => { if (Math.abs(c - x) < Math.abs(cols[bi] - x)) bi = i; }); return bi; };
     const key = (pi, x, top) => pi * 1e6 + colOf(x) * 1e5 + top;
     const conf = []; pages.forEach((pd, pi) => spansBy[pi].forEach(sp => { if (Math.abs(sp.size - qs) <= 1.5 && Math.abs(sp.x - cols[colOf(sp.x)]) <= 9) conf.push({ num: sp.num, k: key(pi, sp.x, sp.top) }); }));
@@ -73,33 +85,41 @@
     let maxN = 0; { const nums = conf.map(c => c.num).sort((a, b) => a - b); let seen = 0; nums.forEach(n => { if (n > maxN) { /* 1~n 중 70% 이상 찾아졌을 때만 인정 */ const c = nums.filter(v => v <= n).length; if (c >= n * 0.7) maxN = n; } }); }
     const missing = []; for (let n = 1; n <= maxN; n++) if (!have[n]) missing.push(n);
     if (!missing.length) { ocrKeepSequence(pages, cols, colLo, colHi, qs, maxN); return; }
-    // 번호 띠를 숫자 모드로 읽는다 (쪽마다, 단마다)
+    // 번호 띠를 숫자 모드로 읽는다 (쪽마다, 단마다). 한 번 읽어도 못 찾은 번호가 있으면 낱글자 찾기 모드(11)로 한 번 더 읽는다
     const cands = [];
-    for (let pi = 0; pi < pages.length; pi++) {
-      const pd = pages[pi]; if (!pd.ocr) continue;
-      const page = await doc.getPage(pi + 1), sc = 3.5, v2 = page.getViewport({ scale: sc });
-      const cv = document.createElement('canvas'); cv.width = Math.ceil(v2.width); cv.height = Math.ceil(v2.height);
-      const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
-      await page.render({ canvasContext: cx, viewport: v2, canvas: cv }).promise;
-      for (let ci = 0; ci < cols.length; ci++) {
-        const c0 = cols[ci];
-        const x0 = Math.max(0, Math.floor((cols[ci] - 14) * sc)), x1 = Math.min(cv.width, Math.ceil((cols[ci] + 24) * sc));
-        const strip = document.createElement('canvas'); strip.width = x1 - x0; strip.height = cv.height;
-        const sx = strip.getContext('2d'); sx.fillStyle = '#fff'; sx.fillRect(0, 0, strip.width, strip.height); sx.drawImage(cv, x0, 0, x1 - x0, cv.height, 0, 0, x1 - x0, cv.height);
-        const ws = await root.OcrLite.digitWords(strip);
-        ws.forEach(w => { const m = /^(\d{1,2})\.?$/.exec(w.text); if (!m) return; const num = parseInt(m[1], 10); if (!missing.includes(num)) return; const x = x0 / sc + w.x0 / sc, top = w.y0 / sc, bot = w.y1 / sc; cands.push({ num: num, pi: pi, x: x, w: (w.x1 - w.x0) / sc, top: top, bottom: bot, conf: w.conf, k: key(pi, c0, top) }); });
+    const canv = {};
+    const strips = async psm => {
+      for (let pi = 0; pi < pages.length; pi++) {
+        const pd = pages[pi]; if (!pd.ocr) continue;
+        if (!canv[pi]) {
+          const page = await doc.getPage(pi + 1), sc = 3.5, v2 = page.getViewport({ scale: sc });
+          const cv = document.createElement('canvas'); cv.width = Math.ceil(v2.width); cv.height = Math.ceil(v2.height);
+          const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+          await page.render({ canvasContext: cx, viewport: v2, canvas: cv }).promise; canv[pi] = cv;
+        }
+        const cv = canv[pi], sc = 3.5;
+        for (let ci = 0; ci < cols.length; ci++) {
+          const c0 = cols[ci];
+          const x0 = Math.max(0, Math.floor((cols[ci] - 14) * sc)), x1 = Math.min(cv.width, Math.ceil((cols[ci] + 24) * sc));
+          const strip = document.createElement('canvas'); strip.width = x1 - x0; strip.height = cv.height;
+          const sx = strip.getContext('2d'); sx.fillStyle = '#fff'; sx.fillRect(0, 0, strip.width, strip.height); sx.drawImage(cv, x0, 0, x1 - x0, cv.height, 0, 0, x1 - x0, cv.height);
+          const ws = await root.OcrLite.digitWords(strip, psm);
+          ws.forEach(w => { const m = /^(\d{1,2})\.?$/.exec(w.text); if (!m) return; const num = parseInt(m[1], 10); if (!missing.includes(num)) return; const x = x0 / sc + w.x0 / sc, top = w.y0 / sc, bot = w.y1 / sc; cands.push({ num: num, pi: pi, x: x, w: (w.x1 - w.x0) / sc, top: top, bottom: bot, conf: w.conf, k: key(pi, c0, top) }); });
+        }
       }
-    }
-    // 빠진 번호마다, 앞뒤 번호 사이(읽는 순서)에 있는 후보 중 가장 알맞은 것 하나만 쓴다
-    missing.forEach(n => {
+    };
+    const place = () => missing.forEach(n => {
+      if (have[n]) return;
       let lo = -Infinity, hi = Infinity;
       Object.keys(have).forEach(k => { const c = have[k], v = c.num; if (v < n && c.k > lo) lo = c.k; if (v > n && c.k < hi) hi = c.k; });
-      const ok = cands.filter(c => c.num === n && c.k > lo && c.k < hi).sort((a, b) => b.conf - a.conf)[0];
+      const ok = cands.filter(c => c.num === n && c.k > lo && c.k < hi).sort((a, b) => ((b.conf >= 30) - (a.conf >= 30)) || (Math.abs(a.x - cols[colOf(a.x)]) - Math.abs(b.x - cols[colOf(b.x)])))[0];
       if (!ok) return;
       have[n] = { num: n, k: ok.k };
       pages[ok.pi].items = pages[ok.pi].items.filter(it => !(Math.abs(it.top - ok.top) < 6 && Math.abs(it.x - ok.x) < 20 && /^\d{1,2}[.)]$/.test(it.str)));      // 같은 자리에서 다른 번호로 잘못 읽힌 것은 바꾼다
       pages[ok.pi].items.push({ str: n + '.', x: ok.x, w: ok.w, size: qs, top: ok.top, bottom: ok.bottom, base: ok.bottom - (ok.bottom - ok.top) * 0.15 });
     });
+    await strips(6); place();
+    if (missing.some(n => !have[n])) { await strips(11); place(); }
     ocrKeepSequence(pages, cols, colLo, colHi, qs, maxN);
   }
   // 번호처럼 보이는 글자 중 "1, 2, 3 …" 순서에 맞는 것만 남긴다 (잘못 읽힌 "0)" "69)" 같은 것과 중복 제거)
@@ -123,7 +143,7 @@
   async function ocrItems(doc, page, vp, pageNum) {
     let m = _ocrMemo.get(doc); if (!m) { m = {}; _ocrMemo.set(doc, m); }
     if (!m[pageNum]) m[pageNum] = (async () => {
-      const sc = Math.min(3, Math.max(1.5, 1500 / vp.width)), v2 = page.getViewport({ scale: sc });
+      const sc = Math.min(3, Math.max(1.0, (root.__ocrW || 1500) / vp.width)), v2 = page.getViewport({ scale: sc });
       const cv = document.createElement('canvas'); cv.width = Math.ceil(v2.width); cv.height = Math.ceil(v2.height);
       const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
       await page.render({ canvasContext: cx, viewport: v2, canvas: cv }).promise;
@@ -507,8 +527,9 @@
   async function scanPdf(doc, onProgress) {
     const n = doc.numPages;
     const pages = [];
+    const pre = []; for (let p = 1; p <= n; p++) pre.push(pageItems(doc, p, true));       // 쪽 읽기를 한꺼번에 시작한다 (사진 쪽은 글자 읽는 일꾼 둘이 나눠 읽는다)
     for (let p = 1; p <= n; p++) {
-      pages.push(await pageItems(doc, p, true));
+      pages.push(await pre[p - 1]);
       pages[p - 1].tableRect = await detectAnswerTable(doc, p, pages[p - 1]);
       if (onProgress) onProgress(p, n);
     }

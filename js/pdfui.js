@@ -807,6 +807,12 @@ function paintAnswerCell(inp) {
 function buildAnswerGrid(box, answers, onChange) {
   box.classList.add('ag');
   box.innerHTML = '';
+  // 위쪽 버튼: 칸을 누르고 「주관식」「복수정답」을 누르면 된다 (키보드로는 - · + 도 된다)
+  const bar = document.createElement('div'); bar.style.cssText = 'width:100%; flex:0 0 100%; display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:0 0 8px;';
+  bar.innerHTML = '<button type="button" class="btn outline ag-bsub" style="padding:4px 10px;">주 · 주관식 (-)</button><button type="button" class="btn outline ag-bmulti" style="padding:4px 10px;">복 · 복수정답 (+)</button><span class="hint" style="margin:0; font-size:12px;">칸을 누르고 버튼을 누르거나, 키보드로 <b>-</b> / <b>+</b> 를 치세요</span>';
+  box.appendChild(bar);
+  let lastInp = null;
+  const press = (btn, fn) => { btn.addEventListener('mousedown', e => e.preventDefault()); btn.addEventListener('click', () => { if (lastInp) fn(lastInp); }); };
   // 입력 방식(예전과 같게): 숫자 한 자리를 치면 바로 다음 칸으로 / '-' 또는 「주」= 주관식 표시하고 다음 칸으로 / '+' · ',' 또는 「복」= 복수정답 칸 켜기·끄기
   //  (복수정답 칸은 24처럼 여러 숫자를 이어서 치고 Enter·스페이스·→ 로 넘어가요. '/' 는 2/4 처럼 「둘 중 하나만 맞아도 정답」)
   const cells = [];
@@ -814,10 +820,11 @@ function buildAnswerGrid(box, answers, onChange) {
   const goto_ = (i, dir) => { const t = cells[i + dir]; if (t) t.focus(); };
   answers.forEach((a, i) => {
     const cell = document.createElement('div'); cell.className = 'ag-cell';
-    cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="numeric">';
+    cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="text">';
     const inp = cell.querySelector('input'); paintAnswerCell(inp); cells.push(inp);
     if (/^[1-9]{2,}|\//.test(inp.value)) setM(inp, true);
     const commit = () => { answers[i] = inp.value.trim(); paintAnswerCell(inp); if (onChange) onChange(answers); };
+    inp._ag = { commit: commit, next: () => goto_(i, 1), idx: i };
     inp.addEventListener('input', e => {
       const multi = inp.dataset.multi === '1';
       let raw = inp.value.replace(/[①-⑨]/g, c => String(c.charCodeAt(0) - 0x2460 + 1));
@@ -836,7 +843,9 @@ function buildAnswerGrid(box, answers, onChange) {
       else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); goto_(i, -1); }
       else if (e.key === 'Backspace' && !inp.value) goto_(i, -1);
     });
-    inp.addEventListener('focus', () => inp.select());
+    inp.addEventListener('focus', () => { lastInp = inp; inp.select(); });
     box.appendChild(cell);
   });
+  press(bar.querySelector('.ag-bsub'), inp => { setM(inp, false); inp.value = '-'; inp._ag.commit(); inp._ag.next(); });
+  press(bar.querySelector('.ag-bmulti'), inp => { setM(inp, inp.dataset.multi !== '1'); inp.value = inp.dataset.multi === '1' ? inp.value.replace(/[^0-9\/]/g, '') : inp.value; inp._ag.commit(); inp.focus(); });
 }

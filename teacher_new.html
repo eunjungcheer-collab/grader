@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611110319">
+<link rel="stylesheet" href="css/style.css?v=202611110351">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,16 +157,16 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611110319"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611110319"></script>
-<script src="js/vendor/pdf.min.js?v=202611110319"></script>
-<script src="js/config.js?v=202611110319"></script>
-<script src="js/api.js?v=202611110319"></script>
-<script src="js/common.js?v=202611110319"></script>
-<script src="js/ocr.js?v=202611110319"></script>
-<script src="js/bankcore.js?v=202611110319"></script>
-<script src="js/pdfui.js?v=202611110319"></script>
-<script src="js/pdfview.js?v=202611110319"></script>
+<script src="js/vendor/qrcode.min.js?v=202611110351"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611110351"></script>
+<script src="js/vendor/pdf.min.js?v=202611110351"></script>
+<script src="js/config.js?v=202611110351"></script>
+<script src="js/api.js?v=202611110351"></script>
+<script src="js/common.js?v=202611110351"></script>
+<script src="js/ocr.js?v=202611110351"></script>
+<script src="js/bankcore.js?v=202611110351"></script>
+<script src="js/pdfui.js?v=202611110351"></script>
+<script src="js/pdfview.js?v=202611110351"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1079,14 +1079,16 @@ function showAutoReview(R) {
       { const hd = document.createElement('div'); hd.className = 'rv-uhead'; hd.style.cssText = 'position:sticky; top:0; z-index:6; background:#fff; padding:6px 0 4px; border-bottom:2px solid var(--line); box-shadow:0 4px 6px -4px rgba(0,0,0,.15);';
         const kids = Array.from(body.children).slice(0, 4); body.insertBefore(hd, kids[0]); kids.forEach(k => hd.appendChild(k)); }       // 전체·구간 지정 줄을 맨 위에 고정해서, 아래로 내려가도 구간 버튼이 보이게 한다
       if (noBank) { const w = document.createElement('div'); w.className = 'banner'; w.style.cssText = 'margin:6px 0;'; w.innerHTML = '⚠️ 이 시험지의 문항이 <b>문제은행에 저장돼 있지 않아서</b> 여기서 고른 단원은 저장되지 않아요. (문제은행 저장을 끄고 등록했거나, 문제 그림을 만들지 못한 시험지예요.) 문제은행에 넣으려면 「문제은행에 저장」을 켜고 다시 등록해 주세요.'; body.insertBefore(w, body.firstChild); }
-      if (!x.qthumb || !Object.keys(x.qthumb).length) {       // 문항 그림이 하나라도 없으면(사진 시험지 등) 시험지 쪽 그림을 왼쪽에 둔다. 사진(스캔) 시험지는 문항별로 오려 낼 수 없어서, 왼쪽에 시험지 쪽 그림을 두고 오른쪽에서 단원을 고르게 한다 (위아래로 오가지 않도록)
+      let vLeft = null;
+      const openViewer = () => {       // 「PDF 보면서 단원 지정」 버튼을 눌렀을 때만: 왼쪽에 시험지 PDF, 오른쪽에 단원 칸 (처음부터 띄우지 않는다)
+        if (vLeft) { vLeft.style.display = vLeft.style.display === 'none' ? '' : 'none'; return; }
         const right = document.createElement('div'); right.style.cssText = 'flex:1 1 420px; min-width:0;';
         while (body.firstChild) right.appendChild(body.firstChild);
         const left = document.createElement('div');
         left.style.cssText = 'flex:1 1 420px; min-width:0; position:sticky; top:8px; align-self:flex-start; max-height:calc(100vh - 16px); overflow:auto; border:1px solid var(--line); border-radius:10px; padding:8px; background:#F8FAFC;';
         left.innerHTML = '<div style="font-weight:700; margin-bottom:4px;">📄 시험지 (왼쪽에서 문제를 보며, 오른쪽에서 단원을 고르세요)</div><div class="pv-box"><span class="hint">⏳ 시험지를 불러오는 중...</span></div>';
         body.style.cssText = 'display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start;';
-        body.appendChild(left); body.appendChild(right);
+        body.appendChild(left); body.appendChild(right); vLeft = left;
         (async () => {
           const bx = left.querySelector('.pv-box');
           try {
@@ -1103,7 +1105,9 @@ function showAutoReview(R) {
             }
           } catch (err) { bx.innerHTML = '<span class="hint" style="color:#C1392B;">시험지 그림을 만들지 못했어요: ' + escapeHtml(err.message) + '</span>'; }
         })();
-      }
+      };
+      { const hd2 = body.querySelector('.rv-uhead'); if (hd2) { const vb = document.createElement('button'); vb.type = 'button'; vb.className = 'btn primary'; vb.style.cssText = 'padding:5px 12px; margin:6px 0 2px;'; const T1 = '📄 PDF 보면서 단원 지정 (왼쪽 PDF · 오른쪽 단원)';
+        vb.textContent = T1; vb.addEventListener('click', () => { openViewer(); vb.textContent = (vLeft && vLeft.style.display !== 'none') ? '📄 PDF 닫기' : T1; }); hd2.appendChild(vb); } }
       refreshSubSelect(alls, null, ''); alls.closest('.sub-wrap').style.display = 'none';
       allu.addEventListener('change', () => { const v = unitSelectValue(allu); refreshSubSelect(alls, tocEntryFor(v.grade, v.unit), ''); });
       const upSum = () => { const d = row.querySelector('.rv-usum'); if (d) d.innerHTML = unitSumHtml(x); };
