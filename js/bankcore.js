@@ -120,6 +120,48 @@
     });
     await strips(6); place();
     if (missing.some(n => !have[n])) { await strips(11); place(); }
+    if (missing.some(n => !have[n])) {      // 그래도 못 찾은 번호는 앞뒤 번호 사이의 빈 구간만 줄 단위로 잘라 읽는다
+      const sc = 3.5, split = k => ({ pi: Math.floor(k / 1e6), ci: Math.floor((k % 1e6) / 1e5), top: k % 1e5 });
+      for (const n of missing.filter(v => !have[v])) {
+        let lo = null, hi = null;
+        Object.keys(have).forEach(k => { const c = have[k], v = c.num; if (v < n && (!lo || c.k > lo.k)) lo = c; if (v > n && (!hi || c.k < hi.k)) hi = c; });
+        const a = lo ? split(lo.k) : { pi: 0, ci: 0, top: 0 }, z = hi ? split(hi.k) : { pi: pages.length - 1, ci: cols.length - 1, top: 1e5 - 1 };
+        const regs = [];
+        for (let pi = a.pi; pi <= z.pi; pi++) for (let ci = 0; ci < cols.length; ci++) {
+          const here = pi * 10 + ci; if (here < a.pi * 10 + a.ci || here > z.pi * 10 + z.ci) continue;
+          regs.push({ pi: pi, ci: ci, y0: (pi === a.pi && ci === a.ci) ? a.top + 8 : 0, y1: (pi === z.pi && ci === z.ci) ? z.top - 4 : 1e5 });
+        }
+        let found = null;
+        for (const r of regs) {
+          if (found || !pages[r.pi] || !pages[r.pi].ocr) continue;
+          const cv = canv[r.pi]; if (!cv) continue;
+          const c0 = cols[r.ci], X0 = Math.max(0, Math.floor((c0 - 10) * sc)), X1 = Math.min(cv.width, Math.ceil((c0 + 22) * sc));
+          const Y0 = Math.max(0, Math.floor(r.y0 * sc)), Y1 = Math.min(cv.height, Math.ceil(r.y1 * sc));
+          if (Y1 - Y0 < 20) continue;
+          const d = cv.getContext('2d').getImageData(X0, Y0, X1 - X0, Y1 - Y0).data, W = X1 - X0, H = Y1 - Y0;
+          const ink = new Array(H).fill(0);
+          for (let y = 0; y < H; y++) { let c = 0; for (let x = 0; x < W; x++) if (d[(y * W + x) * 4] < 140) c++; ink[y] = c; }
+          const lines = []; let st = -1, gap = 0;
+          for (let y = 0; y < H; y++) { if (ink[y] > 1) { if (st < 0) st = y; gap = 0; } else if (st >= 0 && ++gap > 5) { if (y - gap - st >= 14) lines.push([st, y - gap]); st = -1; gap = 0; } }
+          if (st >= 0) lines.push([st, H - 1]);
+          for (const ln of lines.slice(0, 40)) {
+            if (found) break;
+            const h = ln[1] - ln[0] + 8; if (h > 70) continue;
+            const strip = document.createElement('canvas'); strip.width = W; strip.height = h;
+            const sx = strip.getContext('2d'); sx.fillStyle = '#fff'; sx.fillRect(0, 0, W, h); sx.drawImage(cv, X0, Y0 + ln[0] - 4, W, h, 0, 0, W, h);
+            for (const psm of [7, 8]) {
+              const ws = await root.OcrLite.digitWords(strip, psm);
+              const w = ws.find(q => { const m = /^(\d{1,2})[.,]?$/.exec(q.text); return m && parseInt(m[1], 10) === n; });
+              if (w) { found = { pi: r.pi, ci: r.ci, top: (Y0 + ln[0]) / sc, bottom: (Y0 + ln[1]) / sc, x: X0 / sc + w.x0 / sc, w: (w.x1 - w.x0) / sc, k: r.pi * 1e6 + r.ci * 1e5 + (Y0 + ln[0]) / sc }; break; }
+            }
+          }
+        }
+        if (found) {
+          have[n] = { num: n, k: found.k };
+          pages[found.pi].items.push({ str: n + '.', x: cols[found.ci], w: found.w, size: qs, top: found.top, bottom: found.bottom, base: found.bottom - (found.bottom - found.top) * 0.15 });
+        }
+      }
+    }
     ocrKeepSequence(pages, cols, colLo, colHi, qs, maxN);
   }
   // 번호처럼 보이는 글자 중 "1, 2, 3 …" 순서에 맞는 것만 남긴다 (잘못 읽힌 "0)" "69)" 같은 것과 중복 제거)
