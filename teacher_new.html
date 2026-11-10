@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611110030">
+<link rel="stylesheet" href="css/style.css?v=202611110050">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611110030"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611110030"></script>
-<script src="js/vendor/pdf.min.js?v=202611110030"></script>
-<script src="js/config.js?v=202611110030"></script>
-<script src="js/api.js?v=202611110030"></script>
-<script src="js/common.js?v=202611110030"></script>
-<script src="js/bankcore.js?v=202611110030"></script>
-<script src="js/pdfui.js?v=202611110030"></script>
-<script src="js/pdfview.js?v=202611110030"></script>
+<script src="js/vendor/qrcode.min.js?v=202611110050"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611110050"></script>
+<script src="js/vendor/pdf.min.js?v=202611110050"></script>
+<script src="js/config.js?v=202611110050"></script>
+<script src="js/api.js?v=202611110050"></script>
+<script src="js/common.js?v=202611110050"></script>
+<script src="js/bankcore.js?v=202611110050"></script>
+<script src="js/pdfui.js?v=202611110050"></script>
+<script src="js/pdfview.js?v=202611110050"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1041,6 +1041,7 @@ function showAutoReview(R) {
       const body = det.querySelector('.rv-ubody'); await ensureToc();
       const q = x.qinfo || [], g0 = (q[0] && q[0].grade) || '';
       body.className = 'rv-ubody'; body.innerHTML = '<div class="qunit-row" style="flex-wrap:wrap;"><b>전체</b><select class="rv-allu" style="width:auto; max-width:100%;">' + unitSelectOptions(g0, '', '') + '</select><span class="sub-wrap"><select class="rv-alls" style="width:auto; max-width:100%;"></select></span><button type="button" class="btn outline rv-allbtn" style="padding:4px 10px;">이 시험지 전체에 적용</button><span class="hint rv-umsg" style="margin:0;"></span></div>' +
+        '<div class="qunit-row" style="flex-wrap:wrap;"><b>📏 구간</b><input type="number" class="rv-rf" min="1" placeholder="시작" style="width:64px;"> <span>번 ~</span> <input type="number" class="rv-rt" min="1" placeholder="끝" style="width:64px;"> <span>번</span><button type="button" class="btn outline rv-rangebtn" style="padding:4px 10px;">위에서 고른 단원·소단원을 이 구간에 적용</button></div><div class="hint rv-rsum" style="margin:2px 0 6px; font-weight:700;"></div>' +
         q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b>' + o.n + '번</b>' + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span></div>').join('');
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
       if (!x.qthumb || !Object.keys(x.qthumb).length) {       // 사진(스캔) 시험지는 문항별로 오려 낼 수 없어서, 왼쪽에 시험지 쪽 그림을 두고 오른쪽에서 단원을 고르게 한다 (위아래로 오가지 않도록)
@@ -1078,6 +1079,26 @@ function showAutoReview(R) {
         us.addEventListener('change', () => { const v = unitSelectValue(us); o.unit = v.unit; o.grade = v.grade; o.sub = ''; refreshSubSelect(ss, tocEntryFor(v.grade, v.unit), ''); const id = x.bankIds[n]; if (id) save([{ id: id, unit: v.unit || '(단원 미지정)', grade: v.grade, sub: '', auto: 0 }]); else umsg.textContent = '⚠️ 이 문항은 문제은행에 저장되지 않았어요'; });
         ss.addEventListener('change', () => { o.sub = ss.value; const id = x.bankIds[n]; if (id) save([{ id: id, sub: ss.value, auto: 0 }]); });
       });
+      { // 📏 번호 구간으로 지정: 위의 「전체」 줄에서 단원·소단원을 고르고 → 구간(예: 1~10번)을 적고 → 적용. 다음 구간은 단원만 바꿔 또 적용 (1개 시험지 화면과 같은 방식)
+        const rf = body.querySelector('.rv-rf'), rt = body.querySelector('.rv-rt'), rsum = body.querySelector('.rv-rsum');
+        const drawSum = () => {
+          const runs = []; q.slice().sort((a, b) => a.n - b.n).forEach(o => { const key = o.unit ? o.unit + (o.sub ? ' › ' + o.sub : '') : ''; if (!key) return; const last = runs[runs.length - 1]; if (last && last.key === key && last.to === o.n - 1) last.to = o.n; else runs.push({ from: o.n, to: o.n, key: key }); });
+          rsum.innerHTML = runs.length ? '현재 지정: ' + runs.map(r => (r.from === r.to ? r.from : r.from + '~' + r.to) + '번 ' + escapeHtml(r.key)).join(' · ') : '';
+        };
+        const applyR = () => {
+          const v = unitSelectValue(allu); if (!v.unit) { umsg.textContent = '위 「전체」 줄에서 대단원을 먼저 고르세요'; return; }
+          let a = parseInt(rf.value, 10), b = parseInt(rt.value, 10); if (!a) { umsg.textContent = '시작 번호를 적어 주세요'; return; } if (!b) b = a; if (b < a) { const z = a; a = b; b = z; }
+          const items = []; let cnt = 0;
+          body.querySelectorAll('.rv-u').forEach(us => { const n = +us.dataset.n; if (n < a || n > b) return; const o = q.find(z => z.n === n), ss = body.querySelector('.rv-s[data-n="' + n + '"]'); setUnitSelect(us, v.unit, v.grade); o.unit = v.unit; o.grade = v.grade; o.sub = alls.value; refreshSubSelect(ss, tocEntryFor(v.grade, v.unit), alls.value); const id = x.bankIds[n]; if (id) items.push({ id: id, unit: v.unit, grade: v.grade, sub: alls.value, auto: 0 }); cnt++; });
+          if (!cnt) { umsg.textContent = a + '~' + b + '번에 해당하는 문항이 없어요 (1~' + q.length + '번)'; return; }
+          save(items); drawSum();
+          rf.value = b + 1 <= q.length ? b + 1 : ''; rt.value = '';
+        };
+        body.querySelector('.rv-rangebtn').addEventListener('click', applyR);
+        rt.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyR(); } });
+        body.addEventListener('change', e => { if (e.target && e.target.classList && (e.target.classList.contains('rv-u') || e.target.classList.contains('rv-s'))) drawSum(); });
+        drawSum();
+      }
       body.querySelector('.rv-allbtn').addEventListener('click', () => {
         const v = unitSelectValue(allu); if (!v.unit) { umsg.textContent = '대단원을 먼저 고르세요'; return; }
         const items = [];
