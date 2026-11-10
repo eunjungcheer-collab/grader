@@ -30,9 +30,9 @@
     });
   }
   // 숫자만 읽는 모드 (문항 번호 자리 좁은 띠를 읽을 때): 번호 "3." 처럼 본문 읽기에서 놓친 것을 되찾는다
-  async function digitWords(canvas, psm) {
+  async function digitWords(canvas, psm, whitelist) {
     return run(async w => {
-    await w.setParameters({ tessedit_char_whitelist: '0123456789.', tessedit_pageseg_mode: String(psm || 6) });
+    await w.setParameters({ tessedit_char_whitelist: whitelist || '0123456789.', tessedit_pageseg_mode: String(psm || 6) });
     try {
       const r = await w.recognize(canvas, {}, { blocks: true });
       const out = [];

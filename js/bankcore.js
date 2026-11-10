@@ -3655,6 +3655,88 @@
     });
     return Object.keys(out).length >= 5 ? { answers: out, notes: notes } : null;
   }
+  // 사진(스캔)으로 된 「문항 | 배점 | 정답 | 복수구분」 표 (4묶음 × 15행): 표의 가로·세로 선을 찾아 칸을 나누고, 정답 칸만 숫자로 읽는다.
+  async function parseScannedGrid(doc, p) {
+    if (!root.OcrLite) return null;
+    const page = await doc.getPage(p), sc = 3.5, v = page.getViewport({ scale: sc });
+    const cv = document.createElement('canvas'); cv.width = Math.ceil(v.width); cv.height = Math.ceil(v.height);
+    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+    await page.render({ canvasContext: cx, viewport: v, canvas: cv }).promise;
+    // 비스듬히 스캔된 쪽은 선이 기울어져 있어서, 먼저 기울기를 찾아 바로잡는다 (가로 글줄·선이 가장 또렷하게 모이는 각도)
+    let cvR = cv;
+    {
+      const tw = 800, ts = tw / cv.width, tc = document.createElement('canvas'); tc.width = tw; tc.height = Math.round(cv.height * ts);
+      const tx = tc.getContext('2d'); tx.fillStyle = '#fff'; tx.fillRect(0, 0, tc.width, tc.height); tx.drawImage(cv, 0, 0, tc.width, tc.height);
+      const td = tx.getImageData(0, 0, tc.width, tc.height).data, pts = [];
+      for (let y = 0; y < tc.height; y++) for (let x = 0; x < tc.width; x++) if (td[(y * tc.width + x) * 4] < 170) pts.push(x, y);
+      let bestA = 0, bestS = -1;
+      for (let a = -30; a <= 30; a++) {
+        const t = Math.tan(a / 10 * Math.PI / 180), h = new Float32Array(tc.height * 2 + 400);
+        for (let i = 0; i < pts.length; i += 2) h[Math.round(pts[i + 1] - pts[i] * t) + 200]++;
+        let sc2 = 0; for (let i = 0; i < h.length; i++) sc2 += h[i] * h[i];
+        if (sc2 > bestS) { bestS = sc2; bestA = a; }
+      }
+      if (bestA !== 0) {
+        const r = document.createElement('canvas'); r.width = cv.width; r.height = cv.height;
+        const rx = r.getContext('2d'); rx.fillStyle = '#fff'; rx.fillRect(0, 0, r.width, r.height);
+        rx.translate(r.width / 2, r.height / 2); rx.rotate(-bestA / 10 * Math.PI / 180); rx.drawImage(cv, -r.width / 2, -r.height / 2);
+        cvR = r;
+      }
+    }
+    const cx2 = cvR.getContext('2d');
+    const W = cvR.width, H = cvR.height, d = cx2.getImageData(0, 0, W, H).data;
+    const dark = (x, y) => d[(y * W + x) * 4] < 195;
+    // 가로선 먼저: 표 폭의 절반 넘게 어두운 y (표는 쪽 폭의 대부분을 차지한다)
+    const hl = [];
+    for (let y = 0; y < H; y++) { let c = 0; for (let x = Math.floor(W * 0.04); x < W * 0.96; x += 2) if (dark(x, y)) c++; if (c > W * 0.92 / 2 * 0.5) { if (hl.length && y - hl[hl.length - 1] < 6) continue; hl.push(y); } }
+    if (hl.length < 8) return null;
+    // 같은 높이의 칸이 길게 이어진 구간 = 표의 문항 행들 (위쪽 점수 표·머리글 칸은 높이가 달라서 빠진다)
+    const gaps = []; for (let i = 1; i < hl.length; i++) gaps.push(hl[i] - hl[i - 1]);
+    let bs = 0, bl = 0; for (let i = 0; i < gaps.length; i++) { let j = i; while (j + 1 < gaps.length && Math.abs(gaps[j + 1] - gaps[i]) < gaps[i] * 0.14) j++; if (j - i + 1 > bl) { bl = j - i + 1; bs = i; } }
+    if (bl < 5) return null;
+    const rows = []; for (let i = bs; i < bs + bl; i++) rows.push([hl[i], hl[i + 1]]);
+    const yA = rows[0][0], yB = rows[rows.length - 1][1], vc = new Float32Array(W);
+    for (let y = yA; y <= yB; y += 2) for (let x = 0; x < W; x++) if (dark(x, y)) vc[x]++;
+    const full = (yB - yA) / 2, vl = [];
+    const win = x => { let t = 0; for (let k = -3; k <= 3; k++) t = Math.max(t, vc[Math.max(0, Math.min(W - 1, x + k))]); return t; };
+    for (let x = 3; x < W - 3; x++) { const t = win(x); if (t > full * 0.7 && vc[x] >= vc[x - 1] && vc[x] > vc[x + 1]) { if (vl.length && x - vl[vl.length - 1] < 12) { if (vc[x] > vc[vl[vl.length - 1]]) vl[vl.length - 1] = x; } else vl.push(x); } }
+    if (vl.length < 9) return null;
+    // 세로선 → 칸: 4칸이 한 묶음 (문항, 배점, 정답, 복수구분)
+    const cols = []; for (let i = 1; i < vl.length; i++) cols.push([vl[i - 1], vl[i]]);
+    const ng = Math.floor(cols.length / 4); if (ng < 1) return null;
+    const out = {};
+    for (let g = 0; g < ng; g++) {
+      const ac = cols[4 * g + 2], mc = cols[4 * g + 3], y0 = rows[0][0], y1 = rows[rows.length - 1][1];
+      if (!ac) continue;
+      const crop = (c, a, b, inset) => { const cc = document.createElement('canvas'); cc.width = c[1] - c[0] - inset * 2; cc.height = b - a; const gx = cc.getContext('2d'); gx.fillStyle = '#fff'; gx.fillRect(0, 0, cc.width, cc.height); gx.drawImage(cvR, c[0] + inset, a, cc.width, cc.height, 0, 0, cc.width, cc.height); return cc; };
+      // 행 하나씩 잘라 읽으면 빈 칸과 번호가 어긋나지 않는다 (한 칸짜리 읽기 모드)
+      for (let r = 0; r < rows.length; r++) {
+        const n = g * rows.length + r + 1, a = rows[r][0] + 4, b = rows[r][1] - 4;
+        const cell = crop(ac, a, b, 5);
+        // 칸에 글자가 있는지 먼저 본다 (빈 칸은 건너뛴다)
+        const gd = cell.getContext('2d').getImageData(0, 0, cell.width, cell.height).data; let ink = 0; for (let i = 0; i < gd.length; i += 4) if (gd[i] < 140) ink++;
+        if (ink < cell.width * cell.height * 0.004) continue;
+        const pad = document.createElement('canvas'); pad.width = cell.width + 40; pad.height = cell.height + 40; const px = pad.getContext('2d'); px.fillStyle = '#fff'; px.fillRect(0, 0, pad.width, pad.height); px.drawImage(cell, 20, 20);
+        let t = (await root.OcrLite.digitWords(pad, 7, '0123456789,')).map(w => w.text).join('');
+        let digs = Array.from(new Set(t.replace(/[^1-5]/g, '').split(''))).filter(Boolean).sort().join('');
+        if (!/^[1-5]{1,5}$/.test(digs)) {       // 못 읽었으면 글자 한 개 읽기 모드로, 키워서 한 번 더
+          const big = document.createElement('canvas'); big.width = pad.width * 2; big.height = pad.height * 2; const bx = big.getContext('2d'); bx.fillStyle = '#fff'; bx.fillRect(0, 0, big.width, big.height); bx.drawImage(pad, 0, 0, big.width, big.height);
+          t = (await root.OcrLite.digitWords(big, 10, '0123456789')).map(w => w.text).join('');
+          digs = Array.from(new Set(t.replace(/[^1-5]/g, '').split(''))).filter(Boolean).sort().join('');
+        }
+        if (!/^[1-5]{1,5}$/.test(digs)) continue;
+        let ans = digs;
+        if (digs.length > 1 && mc) {       // 복수구분: AND = 모두 맞아야, OR = 하나만 맞아도
+          const mcell = crop(mc, a, b, 4), md = mcell.getContext('2d').getImageData(0, 0, mcell.width, mcell.height).data; let mi = 0; for (let i = 0; i < md.length; i += 4) if (md[i] < 140) mi++;
+          if (mi > mcell.width * mcell.height * 0.012) { const mp = document.createElement('canvas'); mp.width = mcell.width + 40; mp.height = mcell.height + 40; const mx = mp.getContext('2d'); mx.fillStyle = '#fff'; mx.fillRect(0, 0, mp.width, mp.height); mx.drawImage(mcell, 20, 20); const mw = (await root.OcrLite.digitWords(mp, 7, 'ANDOR')).map(w => w.text).join(''); if (/OR/.test(mw) && !/AND/.test(mw)) ans = digs.split('').join('/'); }
+        }
+        out[n] = ans;
+      }
+    }
+    const ks = Object.keys(out).map(Number).sort((a, b) => a - b);
+    if (ks.length < 5) return null;
+    return out;
+  }
   async function parseAnswerTable(doc, scan) {
     const lastQ = scan.questionPages && scan.questionPages.length ? Math.max.apply(null, scan.questionPages) : 0;
     const found = {}, usedPages = [];
@@ -3706,6 +3788,7 @@
       }
       const it = await parseImageKeyTable(doc, scan);
       if (it && Object.keys(it.answers).length >= Math.min(need, 5)) return it;
+      if (scan.ocr) { for (let p = 1; p <= scan.pageCount; p++) { let g3 = null; try { g3 = await parseScannedGrid(doc, p); } catch (e) { if (root.console) console.warn('스캔 정답표 읽기 실패', e); } if (g3 && Object.keys(g3).length >= Math.min(need, 5)) return { answers: g3, pages: p > lastQ ? [p] : [], label: p + '쪽 스캔 정답표' }; } }
       return { answers: {}, pages: [] };
     }
     return { answers: out, pages: usedPages };
