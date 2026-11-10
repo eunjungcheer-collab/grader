@@ -816,15 +816,19 @@ function buildAnswerGrid(box, answers, onChange) {
   // 입력 방식(예전과 같게): 숫자 한 자리를 치면 바로 다음 칸으로 / '-' 또는 「주」= 주관식 표시하고 다음 칸으로 / '+' · ',' 또는 「복」= 복수정답 칸 켜기·끄기
   //  (복수정답 칸은 24처럼 여러 숫자를 이어서 치고 Enter·스페이스·→ 로 넘어가요. '/' 는 2/4 처럼 「둘 중 하나만 맞아도 정답」)
   const cells = [];
-  const setM = (inp, on) => { inp.dataset.multi = on ? '1' : ''; inp.style.background = on ? '#E0E7FF' : ''; inp.title = on ? '복수정답 칸 — 숫자를 이어서 치고 Enter' : ''; };
+  const setM = (inp, on) => { inp.dataset.multi = on ? '1' : ''; inp.style.background = on ? '#E0E7FF' : ''; const mb = inp.parentElement && inp.parentElement.querySelector('.ag-b-mul'); if (mb) mb.classList.toggle('on', !!on); inp.title = on ? '복수정답 칸 — 숫자를 이어서 치고 Enter' : ''; };
   const goto_ = (i, dir) => { const t = cells[i + dir]; if (t) t.focus(); };
   answers.forEach((a, i) => {
     const cell = document.createElement('div'); cell.className = 'ag-cell';
-    cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="text">';
+    cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="text"><span class="ag-btns"><button type="button" class="ag-b ag-b-sub" tabindex="-1" title="주관식">주</button><button type="button" class="ag-b ag-b-mul" tabindex="-1" title="복수정답">복</button></span>';
     const inp = cell.querySelector('input'); paintAnswerCell(inp); cells.push(inp);
     if (/^[1-9]{2,}|\//.test(inp.value)) setM(inp, true);
     const commit = () => { answers[i] = inp.value.trim(); paintAnswerCell(inp); if (onChange) onChange(answers); };
     inp._ag = { commit: commit, next: () => goto_(i, 1), idx: i };
+    const bs = cell.querySelector('.ag-b-sub'), bm = cell.querySelector('.ag-b-mul');
+    [bs, bm].forEach(b => b.addEventListener('mousedown', e => e.preventDefault()));
+    bs.addEventListener('click', () => { setM(inp, false); inp.value = '-'; commit(); goto_(i, 1); });
+    bm.addEventListener('click', () => { setM(inp, inp.dataset.multi !== '1'); if (inp.dataset.multi !== '1') { /* 끔 */ } else if (inp.value === '-') inp.value = ''; commit(); inp.focus(); });
     inp.addEventListener('input', e => {
       const multi = inp.dataset.multi === '1';
       let raw = inp.value.replace(/[①-⑨]/g, c => String(c.charCodeAt(0) - 0x2460 + 1));

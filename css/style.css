@@ -599,6 +599,10 @@ details:not([open]) .month-summary::before{transform:rotate(-90deg);}
 /* 정답 칸 펼쳐 보기 (번호 + 입력) */
 .ag{display:flex; flex-wrap:wrap; gap:4px 3px;}
 .ag-cell{display:flex; flex-direction:column; align-items:center; width:32px;}
+.ag-btns{display:flex; gap:1px; margin-top:2px;}
+.ag-b{width:15px; height:16px; padding:0 !important; margin:0 !important; font-size:10px !important; line-height:1; border:1px solid #CBD5E1; border-radius:3px; background:#F8FAFC; color:#475569; cursor:pointer; min-height:0 !important;}
+.ag-b:hover{background:#E0E7FF;}
+.ag-b-mul.on{background:#4F46E5; color:#fff; border-color:#4F46E5;}
 .ag-n{font-size:10px; color:#6B7280; line-height:1.2;}
 .ag-in{width:32px !important; box-sizing:border-box; text-align:center; padding:4px 0 !important; margin:0 !important; font-weight:700; font-size:14px;}
 .ag-in.bad{border-color:#C1392B !important; background:#FDECEC !important;}
