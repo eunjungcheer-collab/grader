@@ -29,9 +29,108 @@
         top: base - h, bottom: base + h * 0.25, base: base,
       });
     }
-    const out = { W: W, H: H, items: items };
-    if (withImages) { try { out.imgs = await pageImageRects(page, vp); } catch (e) { out.imgs = []; } }
+    // 글자가 거의 없는 쪽 = 사진(스캔) 시험지: 글자를 읽어서(OCR) PDF 글자와 같은 모양으로 바꿔 준다 → 문항 위치 찾기·자르기가 그대로 동작한다
+    let ocred = false;
+    if (items.length < 8 && root.OcrLite && !(root.BankCore && root.BankCore.noOcr)) {
+      let big = false; try { big = (await pageImageRects(page, vp)).some(r => (r[2] - r[0]) * (r[3] - r[1]) > W * H * 0.5 && !r[4]); } catch (e) {}       // 쪽의 절반 넘게 덮는 그림 = 스캔한 쪽일 때만
+      if (big) try { const oi = await ocrItems(doc, page, vp, pageNum); if (oi.length > items.length) { items.length = 0; oi.forEach(o => items.push(o)); ocred = true; } } catch (e) { if (root.console) console.warn('OCR 실패', e); }
+    }
+    const out = { W: W, H: H, items: items, ocr: ocred };
+    if (withImages) { try { out.imgs = ocred ? [] : await pageImageRects(page, vp); } catch (e) { out.imgs = []; } }
     return out;
+  }
+  // 사진 시험지: 본문 읽기에서 놓친 문항 번호를, 번호가 모여 있는 세로 띠만 숫자 모드로 다시 읽어서 보충한다
+  async function ocrFillNumbers(doc, pages) {
+    pages.forEach(pd => { if (pd.ocr) pd.items.forEach(it => { const m = /^(\d{1,2})[,;:]$/.exec(it.str); if (m) it.str = m[1] + '.'; }); });      // "10," 처럼 점이 쉼표로 읽힌 번호
+    let spansBy = pages.map(pd => pd.ocr ? numberSpans(pd) : []);
+    let all = [].concat.apply([], spansBy);
+    if (all.length < 3) return;
+    { // 번호 글자 크기는 읽을 때마다 조금씩 달라지니(6, 6.5, 7), 가장 흔한 크기로 통일한다
+      const c0 = {}; all.forEach(sp => { const k = Math.round(sp.size * 2) / 2; c0[k] = (c0[k] || 0) + 1; });
+      const m0 = Number(Object.keys(c0).sort((a, b) => c0[b] - c0[a])[0]);
+      pages.forEach(pd => { if (pd.ocr) pd.items.forEach(it => { if (/^\d{1,2}[.)]$/.test(it.str) && Math.abs(it.size - m0) <= 1.5) it.size = m0; }); });
+      spansBy = pages.map(pd => pd.ocr ? numberSpans(pd) : []); all = [].concat.apply([], spansBy);
+    }
+    const cnt = {}; all.forEach(sp => { const k = Math.round(sp.size * 2) / 2; cnt[k] = (cnt[k] || 0) + 1; });
+    const qs = Number(Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0]);
+    const good = all.filter(sp => Math.abs(sp.size - qs) <= 1.5);
+    const xs0 = good.map(sp => sp.x).sort((a, b) => a - b), groups = [];
+    xs0.forEach(x => { const g = groups[groups.length - 1]; if (g && x - g[g.length - 1] < 60) g.push(x); else groups.push([x]); });       // 왼쪽 단·오른쪽 단처럼 멀리 떨어진 것끼리 묶는다
+    const gs = groups.filter(g => g.length >= 2); if (!gs.length) return;
+    const med = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)], cols = gs.map(g => med(g)), colLo = cols.map(c => c - 2), colHi = cols.map(c => c + 2);       // 번호는 단의 왼쪽 끝에 일정하게 찍혀 있다 (중앙값 ±9pt 밖은 머리글 목록 같은 다른 번호)
+    const colOf = x => { let bi = 0; cols.forEach((c, i) => { if (Math.abs(c - x) < Math.abs(cols[bi] - x)) bi = i; }); return bi; };
+    const key = (pi, x, top) => pi * 1e6 + colOf(x) * 1e5 + top;
+    const conf = []; pages.forEach((pd, pi) => spansBy[pi].forEach(sp => { if (Math.abs(sp.size - qs) <= 1.5 && Math.abs(sp.x - cols[colOf(sp.x)]) <= 9) conf.push({ num: sp.num, k: key(pi, sp.x, sp.top) }); }));
+    { // 번호가 겹치게 읽힌 것(다른 쪽의 잘못 읽힌 번호)은 "1, 2, 3 …" 순서에 맞는 가장 긴 줄만 남긴다
+      conf.sort((a, b) => a.k - b.k);
+      const n0 = conf.length, ln = new Array(n0).fill(1), pv = new Array(n0).fill(-1);
+      for (let i = 0; i < n0; i++) for (let j = 0; j < i; j++) if (conf[j].num < conf[i].num && ln[j] + 1 > ln[i]) { ln[i] = ln[j] + 1; pv[i] = j; }
+      let bi = 0; for (let i = 1; i < n0; i++) if (ln[i] > ln[bi]) bi = i;
+      const chain = []; for (let i = bi; i >= 0 && n0; i = pv[i]) chain.unshift(conf[i]);
+      conf.length = 0; chain.forEach(c => conf.push(c));
+    }
+    const have = {}; conf.forEach(c => { have[c.num] = c; });
+    let maxN = 0; { const nums = conf.map(c => c.num).sort((a, b) => a - b); let seen = 0; nums.forEach(n => { if (n > maxN) { /* 1~n 중 70% 이상 찾아졌을 때만 인정 */ const c = nums.filter(v => v <= n).length; if (c >= n * 0.7) maxN = n; } }); }
+    const missing = []; for (let n = 1; n <= maxN; n++) if (!have[n]) missing.push(n);
+    if (!missing.length) { ocrKeepSequence(pages, cols, colLo, colHi, qs, maxN); return; }
+    // 번호 띠를 숫자 모드로 읽는다 (쪽마다, 단마다)
+    const cands = [];
+    for (let pi = 0; pi < pages.length; pi++) {
+      const pd = pages[pi]; if (!pd.ocr) continue;
+      const page = await doc.getPage(pi + 1), sc = 3.5, v2 = page.getViewport({ scale: sc });
+      const cv = document.createElement('canvas'); cv.width = Math.ceil(v2.width); cv.height = Math.ceil(v2.height);
+      const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: cx, viewport: v2, canvas: cv }).promise;
+      for (let ci = 0; ci < cols.length; ci++) {
+        const c0 = cols[ci];
+        const x0 = Math.max(0, Math.floor((cols[ci] - 14) * sc)), x1 = Math.min(cv.width, Math.ceil((cols[ci] + 24) * sc));
+        const strip = document.createElement('canvas'); strip.width = x1 - x0; strip.height = cv.height;
+        const sx = strip.getContext('2d'); sx.fillStyle = '#fff'; sx.fillRect(0, 0, strip.width, strip.height); sx.drawImage(cv, x0, 0, x1 - x0, cv.height, 0, 0, x1 - x0, cv.height);
+        const ws = await root.OcrLite.digitWords(strip);
+        ws.forEach(w => { const m = /^(\d{1,2})\.?$/.exec(w.text); if (!m) return; const num = parseInt(m[1], 10); if (!missing.includes(num)) return; const x = x0 / sc + w.x0 / sc, top = w.y0 / sc, bot = w.y1 / sc; cands.push({ num: num, pi: pi, x: x, w: (w.x1 - w.x0) / sc, top: top, bottom: bot, conf: w.conf, k: key(pi, c0, top) }); });
+      }
+    }
+    // 빠진 번호마다, 앞뒤 번호 사이(읽는 순서)에 있는 후보 중 가장 알맞은 것 하나만 쓴다
+    missing.forEach(n => {
+      let lo = -Infinity, hi = Infinity;
+      Object.keys(have).forEach(k => { const c = have[k], v = c.num; if (v < n && c.k > lo) lo = c.k; if (v > n && c.k < hi) hi = c.k; });
+      const ok = cands.filter(c => c.num === n && c.k > lo && c.k < hi).sort((a, b) => b.conf - a.conf)[0];
+      if (!ok) return;
+      have[n] = { num: n, k: ok.k };
+      pages[ok.pi].items = pages[ok.pi].items.filter(it => !(Math.abs(it.top - ok.top) < 6 && Math.abs(it.x - ok.x) < 20 && /^\d{1,2}[.)]$/.test(it.str)));      // 같은 자리에서 다른 번호로 잘못 읽힌 것은 바꾼다
+      pages[ok.pi].items.push({ str: n + '.', x: ok.x, w: ok.w, size: qs, top: ok.top, bottom: ok.bottom, base: ok.bottom - (ok.bottom - ok.top) * 0.15 });
+    });
+    ocrKeepSequence(pages, cols, colLo, colHi, qs, maxN);
+  }
+  // 번호처럼 보이는 글자 중 "1, 2, 3 …" 순서에 맞는 것만 남긴다 (잘못 읽힌 "0)" "69)" 같은 것과 중복 제거)
+  function ocrKeepSequence(pages, cols, colLo, colHi, qs, maxN) {
+    const colOf = x => { let bi = 0; cols.forEach((c, i) => { if (Math.abs(c - x) < Math.abs(cols[bi] - x)) bi = i; }); return bi; };
+    const list = [];
+    pages.forEach((pd, pi) => { if (!pd.ocr) return; pd.items.forEach(it => {
+      const m = /^(\d{1,2})[.)]$/.exec(it.str); if (!m || Math.abs(it.size - qs) > 0.1) return;
+      const ci = colOf(it.x); if (Math.abs(it.x - cols[ci]) > 9) { it.__drop = 1; return; }
+      list.push({ it: it, pd: pd, num: parseInt(m[1], 10), k: pi * 1e6 + ci * 1e5 + it.top });
+    }); });
+    list.sort((a, b) => a.k - b.k);
+    const n = list.length, len = new Array(n).fill(1), prev = new Array(n).fill(-1);
+    for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) if (list[j].num < list[i].num && len[j] + 1 > len[i] && list[i].num <= maxN + 2 && list[i].num >= 1) { len[i] = len[j] + 1; prev[i] = j; }
+    let best = 0; for (let i = 1; i < n; i++) if (len[i] > len[best]) best = i;
+    const keep = new Set(); for (let i = best; i >= 0 && n; i = prev[i]) keep.add(list[i]);
+    list.forEach(o => { if (!keep.has(o)) o.pd.items = o.pd.items.filter(x => x !== o.it); });
+    pages.forEach(pd => { if (pd.ocr) pd.items = pd.items.filter(x => !x.__drop); });
+  }
+  const _ocrMemo = new WeakMap();
+  async function ocrItems(doc, page, vp, pageNum) {
+    let m = _ocrMemo.get(doc); if (!m) { m = {}; _ocrMemo.set(doc, m); }
+    if (!m[pageNum]) m[pageNum] = (async () => {
+      const sc = Math.min(3, Math.max(1.5, 1500 / vp.width)), v2 = page.getViewport({ scale: sc });
+      const cv = document.createElement('canvas'); cv.width = Math.ceil(v2.width); cv.height = Math.ceil(v2.height);
+      const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: cx, viewport: v2, canvas: cv }).promise;
+      const ws = await root.OcrLite.words(cv), H = vp.height;
+      return ws.map(w => { const top = w.y0 / sc, bot = w.y1 / sc, hgt = bot - top; return { str: w.text, x: w.x0 / sc, w: (w.x1 - w.x0) / sc, size: Math.round(hgt * 0.9 * 2) / 2, top: top, bottom: bot, base: bot - hgt * 0.15 }; });
+    })();
+    return m[pageNum];
   }
 
   // 쪽에 그려진 그림(이미지)들의 위치 [x0, top, x1, bottom] (위에서부터 잰 좌표).
@@ -414,6 +513,8 @@
       if (onProgress) onProgress(p, n);
     }
 
+    if (pages.some(pd => pd.ocr)) { try { await ocrFillNumbers(doc, pages); } catch (e) { if (root.console) console.warn('OCR 번호 보충 실패', e); } }
+
     // 1) 문항 번호 글자 크기 = "서로 다른 번호가 가장 많이 나오는 크기 중 가장 큰 것"
     const groups = {};
     pages.forEach((pd, idx) => {
@@ -652,7 +753,7 @@
     // 4) 추정 문항 수 = 가장 큰 문항 번호
     const questionCount = questions.reduce((m, q) => Math.max(m, q.num), 0);
     const explanations = computeExplanations(pages, answerPages, qSize);
-    return { pageCount: n, questions: questions, answers: answers, explanations: explanations, questionPages: questionPages, answerPages: answerPages, questionCount: questionCount, tableRects: pages.map(pd => pd.tableRect || null) };
+    return { ocr: pages.some(pd => pd.ocr), pageCount: n, questions: questions, answers: answers, explanations: explanations, questionPages: questionPages, answerPages: answerPages, questionCount: questionCount, tableRects: pages.map(pd => pd.tableRect || null) };
   }
 
   // 문제지 뒤에 정답지를 붙여 만든 PDF: 붙인 쪽(뒤에서 n쪽)에서 잡힌 "문항"은 정답표 속 번호라서 문항에서 빼고, 그 쪽들을 정답 쪽으로 돌린다
@@ -3530,17 +3631,17 @@
     const need = Math.max(5, Math.round((scan.questionCount || 0) * 0.6));
     if (n - 1 < need) {
       // 학교 시험지의 "과목별 정답표"(번호 | 영어 | 과학 | 역사 …) — 과학 칸만 읽는다
-      for (let p = Math.max(1, lastQ); p <= scan.pageCount; p++) {
+      for (let p = scan.ocr ? 1 : Math.max(1, lastQ); p <= scan.pageCount; p++) {
         const pt = await parsePointsTable(doc, p);
         if (pt && Object.keys(pt.answers).length >= need) return { answers: pt.answers, pages: p > lastQ ? [p] : [], notes: pt.notes, label: p + '쪽 정답표' };
       }
-      for (let p = lastQ + 1; p <= scan.pageCount; p++) {
+      for (let p = scan.ocr ? 1 : lastQ + 1; p <= scan.pageCount; p++) {
         const kt = await parseKeyTable(doc, p);
         if (kt && Object.keys(kt.answers).length >= need) return { answers: kt.answers, pages: [p], notes: kt.notes };
         const g = await parseSubjectGrid(doc, p);
         if (g && Object.keys(g).length >= need) return { answers: g, pages: [p] };
       }
-      for (let p = Math.max(1, lastQ); p <= scan.pageCount; p++) {          // 마지막 문제와 같은 쪽에 있는 표도 본다
+      for (let p = scan.ocr ? 1 : Math.max(1, lastQ); p <= scan.pageCount; p++) {          // 마지막 문제와 같은 쪽에 있는 표도 본다
         const g2 = await parseNumAnsGrid(doc, p);
         if (g2 && Object.keys(g2).length >= Math.min(need, 5)) return { answers: g2, pages: p > lastQ ? [p] : [], label: p + '쪽 정답표' };
       }
