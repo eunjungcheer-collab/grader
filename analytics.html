@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>학습 분석 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611102350">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+.tabs2{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;}
+.tabs2 button{padding:8px 14px;border-radius:99px;border:1px solid var(--line);background:#fff;font-weight:700;font-size:14px;cursor:pointer;}
+.tabs2 button.on{background:var(--point);color:#fff;border-color:var(--point);}
+#frame{width:100%;border:0;background:transparent;min-height:70vh;}
+</style>
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>📊 학습 분석</h1>
+  <div class="tabs2" id="tabs"></div>
+  <iframe id="frame" title="분석"></iframe>
+</template>
+<script src="js/config.js?v=202611102350"></script>
+<script src="js/api.js?v=202611102350"></script>
+<script src="js/common.js?v=202611102350"></script>
+<script>
+requireLogin();
+renderHeader({ wide: true });
+const TABS = [['stats', '📊 시험 통계', 'stats.html'], ['report', '🧾 학생 리포트', 'report.html'], ['trend', '📈 성적 추이', 'trend.html'], ['review', '🔁 복습 현황', 'review.html']];
+const $ = id => document.getElementById(id);
+function show(k) {
+  const t = TABS.find(x => x[0] === k) || TABS[0];
+  $('tabs').innerHTML = TABS.map(x => '<button type="button" data-k="' + x[0] + '" class="' + (x[0] === t[0] ? 'on' : '') + '">' + x[1] + '</button>').join('');
+  $('tabs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { history.replaceState(null, '', '#' + b.dataset.k); show(b.dataset.k); }));
+  $('frame').src = t[2];
+}
+function fit() { $('frame').style.height = Math.max(520, window.innerHeight - $('frame').getBoundingClientRect().top - 12) + 'px'; }
+window.addEventListener('resize', fit);
+show(location.hash.slice(1)); setTimeout(fit, 50); setTimeout(fit, 500);
+</script>
+</body>
+</html>

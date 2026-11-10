@@ -1,7 +1,8 @@
-window.APP_BUILD = '202611102340';
+window.APP_BUILD = '202611102350';
 // ── 새 버전 자동 적용: 켤 때마다 build.txt(캐시 없이)와 비교해 다르면 저장본을 비우고 한 번 새로고침 ──
 (function () {
   try {
+    if (window.self !== window.top) return;
     fetch('build.txt?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (t) {
       t = (t || '').trim(); if (!/^\d{12}$/.test(t) || t === window.APP_BUILD) return;
       var k = 'upd_try_' + t; if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1');
@@ -14,6 +15,7 @@ window.APP_BUILD = '202611102340';
   } catch (e) {}
 })();
 function renderHeader(opts) {
+  if (window.self !== window.top) { const st = document.createElement('style'); st.textContent = '.topbar,.backlink{display:none!important}.wrap{padding-top:6px!important}'; document.head.appendChild(st); }   // 학습 분석 탭 안에 들어가 있을 때는 머리글을 숨긴다
   const isLoggedIn = !!getTeacherPassword();
   const authHtml = isLoggedIn ? `
     <div class="topbar-auth">

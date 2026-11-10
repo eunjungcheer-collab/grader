@@ -2266,7 +2266,10 @@ function actionRestoreTrash_(p) {
 // 알림장 앱에서 「카톡/문자로 공유할 내용 복사」를 누를 때 같은 내용이 학생 앱 숙제란에도 올라오고 푸시 알림이 가요.
 const HW_HEADERS = ['id', 'studentName', 'createdAt', 'date', 'bookLesson', 'homework', 'text', 'doneAt', 'pushedAt', 'dueAt', 'remindAt', 'remindedAt'];
 function hwSheet_() {
-  const sh = ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Homework', HW_HEADERS);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName('Homework');
+  if (sh && sh.getLastColumn() >= HW_HEADERS.length) return sh;          // 빠른 길: 매번 서식·머리글을 다시 만지지 않는다 (학생 앱을 열 때마다 불리는 함수)
+  sh = ensureSheet_(ss, 'Homework', HW_HEADERS);
   try { if (sh.getLastColumn() < HW_HEADERS.length) sh.getRange(1, 1, 1, HW_HEADERS.length).setValues([HW_HEADERS]); } catch (e) {}   // 예전 시트에 마감 열 추가
   try { sh.getRange(1, 1, sh.getMaxRows(), HW_HEADERS.length).setNumberFormat('@'); } catch (e) {}   // 날짜·'1-1' 같은 글자가 시트에서 날짜로 바뀌지 않게 글자 서식으로
   return sh;
