@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611102330">
+<link rel="stylesheet" href="css/style.css?v=202611102345">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611102330"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611102330"></script>
-<script src="js/vendor/pdf.min.js?v=202611102330"></script>
-<script src="js/config.js?v=202611102330"></script>
-<script src="js/api.js?v=202611102330"></script>
-<script src="js/common.js?v=202611102330"></script>
-<script src="js/bankcore.js?v=202611102330"></script>
-<script src="js/pdfui.js?v=202611102330"></script>
-<script src="js/pdfview.js?v=202611102330"></script>
+<script src="js/vendor/qrcode.min.js?v=202611102345"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611102345"></script>
+<script src="js/vendor/pdf.min.js?v=202611102345"></script>
+<script src="js/config.js?v=202611102345"></script>
+<script src="js/api.js?v=202611102345"></script>
+<script src="js/common.js?v=202611102345"></script>
+<script src="js/bankcore.js?v=202611102345"></script>
+<script src="js/pdfui.js?v=202611102345"></script>
+<script src="js/pdfview.js?v=202611102345"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -796,6 +796,11 @@ function peekImages(pair) {
   });
 }
 async function runParallelAuto(pairs) {
+  if (!IS_CHILD) {      // 1개용 화면(왼쪽 PDF·오른쪽 정답 칸)을 바로 접고, 여러 시험지 모드 진행 화면만 보여 준다
+    ['scan-result', 'scan-summary'].forEach(id => { const el = $(id); if (el) el.style.display = 'none'; });
+    const pn = $('pdf-answer-file'); if (pn) pn.value = '';
+    window.scrollTo(0, 0);
+  }
   const POOL = Math.max(1, parseInt($('auto-pool').value, 10) || 3), results = [], note = $('queue-note');
   const state = pairs.map(p => ({ name: p.file.name, st: '대기' }));
   const paint = () => { note.style.display = 'block'; note.innerHTML = '⚡ 자동 등록 — 시험지 ' + pairs.length + '개를 ' + POOL + '개씩 동시에 처리해요. 이 창을 닫지 마세요.<br>' + state.map(x => (x.st === '완료' ? '✅ ' : x.st === '진행 중' ? '⏳ ' : x.st.startsWith('건너뜀') ? '⏭ ' : x.st === '대기' ? '· ' : '⚠️ ') + escapeHtml(x.name) + ' — ' + escapeHtml(x.st)).join('<br>'); };
