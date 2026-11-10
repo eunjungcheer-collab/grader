@@ -168,6 +168,8 @@ function handle_(e) {
       case 'addHomework': result = actionAddHomework_(params); break;
       case 'homeworkDone': result = actionStuHomeworkDone_(params); break;
       case 'listHomework': result = actionListHomework_(params); break;
+      case 'duplicateExam': result = actionDuplicateExam_(params); break;
+      case 'nudgeMissing': result = actionNudgeMissing_(params); break;
       case 'listTrash': result = actionListTrash_(params); break;
       case 'restoreTrash': result = actionRestoreTrash_(params); break;
       case 'bankUnitMap': result = actionBankUnitMap_(params); break;
@@ -194,6 +196,31 @@ function actionChangePassword_(p) {
   return { ok: true };
 }
 
+// 시험지 복사: 정답·문항·PDF는 그대로 두고 새 시험(제목 + ' (복사)')으로 만든다. 제출 기록은 따라오지 않는다.
+function actionDuplicateExam_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), sheet = ss.getSheetByName(SHEET_EXAMS), found = findExamRow_(sheet, p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const row = found.row.slice(), newId = 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  row[0] = newId; row[1] = cleanText_(p.title, 120) || (String(row[1]) + ' (복사)'); row[3] = new Date().toISOString();
+  sheet.appendRow(row);
+  return { ok: true, id: newId, title: String(row[1]) };
+}
+// 미제출 학생에게 독촉 푸시: ids 를 주면 그 예약만, 없으면 기한이 지난 미제출 전부
+function actionNudgeMissing_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), sh = assignSheet_(), last = sh.getLastRow();
+  if (last < 2) return { ok: true, sent: 0, targets: 0 };
+  const want = (p.ids && p.ids.length) ? {} : null; (p.ids || []).forEach(function (i) { want[String(i)] = 1; });
+  let sent = 0, targets = 0;
+  sh.getRange(2, 1, last - 1, ASSIGN_HEADERS.length).getValues().forEach(function (r) {
+    if (want ? !want[String(r[0])] : String(r[5]) !== 'missed') return;
+    if (String(r[5]) === 'done' || String(r[5]) === 'late') return;
+    targets++;
+    try { if (pushToStudent_(String(r[2]), '📌 아직 제출하지 않은 시험이 있어요', examTitleOf_(ss, r[1]) + ' · 지금 바로 제출해 주세요')) sent++; } catch (e) {}
+  });
+  return { ok: true, sent: sent, targets: targets };
+}
 function actionCreateExam_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   let fileId = '', pdfUrl = '';
@@ -1176,6 +1203,7 @@ function afterSubmit_(ss, found, p, score, objective, score100) {
     if (!repText && wk.weakUnits.length) repText = weakText_({ repeatQ: [], weakUnits: wk.weakUnits }, '');
     if (repText) pushToStudent_(name, '🔁 반복해서 틀리는 문제가 있어요', repText + ' — 앱에서 「틀린 것 다시 풀기」를 해 보세요');
   } catch (e) {}
+  try { if (objective > 0) pushToStudent_(name, '✅ 채점 결과: ' + score100 + '점', title + ' · ' + score + '/' + objective + '개 정답' + (objective - score > 0 ? ' · 틀린 문제 ' + (objective - score) + '개는 「틀린 것 다시 풀기」에서 복습해요' : ' · 모두 맞았어요! 🎉')); } catch (e) {}
   let lowText = '';
   try {      // 낮은 점수: 70점 미만이거나, 이 학생의 바로 전 시험보다 20점 이상 떨어졌을 때
     if (objective > 0) {
@@ -1299,6 +1327,7 @@ function checkDeadlines_() {
   if (!lock.tryLock(5000)) return;
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    try { hwRemind_(); } catch (e) {}      // 숙제 마감 알림 (시험 예약이 없어도 돈다)
     const sh = assignSheet_(), last = sh.getLastRow();
     if (last < 2) return;
     const data = sh.getRange(2, 1, last - 1, ASSIGN_HEADERS.length).getValues();
@@ -2235,9 +2264,10 @@ function actionRestoreTrash_(p) {
 
 // ────────────── 숙제 (알림장 앱 → 학생 앱) ──────────────
 // 알림장 앱에서 「카톡/문자로 공유할 내용 복사」를 누를 때 같은 내용이 학생 앱 숙제란에도 올라오고 푸시 알림이 가요.
-const HW_HEADERS = ['id', 'studentName', 'createdAt', 'date', 'bookLesson', 'homework', 'text', 'doneAt', 'pushedAt'];
+const HW_HEADERS = ['id', 'studentName', 'createdAt', 'date', 'bookLesson', 'homework', 'text', 'doneAt', 'pushedAt', 'dueAt', 'remindAt', 'remindedAt'];
 function hwSheet_() {
   const sh = ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Homework', HW_HEADERS);
+  try { if (sh.getLastColumn() < HW_HEADERS.length) sh.getRange(1, 1, 1, HW_HEADERS.length).setValues([HW_HEADERS]); } catch (e) {}   // 예전 시트에 마감 열 추가
   try { sh.getRange(1, 1, sh.getMaxRows(), HW_HEADERS.length).setNumberFormat('@'); } catch (e) {}   // 날짜·'1-1' 같은 글자가 시트에서 날짜로 바뀌지 않게 글자 서식으로
   return sh;
 }
@@ -2249,7 +2279,7 @@ function hwItemsFor_(key) {
     sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) {
       if (nameKey_(r[1]) !== key) return;
       if (new Date(r[2]).getTime() < cut) return;
-      out.push({ id: String(r[0]), date: hwStr_(r[3]), bookLesson: hwStr_(r[4]), homework: String(r[5]), text: String(r[6]), doneAt: hwStr_(r[7], "yyyy-MM-dd'T'HH:mm:ss") });
+      out.push({ id: String(r[0]), date: hwStr_(r[3]), bookLesson: hwStr_(r[4]), homework: String(r[5]), text: String(r[6]), doneAt: hwStr_(r[7], "yyyy-MM-dd'T'HH:mm:ss"), dueAt: hwStr_(r[9], "yyyy-MM-dd'T'HH:mm:ss") });
     });
     out.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
     return out.slice(0, 30);
@@ -2262,6 +2292,23 @@ function hwPurgeOld_(sh) {
     const cut = Date.now() - 30 * 86400000, vals = sh.getRange(2, 3, last - 1, 1).getValues();
     for (let i = vals.length - 1; i >= 0; i--) { const t = new Date(vals[i][0]).getTime(); if (t && t < cut) sh.deleteRow(i + 2); }
   } catch (e) {}
+}
+function hwIso_(v) { if (!v) return ''; const d = new Date(v); return isNaN(d.getTime()) ? '' : d.toISOString(); }
+// 마감 알림 기본 시각: 마감일 전날 밤 10시(한국 시간)
+function hwDefaultRemind_(dueIso) {
+  const d = new Date(new Date(dueIso).getTime() + 9 * 3600000 - 86400000);     // 한국 시간 기준 전날
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 22 - 9, 0, 0)).toISOString();
+}
+// 10분마다 도는 기한 확인에서 호출: 알림 시각이 지났고 아직 안 한 숙제에만 푸시
+function hwRemind_() {
+  const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return;
+  const vals = sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues(), now = Date.now();
+  vals.forEach(function (r, i) {
+    const rem = r[10] ? new Date(r[10]).getTime() : 0, due = r[9] ? new Date(r[9]).getTime() : 0;
+    if (!rem || r[11] || r[7] || rem > now || (due && now > due + 6 * 3600000)) return;
+    sh.getRange(i + 2, 12).setValue(new Date().toISOString());
+    try { pushToStudent_(String(r[1]), '⏰ 숙제 마감이 다가와요', (r[4] ? r[4] + ' · ' : '') + String(r[5]).replace(/\s+/g, ' ').slice(0, 60) + (due ? ' · 마감 ' + Utilities.formatDate(new Date(due), 'Asia/Seoul', 'M/d(E) HH:mm') : '')); } catch (e) {}
+  });
 }
 function actionAddHomework_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
@@ -2277,8 +2324,9 @@ function actionAddHomework_(p) {
       const vals = sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues();
       for (let i = vals.length - 1; i >= 0; i--) if (nameKey_(vals[i][1]) === key && hwStr_(vals[i][3]) === today && hwStr_(vals[i][4]) === bl) { row = i + 2; changed = String(vals[i][5]) !== hw; break; }
     }
-    if (row) { isNew = false; if (changed) { sh.getRange(row, 6, 1, 4).setValues([[hw, text, '', '']]); } else sh.getRange(row, 7).setValue(text); }
-    else sh.appendRow([Utilities.getUuid().slice(0, 12), name, new Date().toISOString(), today, bl, hw, text, '', '']);
+    const dueIso = hwIso_(p.dueAt), remIso = hwIso_(p.remindAt) || (dueIso ? hwDefaultRemind_(dueIso) : '');
+    if (row) { isNew = false; if (changed) { sh.getRange(row, 6, 1, 4).setValues([[hw, text, '', '']]); sh.getRange(row, 10, 1, 3).setValues([[dueIso, remIso, '']]); } else { sh.getRange(row, 7).setValue(text); if (dueIso) sh.getRange(row, 10, 1, 2).setValues([[dueIso, remIso]]); } }
+    else sh.appendRow([Utilities.getUuid().slice(0, 12), name, new Date().toISOString(), today, bl, hw, text, '', '', dueIso, remIso, '']);
     hwPurgeOld_(sh);
   } finally { lock.releaseLock(); }
   let pushed = false;
@@ -2302,7 +2350,7 @@ function actionListHomework_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return { ok: true, items: [] };
   const cut = Date.now() - 14 * 86400000, out = [];
-  sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) { if (new Date(r[2]).getTime() >= cut) out.push({ name: String(r[1]), date: hwStr_(r[3]), bookLesson: hwStr_(r[4]), homework: String(r[5]), doneAt: hwStr_(r[7]) }); });
+  sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) { if (new Date(r[2]).getTime() >= cut) out.push({ name: String(r[1]), date: hwStr_(r[3]), bookLesson: hwStr_(r[4]), homework: String(r[5]), doneAt: hwStr_(r[7]), dueAt: hwStr_(r[9], "yyyy-MM-dd'T'HH:mm:ss") }); });
   out.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   return { ok: true, items: out.slice(0, 300) };
 }

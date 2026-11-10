@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 예약·알림 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611102220">
+<link rel="stylesheet" href="css/style.css?v=202611102340">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -60,10 +60,10 @@
     <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
   </div>
 </template>
-<script src="js/config.js?v=202611102220"></script>
-<script src="js/api.js?v=202611102220"></script>
-<script src="js/common.js?v=202611102220"></script>
-<script src="js/clockpicker.js?v=202611102220"></script>
+<script src="js/config.js?v=202611102340"></script>
+<script src="js/api.js?v=202611102340"></script>
+<script src="js/common.js?v=202611102340"></script>
+<script src="js/clockpicker.js?v=202611102340"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -93,6 +93,7 @@ async function loadAlerts() {
     let h = '';
     if (r.missed.length) {
       h += '<div style="color:#C1392B; font-weight:700; margin-bottom:4px;">⚠️ 기한 안에 제출하지 않은 학생 ' + r.missed.length + '명</div>';
+      h += '<button type="button" class="btn primary" id="al-nudge" style="margin:4px 0 6px;padding:7px 14px;">🔔 미제출 학생 ' + r.missed.length + '명에게 독촉 알림 보내기</button>';
       h += r.missed.map(m => '<div style="border-top:1px solid var(--line); padding:8px 0;"><b>' + e(m.studentName) + '</b> — ' + e(m.examTitle) + ' <span class="hint" style="margin:0;">(기한 ' + fmt(m.deadline) + ')</span><div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;"><button type="button" class="btn outline al-copy" data-t="' + e(kakaoText(m.studentName, m.examTitle, m.deadline)) + '" style="padding:5px 10px;">💬 카톡 문구 복사</button></div></div>').join('');
     } else h += '<div>기한이 지났는데 안 낸 학생은 없어요.</div>';
     h += '<div style="font-weight:700; margin:12px 0 4px;">📥 새로 제출한 기록 ' + r.recent.length + '건' + (since ? '' : ' <span class="hint" style="margin:0;">(최근 기록)</span>') + '</div>';
@@ -100,6 +101,13 @@ async function loadAlerts() {
     h += '<button type="button" class="btn outline" id="al-seen" style="margin-top:10px;">확인했어요 (새 제출 목록 비우기)</button>';
     body.innerHTML = h;
     body.querySelectorAll('.al-copy').forEach(b => b.addEventListener('click', () => copy(b.dataset.t, b)));
+    const ng = $('al-nudge'); if (ng) ng.addEventListener('click', async () => {
+      if (!confirm('기한이 지났는데 안 낸 학생 전체에게 "아직 제출하지 않은 시험이 있어요" 알림을 보낼까요?')) return;
+      ng.disabled = true; ng.textContent = '보내는 중...';
+      try { const x = await callApi('nudgeMissing', { password: pw() }); if (!x.ok) throw new Error(x.error || '실패'); alert('미제출 ' + x.targets + '명 중 ' + x.sent + '명에게 알림을 보냈어요.' + (x.sent < x.targets ? '\n(나머지는 앱에 가입하지 않았거나 알림을 켜지 않은 학생이에요)' : '')); }
+      catch (err) { alert('알림을 보내지 못했어요: ' + err.message + (/unknown/.test(err.message) ? ' (Apps Script를 새 버전으로 배포했는지 확인하세요)' : '')); }
+      ng.disabled = false; ng.textContent = '🔔 다시 독촉 알림 보내기';
+    });
     $('al-seen').addEventListener('click', () => { try { localStorage.setItem(SEEN, ALERT_NOW || new Date().toISOString()); } catch (x) {} loadAlerts(); });
   });
   } catch (err) { body.innerHTML = '<span style="color:#C1392B;">' + e(err.message) + '</span>'; }

@@ -70,6 +70,36 @@ async function callApi(action, params) {
   if (_QC_WRITE_RE.test(action)) _qcClear();
   return out;
 }
+// ── 오프라인 대기열: 인터넷이 끊겼을 때 한 저장·수정(두 번 실행돼도 안전한 것만)을 기기에 보관했다가 연결되면 자동 전송 ──
+const _OFFQ_KEY = 'offq_v1', _OFFQ_OK = /^(updateExamTitle|updateExamAnswers|updateSubmissionScore|updateQuestions?|setRosters|setAlertSettings|setToc|setPresets|setStuOptions|deleteAssignment|createAssignments|approveStudent)$/;
+function _offqLoad() { try { return JSON.parse(localStorage.getItem(_OFFQ_KEY) || '[]'); } catch (e) { return []; } }
+function _offqSave(q) { try { localStorage.setItem(_OFFQ_KEY, JSON.stringify(q)); } catch (e) {} _offqBanner(); }
+function _offqAdd(payload) { const q = _offqLoad(); q.push({ t: Date.now(), p: payload }); _offqSave(q); }
+function _offqBanner() {
+  try {
+    const n = _offqLoad().length; let el = document.getElementById('offq-banner');
+    if (!n) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'offq-banner'; el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#FEF3C7;color:#7A4B00;padding:8px 12px;font-size:13px;text-align:center;border-top:1px solid #F5D77A;'; document.body.appendChild(el); }
+    el.textContent = '📴 인터넷이 끊겨서 저장 ' + n + '건이 대기 중이에요. 연결되면 자동으로 보내요.';
+  } catch (e) {}
+}
+let _offqBusy = false;
+async function offqFlush() {
+  if (_offqBusy || !navigator.onLine) return; const q = _offqLoad(); if (!q.length) { _offqBanner(); return; }
+  _offqBusy = true;
+  try {
+    while (q.length) {
+      try { const r = await fetch(window.APP_CONFIG.API_URL, { method: 'POST', body: JSON.stringify(q[0].p) }); if (!r.ok) break; await r.json(); }
+      catch (e) { break; }
+      q.shift(); _offqSave(q);
+    }
+    if (!q.length) { try { Object.keys(localStorage).forEach(k => { if (k.indexOf('swr_') === 0) localStorage.removeItem(k); }); } catch (e) {} }
+  } finally { _offqBusy = false; _offqBanner(); }
+}
+window.offqFlush = offqFlush;
+window.addEventListener('online', offqFlush);
+window.addEventListener('load', () => { _offqBanner(); setTimeout(offqFlush, 1500); });
+
 async function _callApiRaw(action, params) {
   const payload = Object.assign({ action: action }, params || {});
   // 조회(list/get)는 같은 요청을 다시 보내도 안전하니, 일시적인 네트워크 오류면 한 번 더 시도한다.
@@ -97,6 +127,7 @@ async function _callApiRaw(action, params) {
         await new Promise(r => setTimeout(r, 800));
         continue;
       }
+      if (network && _OFFQ_OK.test(action) && !navigator.onLine) { _offqAdd(payload); return { ok: true, queued: true }; }   // 인터넷이 끊긴 채 한 저장은 보관했다가 연결되면 자동으로 보낸다
       if (network) throw new Error('서버에 연결하지 못했어요. 인터넷 연결과, Apps Script를 "새 버전으로 배포"했는지 확인해주세요.');
       if (e instanceof SyntaxError) throw new Error('서버가 이상한 응답을 줬어요(Apps Script에서 오류가 났을 수 있어요).');
       throw e;

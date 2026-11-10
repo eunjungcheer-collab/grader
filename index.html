@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611102220">
+<link rel="stylesheet" href="css/style.css?v=202611102340">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -44,6 +44,7 @@
     <a href="review.html">🔁 학생별 복습 현황<small>오답 다시 풀기 진행 · 연속 일수</small></a>
     <a href="stats.html">📊 시험 통계<small>자주 틀리는 문항 · 미제출 학생</small></a>
     <a href="trend.html">📈 학생별 성적 추이</a>
+    <a href="report.html">🧾 학생 리포트<small>점수 변화·약점 단원 한 장 (인쇄·공유)</small></a>
     <a href="student_admin.html">📱 학생용 앱<small>주소 · 가입 승인 · 알림 설정</small></a>
     <a href="bank_list.html">🗃️ 문제은행 보기</a>
     <a href="unit_check.html">🔎 단원 판별<small>파일을 올리면 단원을 알려줘요</small></a>
@@ -52,9 +53,9 @@
   </div></details>
 </template>
 
-<script src="js/config.js?v=202611102220"></script>
-<script src="js/api.js?v=202611102220"></script>
-<script src="js/common.js?v=202611102220"></script>
+<script src="js/config.js?v=202611102340"></script>
+<script src="js/api.js?v=202611102340"></script>
+<script src="js/common.js?v=202611102340"></script>
 <script>
 if (!getTeacherPassword()) { location.replace('teacher_login.html'); }
 const MORE = { appr: 0, weak: 0 };

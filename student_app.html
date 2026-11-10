@@ -123,9 +123,9 @@ svg text{font-family:inherit;}
   <button data-t="wrong"><span class="ic">🔁</span>다시 풀기</button>
 </nav>
 
-<script src="js/config.js?v=202611102220"></script>
-<script src="js/api.js?v=202611102220"></script>
-<script src="js/common.js?v=202611102220"></script>
+<script src="js/config.js?v=202611102340"></script>
+<script src="js/api.js?v=202611102340"></script>
+<script src="js/common.js?v=202611102340"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -375,7 +375,7 @@ function drawHome() {
   if (wk) h += '<div class="banner"><b>🔁 반복해서 틀리는 문제가 있어요</b><br>' + W.repeatQ.slice(0, 3).map(x => esc(x.title || x.examTitle) + ' ' + x.n + '번').join(', ') + (W.repeatQ.length ? ' · ' : '') + W.weakUnits.slice(0, 2).map(u => '「' + esc(u.unit) + '」 단원').join(', ') + '<br>「틀린 것 다시 풀기」에서 복습해 보세요.</div>';
   const HW = (DATA.homework || []).slice(0, 6);
   if (HW.length) {
-    h += '<div class="card" style="margin:8px 0;"><div style="font-weight:800;margin-bottom:6px;">📚 숙제</div>' + HW.map(x => '<div class="hw" style="border-top:1px solid #eee;padding:8px 0;"><div class="muted" style="font-size:12px;">' + esc(x.date) + (x.bookLesson ? ' · ' + esc(x.bookLesson) : '') + '</div><div style="white-space:pre-wrap;margin:3px 0 7px;' + (x.doneAt ? 'color:#888;text-decoration:line-through;' : '') + '">' + esc(x.homework) + '</div><button type="button" class="btn sm" data-hw="' + esc(x.id) + '" data-done="' + (x.doneAt ? '1' : '') + '">' + (x.doneAt ? '✅ 했어요 (취소)' : '했어요') + '</button></div>').join('') + '</div>';
+    h += '<div class="card" style="margin:8px 0;"><div style="font-weight:800;margin-bottom:6px;">📚 숙제</div>' + HW.map(x => '<div class="hw" style="border-top:1px solid #eee;padding:8px 0;"><div class="muted" style="font-size:12px;">' + esc(x.date) + (x.bookLesson ? ' · ' + esc(x.bookLesson) : '') + (x.dueAt && !x.doneAt ? ' · <b style="color:var(--red);">마감 ' + esc(String(x.dueAt).slice(5, 10).replace('-', '/')) + '</b>' : '') + '</div><div style="white-space:pre-wrap;margin:3px 0 7px;' + (x.doneAt ? 'color:#888;text-decoration:line-through;' : '') + '">' + esc(x.homework) + '</div><button type="button" class="btn sm" data-hw="' + esc(x.id) + '" data-done="' + (x.doneAt ? '1' : '') + '">' + (x.doneAt ? '✅ 했어요 (취소)' : '했어요') + '</button></div>').join('') + '</div>';
   }
   h += '<button type="button" class="big main" data-go="mine"><span class="bi">📝</span><div><div class="bt">시험 보기</div><div class="bs">' + (n ? '아직 제출하지 않은 시험이 있어요' : '제출할 시험이 없어요 · 시험 목록 보기') + '</div></div>' + (n ? '<span class="bn">' + n + '</span>' : '') + '</button>';
   h += '<button type="button" class="big" data-go="rec"><span class="bi">📈</span><div><div class="bt">결과 보기</div><div class="bs">' + (last ? '최근 점수 <b>' + last.score100 + '점</b> · ' + esc(last.title) : '아직 제출한 시험이 없어요') + '</div></div></button>';
