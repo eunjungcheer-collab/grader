@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>숙제 현황 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611102220">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+.day{margin:14px 0 4px;font-weight:800;color:var(--point);}
+.hwc{padding:12px 14px;margin:8px 0;}
+.pill{display:inline-block;padding:2px 10px;margin:2px 4px 2px 0;border-radius:99px;font-size:13px;font-weight:700;}
+.ok{background:#E8F5EE;color:#1b7a45;}.no{background:#FDECEA;color:#C1392B;}
+</style>
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>📚 숙제 현황</h1>
+  <p class="muted">알림장에서 학생 앱으로 올린 숙제를 날짜·내용별로 묶어 보여줘요. 학생이 「했어요」를 누르면 ✅로 바뀌어요. (30일 지난 숙제는 자동으로 지워져요)</p>
+  <div id="sum" class="hint"></div>
+  <div id="list" class="hint">불러오는 중...</div>
+</template>
+<script src="js/config.js?v=202611102220"></script>
+<script src="js/api.js?v=202611102220"></script>
+<script src="js/common.js?v=202611102220"></script>
+<script>
+requireLogin();
+renderHeader({});
+const $ = id => document.getElementById(id), e = escapeHtml;
+async function load() {
+  try {
+    const r = await callApi('listHomework', { password: getTeacherPassword() });
+    if (!r.ok) throw new Error(r.error);
+    const items = r.items || [];
+    if (!items.length) { $('sum').textContent = ''; $('list').innerHTML = '아직 올린 숙제가 없어요.'; return; }
+    const groups = {};
+    items.forEach(x => { const k = x.date + '|' + x.bookLesson + '|' + x.homework; (groups[k] = groups[k] || { date: x.date, bl: x.bookLesson, hw: x.homework, st: [] }).st.push(x); });
+    const gl = Object.keys(groups).map(k => groups[k]).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+    const today = gl.filter(g => g.date === gl[0].date), tot = today.reduce((n, g) => n + g.st.length, 0), dn = today.reduce((n, g) => n + g.st.filter(s => s.doneAt).length, 0);
+    $('sum').innerHTML = '<b>' + e(gl[0].date) + '</b> 숙제 · 올린 학생 <b>' + tot + '명</b> 중 <b style="color:#1b7a45;">' + dn + '명 완료</b>, <b style="color:#C1392B;">' + (tot - dn) + '명 아직</b>';
+    let lastDay = '', h = '';
+    gl.forEach(g => {
+      if (g.date !== lastDay) { h += '<div class="day">' + e(g.date) + '</div>'; lastDay = g.date; }
+      const nd = g.st.filter(s => !s.doneAt), dd = g.st.filter(s => s.doneAt);
+      h += '<div class="card hwc"><div class="muted" style="font-size:12px;">' + e(g.bl || '') + '</div><div style="white-space:pre-wrap;margin:3px 0 8px;">' + e(g.hw) + '</div>'
+        + nd.map(s => '<span class="pill no">⬜ ' + e(s.name) + '</span>').join('') + dd.map(s => '<span class="pill ok">✅ ' + e(s.name) + '</span>').join('') + '</div>';
+    });
+    $('list').innerHTML = h;
+  } catch (err) { $('list').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + ' (Apps Script를 새 버전으로 배포했는지 확인하세요)</span>'; }
+}
+load();
+</script>
+</body>
+</html>

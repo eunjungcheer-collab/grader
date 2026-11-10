@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611092010">
+<link rel="stylesheet" href="css/style.css?v=202611102220">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -39,6 +39,7 @@
   <div id="tpush" class="hint" style="display:none;margin:10px 0;padding:12px 14px;border:1.5px dashed var(--line);border-radius:12px;background:#fff;"></div>
   <details class="hm" id="more-box"><summary id="more-sum">🔧 분석 · 문제은행 · 학생 관리</summary><div class="hm-list">
     <a href="weak.html" id="weak-link">🎯 약점 분석<small>오답률 높은 문항 · 반복 오답 학생</small></a>
+    <a href="homework.html">📚 숙제 현황<small>학생 앱에 올린 숙제와 학생별 완료 여부</small></a>
     <a href="trash.html">♻️ 최근 삭제 · 되살리기<small>실수로 지운 시험지·문항·기록 (30일)</small></a>
     <a href="review.html">🔁 학생별 복습 현황<small>오답 다시 풀기 진행 · 연속 일수</small></a>
     <a href="stats.html">📊 시험 통계<small>자주 틀리는 문항 · 미제출 학생</small></a>
@@ -51,9 +52,9 @@
   </div></details>
 </template>
 
-<script src="js/config.js?v=202611092010"></script>
-<script src="js/api.js?v=202611092010"></script>
-<script src="js/common.js?v=202611092010"></script>
+<script src="js/config.js?v=202611102220"></script>
+<script src="js/api.js?v=202611102220"></script>
+<script src="js/common.js?v=202611102220"></script>
 <script>
 if (!getTeacherPassword()) { location.replace('teacher_login.html'); }
 const MORE = { appr: 0, weak: 0 };

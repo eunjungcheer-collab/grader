@@ -1,4 +1,18 @@
-window.APP_BUILD = '202611091800';
+window.APP_BUILD = '202611102220';
+// ── 새 버전 자동 적용: 켤 때마다 build.txt(캐시 없이)와 비교해 다르면 저장본을 비우고 한 번 새로고침 ──
+(function () {
+  try {
+    fetch('build.txt?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (t) {
+      t = (t || '').trim(); if (!/^\d{12}$/.test(t) || t === window.APP_BUILD) return;
+      var k = 'upd_try_' + t; if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1');
+      var done = function () { var u = new URL(location.href); u.searchParams.set('_v', t); location.replace(u.toString()); };
+      var jobs = [];
+      if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (x) { return caches.delete(x); })); }));
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (x) { return x.update(); })); }));
+      Promise.all(jobs).then(done, done);
+    }).catch(function () {});
+  } catch (e) {}
+})();
 function renderHeader(opts) {
   const isLoggedIn = !!getTeacherPassword();
   const authHtml = isLoggedIn ? `
