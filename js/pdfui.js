@@ -807,11 +807,35 @@ function paintAnswerCell(inp) {
 function buildAnswerGrid(box, answers, onChange) {
   box.classList.add('ag');
   box.innerHTML = '';
+  // 입력 방식(예전과 같게): 숫자 한 자리를 치면 바로 다음 칸으로 / '-' 또는 「주」= 주관식 표시하고 다음 칸으로 / '+' · ',' 또는 「복」= 복수정답 칸 켜기·끄기
+  //  (복수정답 칸은 24처럼 여러 숫자를 이어서 치고 Enter·스페이스·→ 로 넘어가요. '/' 는 2/4 처럼 「둘 중 하나만 맞아도 정답」)
+  const cells = [];
+  const setM = (inp, on) => { inp.dataset.multi = on ? '1' : ''; inp.style.background = on ? '#E0E7FF' : ''; inp.title = on ? '복수정답 칸 — 숫자를 이어서 치고 Enter' : ''; };
+  const goto_ = (i, dir) => { const t = cells[i + dir]; if (t) t.focus(); };
   answers.forEach((a, i) => {
     const cell = document.createElement('div'); cell.className = 'ag-cell';
     cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="numeric">';
-    const inp = cell.querySelector('input'); paintAnswerCell(inp);
-    inp.addEventListener('input', () => { answers[i] = inp.value.trim(); paintAnswerCell(inp); if (onChange) onChange(answers); });
+    const inp = cell.querySelector('input'); paintAnswerCell(inp); cells.push(inp);
+    if (/^[1-9]{2,}|\//.test(inp.value)) setM(inp, true);
+    const commit = () => { answers[i] = inp.value.trim(); paintAnswerCell(inp); if (onChange) onChange(answers); };
+    inp.addEventListener('input', e => {
+      const multi = inp.dataset.multi === '1';
+      let raw = inp.value.replace(/[①-⑨]/g, c => String(c.charCodeAt(0) - 0x2460 + 1));
+      if (/[복+,]/.test(raw)) { raw = raw.replace(/[복+,]/g, ''); setM(inp, !multi); inp.value = raw.replace(/[^0-9\/]/g, ''); commit(); return; }
+      if (/[-주]/.test(raw)) { setM(inp, false); inp.value = '-'; commit(); goto_(i, 1); return; }
+      const pasted = !!(e && e.inputType && /Paste|Drop/.test(e.inputType));
+      if (multi || (pasted && raw.replace(/[^0-9]/g, '').length > 1)) {
+        if (!multi) setM(inp, true);
+        inp.value = raw.replace(/[^0-9\/]/g, ''); commit(); return;      // 복수정답: 자동으로 안 넘어가요
+      }
+      inp.value = raw.replace(/[^0-9]/g, '').slice(-1); commit();
+      if (inp.value) goto_(i, 1);
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowRight' || (inp.dataset.multi === '1' && e.key === ' ')) { e.preventDefault(); goto_(i, 1); }
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); goto_(i, -1); }
+      else if (e.key === 'Backspace' && !inp.value) goto_(i, -1);
+    });
     inp.addEventListener('focus', () => inp.select());
     box.appendChild(cell);
   });

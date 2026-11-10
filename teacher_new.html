@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611110032">
+<link rel="stylesheet" href="css/style.css?v=202611110235">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,15 +157,15 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611110032"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611110032"></script>
-<script src="js/vendor/pdf.min.js?v=202611110032"></script>
-<script src="js/config.js?v=202611110032"></script>
-<script src="js/api.js?v=202611110032"></script>
-<script src="js/common.js?v=202611110032"></script>
-<script src="js/bankcore.js?v=202611110032"></script>
-<script src="js/pdfui.js?v=202611110032"></script>
-<script src="js/pdfview.js?v=202611110032"></script>
+<script src="js/vendor/qrcode.min.js?v=202611110235"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611110235"></script>
+<script src="js/vendor/pdf.min.js?v=202611110235"></script>
+<script src="js/config.js?v=202611110235"></script>
+<script src="js/api.js?v=202611110235"></script>
+<script src="js/common.js?v=202611110235"></script>
+<script src="js/bankcore.js?v=202611110235"></script>
+<script src="js/pdfui.js?v=202611110235"></script>
+<script src="js/pdfview.js?v=202611110235"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -227,11 +227,20 @@ $('pdf-file').addEventListener('change', function () { onPickFiles(Array.from(th
   document.addEventListener('dragleave', ev => { if (!ev.relatedTarget) document.body.style.outline = ''; });
   document.addEventListener('drop', ev => {
     if (!isFiles(ev)) return; ev.preventDefault(); document.body.style.outline = '';
+    if (ev.target && ev.target.closest && ev.target.closest('input[type=file]')) return;      // 파일 칸 위에 놓은 것은 칸이 알아서 받는다 (두 번 올라가지 않게)
     const fs2 = Array.from(ev.dataTransfer.files).filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
     if (fs2.length) onPickFiles(fs2);
   });
 })();
 async function onPickFiles(newFiles) {
+  // 같은 파일이 두 번 들어오는 것 방지: 파일 칸에 끌어다 놓으면 「칸 자체의 선택」과 「화면 전체 끌어다 놓기」가 둘 다 동작해서 같은 시험지가 2개로 잡혔다
+  { const fk = f => f.name + '|' + f.size + '|' + f.lastModified, seen = {}; newFiles = newFiles.filter(f => { const k = fk(f); if (seen[k]) return false; seen[k] = 1; return true; });
+    const sig = newFiles.map(fk).sort().join('#'), now = Date.now();
+    if (!IS_CHILD && window.__lastPick && window.__lastPick.sig === sig && now - window.__lastPick.t < 3000) return;
+    window.__lastPick = { sig: sig, t: now };
+    const cur = (!IS_CHILD && curPair) ? [curPair.file, curPair.ans].filter(Boolean).map(fk) : [];
+    if (cur.length) newFiles = newFiles.filter(f => cur.indexOf(fk(f)) < 0);
+    if (!newFiles.length) return; }
   let fl = newFiles.slice();
   if (!fl.length) return;
   if (!IS_CHILD && window.__liveAdd) {      // 등록이 진행 중이면 기다리게 하지 않고 지금 돌아가는 줄에 바로 이어 붙인다
@@ -1042,8 +1051,9 @@ function showAutoReview(R) {
         ov.style.cssText = 'position:fixed; inset:0; z-index:9999; background:#fff; display:flex; flex-direction:column;';
         ov.innerHTML = '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid #cbd5e1; background:#F1F5F9;"><b style="flex:1 1 200px;">' + escapeHtml(x.title) + '</b><label style="font-size:12px;">확대 <input type="range" class="sp-zoom" min="40" max="200" value="100" style="vertical-align:middle;"></label><span class="sp-msg hint" style="margin:0;"></span><button type="button" class="btn primary sp-save" style="padding:6px 16px;">저장</button><button type="button" class="btn outline sp-close" style="padding:6px 16px;">닫기</button></div>' +
           '<style>.sp-body{flex:1; display:flex; min-height:0; overflow:hidden;} .sp-left{flex:1 1 56%; min-width:0; height:100%; overflow:auto; -webkit-overflow-scrolling:touch; padding:8px; background:#E2E8F0;} .sp-right{flex:1 1 44%; min-width:0; height:100%; overflow:auto; -webkit-overflow-scrolling:touch; padding:10px;} @media (max-width:760px){.sp-body{flex-direction:column;} .sp-left{flex:1 1 55%; height:auto; min-height:0;} .sp-right{flex:1 1 45%; height:auto; min-height:0;}}</style><div class="sp-body"><div class="sp-left">' + (pgs.length ? pgs.map(p => '<div style="font-size:12px; margin:4px 0 2px;"><b>' + p.n + '쪽</b>' + (p.hit ? ' <span style="color:#C1392B;">(정답·해설이 있을 만한 쪽)</span>' : '') + '</div><img class="sp-img" src="' + p.url + '" style="width:100%; display:block; border:1px solid #94A3B8; background:#fff; margin-bottom:10px;">').join('') : '<div class="hint">쪽 그림을 만들지 못했어요.</div>') + '</div>' +
-          '<div class="sp-right"><div class="hint" style="margin:0 0 8px;">왼쪽 그림을 보면서 정답을 적고 「저장」을 누르세요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4, 주관식은 - 로 써요.</div><div class="sp-grid"></div></div></div>';
+          '<div class="sp-right"><div class="hint" style="margin:0 0 8px;">왼쪽 그림을 보면서 정답을 적고 「저장」을 누르세요. <b>숫자를 한 자리 치면 바로 다음 칸으로 넘어가요.</b> 주관식은 <b>-</b>(또는 「주」)를 치면 표시하고 건너뛰어요. 복수정답은 <b>+</b>(또는 「복」)를 먼저 치고 24처럼 이어서 친 뒤 Enter·스페이스로 넘어가요 (둘 중 하나만 맞아도 정답이면 2/4).</div><div class="sp-grid"></div></div></div>';
         document.body.appendChild(ov); document.body.style.overflow = 'hidden';
+        setTimeout(() => { const f = Array.from(ov.querySelectorAll('.sp-grid .ag-in')).find(i2 => !i2.value.trim()); if (f) f.focus(); }, 50);
         const spm = ov.querySelector('.sp-msg'), spb = ov.querySelector('.sp-save');
         buildAnswerGrid(ov.querySelector('.sp-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; spm.textContent = ''; });
         ov.querySelector('.sp-zoom').addEventListener('input', e => { ov.querySelectorAll('.sp-img').forEach(im => { im.style.width = e.target.value + '%'; }); });
@@ -1066,6 +1076,8 @@ function showAutoReview(R) {
         '<div class="qunit-row" style="flex-wrap:wrap;"><b>📏 구간</b><input type="number" class="rv-rf" min="1" placeholder="시작" style="width:64px;"> <span>번 ~</span> <input type="number" class="rv-rt" min="1" placeholder="끝" style="width:64px;"> <span>번</span><button type="button" class="btn outline rv-rangebtn" style="padding:4px 10px;">위에서 고른 단원·소단원을 이 구간에 적용</button></div><div class="hint rv-rsum" style="margin:2px 0 6px; font-weight:700;"></div>' +
         q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b>' + o.n + '번</b>' + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span></div>').join('');
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
+      { const hd = document.createElement('div'); hd.className = 'rv-uhead'; hd.style.cssText = 'position:sticky; top:0; z-index:6; background:#fff; padding:6px 0 4px; border-bottom:2px solid var(--line); box-shadow:0 4px 6px -4px rgba(0,0,0,.15);';
+        const kids = Array.from(body.children).slice(0, 4); body.insertBefore(hd, kids[0]); kids.forEach(k => hd.appendChild(k)); }       // 전체·구간 지정 줄을 맨 위에 고정해서, 아래로 내려가도 구간 버튼이 보이게 한다
       if (noBank) { const w = document.createElement('div'); w.className = 'banner'; w.style.cssText = 'margin:6px 0;'; w.innerHTML = '⚠️ 이 시험지의 문항이 <b>문제은행에 저장돼 있지 않아서</b> 여기서 고른 단원은 저장되지 않아요. (문제은행 저장을 끄고 등록했거나, 문제 그림을 만들지 못한 시험지예요.) 문제은행에 넣으려면 「문제은행에 저장」을 켜고 다시 등록해 주세요.'; body.insertBefore(w, body.firstChild); }
       if (!x.qthumb || !Object.keys(x.qthumb).length) {       // 문항 그림이 하나라도 없으면(사진 시험지 등) 시험지 쪽 그림을 왼쪽에 둔다. 사진(스캔) 시험지는 문항별로 오려 낼 수 없어서, 왼쪽에 시험지 쪽 그림을 두고 오른쪽에서 단원을 고르게 한다 (위아래로 오가지 않도록)
         const right = document.createElement('div'); right.style.cssText = 'flex:1 1 420px; min-width:0;';
