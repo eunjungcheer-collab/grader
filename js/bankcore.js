@@ -2396,7 +2396,7 @@
     const cl = { t: ext[0].t, b: ext[0].b, x0: ext[0].x0, x1: ext[0].x1 }; let nextT = null;
     for (let i = 1; i < ext.length; i++) {
       const e = ext[i];
-      if (e.t - cl.b <= 9 && Math.max(cl.b, e.b) - cl.t <= 80) { cl.b = Math.max(cl.b, e.b); cl.x0 = Math.min(cl.x0, e.x0); cl.x1 = Math.max(cl.x1, e.x1); } else { nextT = e.t; break; }
+      if (e.t - cl.b <= 9 && Math.max(cl.b, e.b) - cl.t <= 100) { cl.b = Math.max(cl.b, e.b); cl.x0 = Math.min(cl.x0, e.x0); cl.x1 = Math.max(cl.x1, e.x1); } else { nextT = e.t; break; }
     }
     if (nextT === null || cl.b - cl.t < 18 || cl.b > PH * 0.22) return null;
     const x0 = Math.max(0, Math.min(cl.x0 - 4, 57)), x1 = Math.min(pd.W, Math.max(cl.x1 + 4, pd.W - 57));
