@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611111539">
+<link rel="stylesheet" href="css/style.css?v=202611111553">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,16 +157,16 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611111539"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611111539"></script>
-<script src="js/vendor/pdf.min.js?v=202611111539"></script>
-<script src="js/config.js?v=202611111539"></script>
-<script src="js/api.js?v=202611111539"></script>
-<script src="js/common.js?v=202611111539"></script>
-<script src="js/ocr.js?v=202611111539"></script>
-<script src="js/bankcore.js?v=202611111539"></script>
-<script src="js/pdfui.js?v=202611111539"></script>
-<script src="js/pdfview.js?v=202611111539"></script>
+<script src="js/vendor/qrcode.min.js?v=202611111553"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611111553"></script>
+<script src="js/vendor/pdf.min.js?v=202611111553"></script>
+<script src="js/config.js?v=202611111553"></script>
+<script src="js/api.js?v=202611111553"></script>
+<script src="js/common.js?v=202611111553"></script>
+<script src="js/ocr.js?v=202611111553"></script>
+<script src="js/bankcore.js?v=202611111553"></script>
+<script src="js/pdfui.js?v=202611111553"></script>
+<script src="js/pdfview.js?v=202611111553"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1720,7 +1720,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
       BankCore.applyRedactions(PDFLib, explDoc, redactions.filter(r => sortedAns.includes(r.page)).map(r => Object.assign({}, r, { page: sortedAns.indexOf(r.page) + 1 })));
     }
     // 기출문제가 아니면 첫 쪽 제목 칸의 "○○중 대비" 같은 특정 학교 이름 제목을 시험지 제목으로 바꾼다 (기출문제는 학교 이름을 그대로 둔다)
-    try { if (readClassify(document, 'bk').kind !== '기출') { const f1 = pdfDoc.getPages()[0], pl = qrPlacement(f1.getWidth(), f1.getHeight(), qrOpts()), qr = { x0: pl.x - 6, top: f1.getHeight() - pl.y - pl.size - 6, bottom: f1.getHeight() - pl.y + 6 }; let tb = await BankCore.findTitleBox(pdfInfo.doc); if (!tb) { try { tb = await BankCore.findHeaderCluster(pdfInfo.doc); } catch (e) {} } if (tb) await BankCore.replaceTitleBox(PDFLib, pdfDoc, tb, title, qr); else await BankCore.stampTitleHeader(PDFLib, pdfDoc, pdfInfo.doc, title, qr); } } catch (e) { console.warn('제목 바꾸기 실패', e); }
+    try { if (readClassify(document, 'bk').kind !== '기출') { const f1 = pdfDoc.getPages()[0], pl = qrPlacement(f1.getWidth(), f1.getHeight(), qrOpts()), qr = { x0: pl.x - 6, top: f1.getHeight() - pl.y - pl.size - 6, bottom: f1.getHeight() - pl.y + 6 }; let tb = null; try { tb = await BankCore.findTitleBox(pdfInfo.doc); } catch (e) { console.warn('제목칸 찾기 실패', e); } if (!tb) { try { tb = await BankCore.findHeaderCluster(pdfInfo.doc); } catch (e) { console.warn('제목 머리 찾기 실패', e); } } let done = false; if (tb) { try { done = await BankCore.replaceTitleBox(PDFLib, pdfDoc, tb, title, qr); } catch (e) { console.warn('제목 바꾸기 실패', e); } } if (!done) { try { await BankCore.stampTitleHeader(PDFLib, pdfDoc, pdfInfo.doc, title, qr); } catch (e) { console.warn('제목 붙이기 실패', e); } } } } catch (e) { console.warn('제목 바꾸기 실패', e); }
     await stampQrOnDoc(pdfDoc, studentLinkFor(examId), qrOpts());
     const merged = await BankCore.mergePdfs(PDFLib, pdfDoc, explDoc);
     await BankCore.addPageNumbers(PDFLib, merged, { logoSize: 10, logoTop: 14 });
