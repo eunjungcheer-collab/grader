@@ -2857,7 +2857,7 @@
         return;
       }
       const h = line.match(/^(?:#+\s*|\[|【)\s*([^\]】]+?)\s*(?:\]|】)?$/);
-      if (h && /^(초|중|고)\s*\d|^(중등|고등|[초중고]\d)/.test(h[1].replace(/\s/g, ''))) { grade = h[1].replace(/\s/g, ''); return; }
+      if (h && /^(초|중|고)\s*\d|^(중등|고등|[초중고]\d|공통과학|통합과학)/.test(h[1].replace(/\s/g, ''))) { grade = h[1].replace(/\s/g, ''); return; }
       line = line.replace(/^[\s\-*•·▶▷]+/, '');
       let no = 0;
       const nm = line.match(/^(\d{1,2})\s*(?:단원|[.)])?\s+(?=\S)/);            // "4. 물질의 구성" · "4단원 물질의 구성" → 번호 4
