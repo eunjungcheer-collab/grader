@@ -231,7 +231,14 @@
       }));
       const items = [].concat.apply([], outs);
       // 단 맨 아래 문항을 어디까지 자를지 정하도록, 단마다 바닥 근처에 표시를 하나 둔다
-      { let re = Math.floor(wpx * 0.975); while (re > wpx * 0.6 && !on(re)) re--; items.push({ str: '', x: re / sc, w: 0, size: 6, top: H - 70, bottom: H - 69, base: H - 69, sentinel: 1, rightInk: re / sc }); }       // 쪽 안쪽의 오른쪽 끝(글자나 테두리선)
+      { let re = Math.floor(wpx * 0.975); while (re > wpx * 0.6 && !on(re)) re--; items.push({ str: '', x: re / sc, w: 0, size: 6, top: H - 58, bottom: H - 57, base: H - 57, sentinel: 1, rightInk: re / sc }); }       // 쪽 안쪽의 오른쪽 끝(글자나 테두리선)
+      // 단마다 "글자·그림이 처음 시작하는 높이": 첫 문항 번호보다 한참 위에 내용이 있으면 공통 지문(머리글을 못 읽은 경우)으로 본다
+      lefts.forEach((l, li) => {
+        const xa = Math.max(0, Math.floor(l - 6 * sc)), xb = li + 1 < lefts.length ? Math.floor(lefts[li + 1] - 6 * sc) : Math.floor(wpx * 0.97);
+        let run = 0, found = -1;
+        for (let y = y0; y < y1 && found < 0; y++) { const ro = y * wpx * 4; let c = 0; for (let x = xa; x < xb; x += 2) if (id[ro + x * 4] < 140) c++; if (c >= 5) { if (++run >= Math.max(2, Math.round(sc * 1.2))) found = y - run + 1; } else run = 0; }
+        if (found >= 0) items.push({ str: '', x: l / sc, w: 0, size: 6, top: H - 58, bottom: H - 57, base: H - 57, sentinel: 1, colTop: found / sc });
+      });
       lefts.forEach(l => items.push({ str: '.', x: l / sc, w: 2, size: 6, top: H - 62, bottom: H - 56, base: H - 57, sentinel: 1 }));
       return items;
     })();
@@ -763,6 +770,8 @@
           else if (headTop[0] === null) {
             // 단 맨 위에 "※ …" 설명 줄과 표·그림만 있고 선택지가 없으면: 앞 문항 이어짐이 아니라 첫 문항이 쓰는 표·그림이다
             const cap = colAllH.filter(it => /^\s*[※＊*]/.test(String(it.str)) && it.x > x0 - 14 && it.x < x0 + 34 && it.top < rb && it.top > pd.H * 0.04).sort((u, v) => u.top - v.top)[0];
+            const ctIt = pd.ocr ? pd.items.find(it => it.colTop !== undefined && Math.abs(it.x - (x0 + 6)) < 24) : null;
+            if (!cap && ctIt && first.top - ctIt.colTop > 48 && ctIt.colTop > pd.H * 0.03) headTop[0] = Math.max(0, ctIt.colTop - 3);      // 스캔: 첫 문항 위에 공통 지문(머리글은 못 읽음)
             if (cap) {
               const above = colAllH.some(it => it.bottom < cap.top - 2 && it.top > pd.H * 0.07 && String(it.str).trim() && !jkc.has(it));
               const between = colAllH.filter(it => it.top >= cap.bottom - 1 && it.top < first.top - 4 && String(it.str).trim() && !jkc.has(it));
