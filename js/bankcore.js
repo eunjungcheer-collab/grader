@@ -72,7 +72,7 @@
     const cols = colsRaw, colLo = cols.map(c => c - 2), colHi = cols.map(c => c + 2);
     const colOf = x => { let bi = 0; cols.forEach((c, i) => { if (Math.abs(c - x) < Math.abs(cols[bi] - x)) bi = i; }); return bi; };
     const key = (pi, x, top) => pi * 1e6 + colOf(x) * 1e5 + top;
-    const conf = []; pages.forEach((pd, pi) => spansBy[pi].forEach(sp => { if (Math.abs(sp.size - qs) <= 1.5 && Math.abs(sp.x - cols[colOf(sp.x)]) <= 9) conf.push({ num: sp.num, k: key(pi, sp.x, sp.top) }); }));
+    const conf = []; pages.forEach((pd, pi) => spansBy[pi].forEach(sp => { if (sp.num >= 1 && Math.abs(sp.size - qs) <= 1.5 && Math.abs(sp.x - cols[colOf(sp.x)]) <= 9) conf.push({ num: sp.num, k: key(pi, sp.x, sp.top) }); }));
     { // 번호가 겹치게 읽힌 것(다른 쪽의 잘못 읽힌 번호)은 "1, 2, 3 …" 순서에 맞는 가장 긴 줄만 남긴다
       conf.sort((a, b) => a.k - b.k);
       const n0 = conf.length, ln = new Array(n0).fill(1), pv = new Array(n0).fill(-1);
@@ -112,7 +112,7 @@
       if (have[n]) return;
       let lo = -Infinity, hi = Infinity;
       Object.keys(have).forEach(k => { const c = have[k], v = c.num; if (v < n && c.k > lo) lo = c.k; if (v > n && c.k < hi) hi = c.k; });
-      const ok = cands.filter(c => c.num === n && c.k > lo && c.k < hi).sort((a, b) => ((b.conf >= 30) - (a.conf >= 30)) || (Math.abs(a.x - cols[colOf(a.x)]) - Math.abs(b.x - cols[colOf(b.x)])))[0];
+      const ok = cands.filter(c => c.num === n && c.k > lo && c.k < hi && Math.abs(c.x - cols[colOf(c.x)]) <= 9).sort((a, b) => ((b.conf >= 30) - (a.conf >= 30)) || (Math.abs(a.x - cols[colOf(a.x)]) - Math.abs(b.x - cols[colOf(b.x)])))[0];
       if (!ok) return;
       have[n] = { num: n, k: ok.k };
       pages[ok.pi].items = pages[ok.pi].items.filter(it => !(Math.abs(it.top - ok.top) < 6 && Math.abs(it.x - ok.x) < 20 && /^\d{1,2}[.)]$/.test(it.str)));      // 같은 자리에서 다른 번호로 잘못 읽힌 것은 바꾼다
@@ -139,8 +139,12 @@
           const Y0 = Math.max(0, Math.floor(r.y0 * sc)), Y1 = Math.min(cv.height, Math.ceil(r.y1 * sc));
           if (Y1 - Y0 < 20) continue;
           const d = cv.getContext('2d').getImageData(X0, Y0, X1 - X0, Y1 - Y0).data, W = X1 - X0, H = Y1 - Y0;
+          const dk = new Uint8Array(W * H), msk = new Uint8Array(W * H);
+          for (let i = 0; i < W * H; i++) dk[i] = d[i * 4] < 140 ? 1 : 0;
+          for (let x = 0; x < W; x++) { let y = 0; while (y < H) { if (!dk[y * W + x]) { y++; continue; } let e = y; while (e < H && dk[e * W + x]) e++; if (e - y >= 45) for (let t = y; t < e; t++) { msk[t * W + x] = 1; if (x > 0) msk[t * W + x - 1] = 1; if (x < W - 1) msk[t * W + x + 1] = 1; } y = e; } }      // 길게 이어진 세로선(단 구분선·틀)은 글자가 아니다
+          for (let y = 0; y < H; y++) { let x = 0; while (x < W) { if (!dk[y * W + x]) { x++; continue; } let e = x; while (e < W && dk[y * W + e]) e++; if (e - x >= W * 0.7) for (let t = x; t < e; t++) { msk[y * W + t] = 1; if (y > 0) msk[(y - 1) * W + t] = 1; if (y < H - 1) msk[(y + 1) * W + t] = 1; } x = e; } }      // 가로선도 마찬가지
           const ink = new Array(H).fill(0);
-          for (let y = 0; y < H; y++) { let c = 0; for (let x = 0; x < W; x++) if (d[(y * W + x) * 4] < 140) c++; ink[y] = c; }
+          for (let y = 0; y < H; y++) { let c = 0; for (let x = 0; x < W; x++) if (dk[y * W + x] && !msk[y * W + x]) c++; ink[y] = c; }
           const lines = []; let st = -1, gap = 0;
           for (let y = 0; y < H; y++) { if (ink[y] > 1) { if (st < 0) st = y; gap = 0; } else if (st >= 0 && ++gap > 5) { if (y - gap - st >= 14) lines.push([st, y - gap]); st = -1; gap = 0; } }
           if (st >= 0) lines.push([st, H - 1]);
@@ -148,10 +152,10 @@
             if (found) break;
             const h = ln[1] - ln[0] + 8; if (h > 70) continue;
             const strip = document.createElement('canvas'); strip.width = W; strip.height = h;
-            const sx = strip.getContext('2d'); sx.fillStyle = '#fff'; sx.fillRect(0, 0, W, h); sx.drawImage(cv, X0, Y0 + ln[0] - 4, W, h, 0, 0, W, h);
+            const sx = strip.getContext('2d'); sx.fillStyle = '#fff'; sx.fillRect(0, 0, W, h); sx.drawImage(cv, X0, Y0 + ln[0] - 4, W, h, 0, 0, W, h); { const id = sx.getImageData(0, 0, W, h), dd = id.data, yy0 = Y0 + ln[0] - 4; for (let y = 0; y < h; y++) { const sy = y + yy0 - Y0; if (sy < 0 || sy >= H) continue; for (let x = 0; x < W; x++) if (msk[sy * W + x]) { const o = (y * W + x) * 4; dd[o] = dd[o + 1] = dd[o + 2] = 255; } } sx.putImageData(id, 0, 0); }
             for (const psm of [7, 8]) {
               const ws = await root.OcrLite.digitWords(strip, psm);
-              const w = ws.find(q => { const m = /^(\d{1,2})[.,]?$/.exec(q.text); return m && parseInt(m[1], 10) === n; });
+              const w = ws.find(q => { const m = /^(\d{1,2})[.,]?$/.exec(q.text) || /^(\d{1,2})[.,]\S*$/.exec(q.text); return m && parseInt(m[1], 10) === n; });
               if (w) { found = { pi: r.pi, ci: r.ci, top: (Y0 + ln[0]) / sc, bottom: (Y0 + ln[1]) / sc, x: X0 / sc + w.x0 / sc, w: (w.x1 - w.x0) / sc, k: r.pi * 1e6 + r.ci * 1e5 + (Y0 + ln[0]) / sc }; break; }
             }
           }
