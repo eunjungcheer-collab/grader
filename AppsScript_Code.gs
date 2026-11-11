@@ -1507,7 +1507,9 @@ function noticeNames_(force) {
 // 스크립트 속성 ACCT_KEY = 면접앱 앱스크립트의 APPROVE_KEY (넣어 두면 여기서 승인할 때 대시보드 쪽도 같이 승인됨)
 const ACCT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbz13PbCOXl3A-RcF-sPaFb1YTMpbqYALuBH5_0ITR3yUtbPJauXjQnnrCkZKUyvLmvv4w/exec';
 function acctUrl_() { return PropertiesService.getScriptProperties().getProperty('ACCT_URL') || ACCT_URL_DEFAULT; }
-function acctKey_() { return PropertiesService.getScriptProperties().getProperty('ACCT_KEY') || ''; }
+// 스크립트 속성 설정이 번거로우면 아래 따옴표 안에 관리자 키(APPROVE_KEY)를 직접 적어도 된다 (저장소에는 비워 둔 채로 두세요)
+const ACCT_KEY_DEFAULT = '';
+function acctKey_() { return PropertiesService.getScriptProperties().getProperty('ACCT_KEY') || ACCT_KEY_DEFAULT; }
 function acctHash_(name, pw) {
   const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(name).trim() + ':' + String(pw), Utilities.Charset.UTF_8);
   return bytes.map(function (b) { return ('0' + (b < 0 ? b + 256 : b).toString(16)).slice(-2); }).join('');
