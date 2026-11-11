@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>학생용 앱 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611111956">
+<link rel="stylesheet" href="css/style.css?v=202611112207">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,7 +14,7 @@
 <template id="page-content">
   <span class="backlink"><a href="index.html">← 홈으로</a></span>
   <h1>📱 학생용 앱 관리</h1>
-  <p class="muted">학생은 <b>이름 + 숫자 4자리</b>로 들어와서 내 시험 기한·기록·오답 복습을 볼 수 있어요. 반 명단(「시험 예약·알림」)에 있는 이름만 가입할 수 있어요.</p>
+  <p class="muted">학생은 <b>이름 + 비밀번호</b>(과학 대시보드·면접앱과 같은 계정)로 들어와서 내 시험 기한·기록·오답 복습을 볼 수 있어요. 반 명단(「시험 예약·알림」)에 있는 이름만 가입할 수 있어요.</p>
 
   <div class="card">
     <b>학생에게 알려 줄 주소</b>
@@ -44,7 +44,7 @@
 
   <div class="card">
     <b>가입한 학생</b>
-    <div class="hint" style="margin-top:6px;">숫자를 잊은 학생은 「초기화」를 누르면 다음에 다시 새로 정할 수 있어요.</div>
+    <div class="hint" style="margin-top:6px;">비밀번호를 잊은 학생은 「초기화」를 누르면 다음에 다시 새로 정할 수 있어요.</div>
     <div id="sa-list" class="hint" style="margin-top:8px;">불러오는 중...</div>
   </div>
 
@@ -74,10 +74,10 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/qrcode.min.js?v=202611111956"></script>
-<script src="js/config.js?v=202611111956"></script>
-<script src="js/api.js?v=202611111956"></script>
-<script src="js/common.js?v=202611111956"></script>
+<script src="js/vendor/qrcode.min.js?v=202611112207"></script>
+<script src="js/config.js?v=202611112207"></script>
+<script src="js/api.js?v=202611112207"></script>
+<script src="js/common.js?v=202611112207"></script>
 <script>
 requireLogin();
 renderHeader({});

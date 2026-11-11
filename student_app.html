@@ -26,7 +26,7 @@ h2{font-size:16px;margin:22px 0 10px;}
 label{display:block;font-weight:700;font-size:13px;color:var(--muted);margin:14px 0 6px;}
 input[type=text],input[type=password],input[type=tel],input[type=search]{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:14px;font-size:17px;background:#fff;color:var(--ink);}
 input:focus{outline:2px solid var(--point);border-color:var(--point);}
-.pin{letter-spacing:10px;text-align:center;font-size:24px!important;}
+.pin{letter-spacing:4px;text-align:center;font-size:24px!important;}
 .btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:15px;border-radius:12px;border:1.5px solid var(--point);background:var(--point);color:#fff;font-weight:800;font-size:16px;cursor:pointer;text-decoration:none;}
 .btn.sm{width:auto;padding:9px 14px;font-size:14px;border-radius:9px;display:inline-flex;}
 .btn.outline{background:transparent;color:var(--point);}
@@ -86,16 +86,16 @@ svg text{font-family:inherit;}
   <!-- 로그인 -->
   <main id="v-login">
     <h2 style="margin-top:6px;font-size:22px;">안녕하세요 👋</h2>
-    <p class="muted">이름과 숫자 4자리를 한 번에 넣고 「들어가기」를 눌러요. <b>처음이면</b> 원하는 숫자 4자리를 넣으면 돼요.</p>
+    <p class="muted">이름과 비밀번호를 한 번에 넣고 「들어가기」를 눌러요. <b>처음이면</b> 원하는 비밀번호(4자 이상)를 넣으면 돼요.</p>
     <div class="card">
       <label for="lg-name" style="margin-top:0;">이름</label>
       <input type="text" id="lg-name" autocomplete="off" placeholder="예: 홍길동">
       <div id="lg-pinbox">
-        <label for="lg-pin" id="lg-pinlabel">비밀 숫자 4자리</label>
-        <input type="password" id="lg-pin" class="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+        <label for="lg-pin" id="lg-pinlabel">비밀번호 (4자 이상)</label>
+        <input type="password" id="lg-pin" class="pin" maxlength="20" autocomplete="off" placeholder="••••">
         <div id="lg-pin2box" class="hide">
-          <label for="lg-pin2" id="lg-pin2label">처음이에요! 같은 숫자를 한 번 더</label>
-          <input type="password" id="lg-pin2" class="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+          <label for="lg-pin2" id="lg-pin2label">처음이에요! 같은 비밀번호를 한 번 더</label>
+          <input type="password" id="lg-pin2" class="pin" maxlength="20" autocomplete="off" placeholder="••••">
         </div>
       </div>
       <label style="display:flex;gap:8px;align-items:center;font-weight:600;margin-top:16px;"><input type="checkbox" id="lg-keep" checked> 이 기기에서 로그인 유지</label>
@@ -123,9 +123,9 @@ svg text{font-family:inherit;}
   <button data-t="wrong"><span class="ic">🔁</span>다시 풀기</button>
 </nav>
 
-<script src="js/config.js?v=202611111956"></script>
-<script src="js/api.js?v=202611111956"></script>
-<script src="js/common.js?v=202611111956"></script>
+<script src="js/config.js?v=202611112207"></script>
+<script src="js/api.js?v=202611112207"></script>
+<script src="js/common.js?v=202611112207"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -153,22 +153,22 @@ async function loginStep() {
   const m = name.match(/^(.*\D)\s*(\d{4})$/);       // 이름 칸에 "송다솔1234"처럼 같이 적어도 나눠 준다
   if (m) { name = m[1].trim(); $('lg-name').value = name; if (!pin) { pin = m[2]; $('lg-pin').value = pin; } }
   if (!name) { err.textContent = '이름을 입력해 주세요.'; return; }
-  if (!/^\d{4}$/.test(pin)) { err.textContent = '숫자 4자리를 입력해 주세요.'; return; }
+  if (pin.length < 4) { err.textContent = '비밀번호를 4자 이상 입력해 주세요.'; return; }
   btn.disabled = true; const label = btn.textContent; btn.textContent = '확인 중...';
   try {
     if (REG) {
-      if (pin !== $('lg-pin2').value.trim()) throw new Error('두 번 입력한 숫자가 달라요.');
+      if (pin !== $('lg-pin2').value.trim()) throw new Error('두 번 입력한 비밀번호가 달라요.');
       const r = await callApi('stuRegister', { name: name, pin: pin });
       if (!r.ok) throw new Error(r.error);
       REG = false; $('lg-pin2box').classList.add('hide'); $('lg-pin').value = ''; $('lg-pin2').value = '';
-      err.style.color = '#145a32'; err.textContent = '✅ 가입 신청을 했어요! 선생님이 승인하면 이 이름과 숫자로 들어올 수 있어요.';
+      err.style.color = '#145a32'; err.textContent = '✅ 가입 신청을 했어요! 선생님이 승인하면 이 이름과 비밀번호로 들어올 수 있어요.';
       btn.textContent = '들어가기'; btn.disabled = false; return;
     }
     const r = await callApi('stuHome', { name: name, pin: pin, login: true });      // 로그인과 화면 데이터를 한 번에 받는다
     if (r.ok) { saveLogin(name, pin, $('lg-keep').checked); ME = { name: name, pin: pin }; DATA = r; ME.display = r.display; await enterHome(true); btn.textContent = '들어가기'; btn.disabled = false; return; }
     if (r.notRegistered) {
       REG = true; $('lg-pin2box').classList.remove('hide'); $('lg-pin2').focus();
-      err.style.color = '#8F2A1F'; err.textContent = '처음이네요! 같은 숫자를 한 번 더 넣고 「가입 신청」을 눌러 주세요. (선생님이 승인하면 들어올 수 있어요)';
+      err.style.color = '#8F2A1F'; err.textContent = '처음이네요! 같은 비밀번호를 한 번 더 넣고 「가입 신청」을 눌러 주세요. (선생님이 승인하면 들어올 수 있어요)';
       btn.textContent = '가입 신청'; btn.disabled = false; return;
     }
     throw new Error(r.error || '로그인하지 못했어요.');

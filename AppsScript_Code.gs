@@ -1501,18 +1501,70 @@ function noticeNames_(force) {
   if (names.length) { try { cache.put('notice_names', JSON.stringify(names), 1800); } catch (e) {} }
   return names;
 }
+
+// ────────────── 통합 계정: 과학 연구소 대시보드·면접앱과 같은 가입 서버(ACCT)를 공용 계정 저장소로 쓴다 ──────────────
+// 어느 앱에서 가입하든 같은 이름 + 같은 비밀번호로 채점기·대시보드·면접앱에 모두 로그인된다.
+// 스크립트 속성 ACCT_KEY = 면접앱 앱스크립트의 APPROVE_KEY (넣어 두면 여기서 승인할 때 대시보드 쪽도 같이 승인됨)
+const ACCT_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbz13PbCOXl3A-RcF-sPaFb1YTMpbqYALuBH5_0ITR3yUtbPJauXjQnnrCkZKUyvLmvv4w/exec';
+function acctUrl_() { return PropertiesService.getScriptProperties().getProperty('ACCT_URL') || ACCT_URL_DEFAULT; }
+function acctKey_() { return PropertiesService.getScriptProperties().getProperty('ACCT_KEY') || ''; }
+function acctHash_(name, pw) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(name).trim() + ':' + String(pw), Utilities.Charset.UTF_8);
+  return bytes.map(function (b) { return ('0' + (b < 0 ? b + 256 : b).toString(16)).slice(-2); }).join('');
+}
+function acctGet_(name) {
+  try {
+    const res = UrlFetchApp.fetch(acctUrl_() + '?action=getAcct&name=' + encodeURIComponent(String(name).trim()), { muteHttpExceptions: true, followRedirects: true });
+    const j = JSON.parse(res.getContentText());
+    if (j && j.ok && j.supported) return { exists: !!j.exists, hash: String(j.hash || ''), pending: String(j.status || '') === '대기' };
+  } catch (e) {}
+  return null;   // 서버에 못 닿음 (이때는 채점기 자체 계정만 쓴다)
+}
+function acctPost_(obj) {
+  try { UrlFetchApp.fetch(acctUrl_(), { method: 'post', contentType: 'text/plain;charset=utf-8', payload: JSON.stringify(obj), muteHttpExceptions: true, followRedirects: true }); return true; } catch (e) { return false; }
+}
+function acctApprove_(name) { const k = acctKey_(); if (k) acctPost_({ action: 'approve', name: String(name).trim(), key: k }); }
+// 공용 계정에서 이미 승인된 학생이 올바른 비밀번호를 넣었으면 채점기 계정을 만들거나 맞춰 준다. 성공하면 true
+function stuSyncFromAcct_(name, pin) {
+  const a = acctGet_(name);
+  if (!a || !a.exists || a.pending || a.hash !== acctHash_(name, pin)) return false;
+  const sh = stuSheet_(), salt = Utilities.getUuid(), h = stuHash_(salt, pin, name), f = stuFind_(name);
+  if (f) { sh.getRange(f.rowIndex, 2).setValue(salt); sh.getRange(f.rowIndex, 3).setValue(h); sh.getRange(f.rowIndex, 7).setValue('ok'); }
+  else sh.appendRow([String(name).trim(), salt, h, new Date().toISOString(), '', '[]', 'ok']);
+  return true;
+}
+// 채점기에만 있던 기존 학생이 로그인에 성공하면 공용 계정에도 올려 준다 (하루에 한 번만 확인)
+function stuPushToAcct_(name, pin) {
+  const cache = CacheService.getScriptCache(), ck = 'acctpush_' + nameKey_(name);
+  if (cache.get(ck)) return;
+  const a = acctGet_(name); if (!a) return;
+  if (!a.exists) { acctPost_({ action: 'signup', name: String(name).trim(), hash: acctHash_(name, pin) }); acctApprove_(name); }
+  cache.put(ck, '1', 21600);
+}
 // 이름·번호 확인. 5번 틀리면 10분 동안 잠근다.
 function stuAuth_(p) {
-  const key = nameKey_(p.name);
-  if (!key || !/^\d{4}$/.test(String(p.pin || ''))) return { ok: false, error: '이름과 4자리 숫자를 입력해 주세요.' };
+  const key = nameKey_(p.name), pw = String(p.pin || '');
+  if (!key || pw.length < 4 || pw.length > 40) return { ok: false, error: '이름과 비밀번호(4자 이상)를 입력해 주세요.' };
   const cache = CacheService.getScriptCache(), ck = 'stufail_' + key;
   if (Number(cache.get(ck) || 0) >= 5) return { ok: false, locked: true, error: '여러 번 틀려서 10분 동안 잠겼어요. 잠시 뒤에 다시 해 주세요. (급하면 선생님께 말씀드리세요)' };
-  const f = stuFind_(p.name);
-  if (!f) return { ok: false, notRegistered: true, error: '아직 가입하지 않은 이름이에요.' };
-  if (String(f.row[6]) === 'pending') return { ok: false, pending: true, error: '선생님이 승인하면 들어올 수 있어요. 조금만 기다려 주세요.' };
-  if (stuHash_(String(f.row[1]), p.pin, p.name) !== String(f.row[2])) {
-    cache.put(ck, String(Number(cache.get(ck) || 0) + 1), 600);
-    return { ok: false, error: '이름 또는 4자리 숫자가 맞지 않아요.' };
+  let f = stuFind_(p.name);
+  const mine = f && String(f.row[6]) !== 'pending' && stuHash_(String(f.row[1]), pw, p.name) === String(f.row[2]);
+  if (!mine) {
+    if (stuSyncFromAcct_(p.name, pw)) f = stuFind_(p.name);          // 다른 앱에서 가입·승인했거나 비밀번호를 바꾼 경우
+    else {
+      if (!f) {
+        const a = acctGet_(p.name);
+        if (a && a.exists) {
+          if (a.pending) return { ok: false, pending: true, error: '선생님이 승인하면 들어올 수 있어요. 조금만 기다려 주세요.' };
+          cache.put(ck, String(Number(cache.get(ck) || 0) + 1), 600);
+          return { ok: false, error: '이름 또는 비밀번호가 맞지 않아요.' };
+        }
+        return { ok: false, notRegistered: true, error: '아직 가입하지 않은 이름이에요.' };
+      }
+      if (String(f.row[6]) === 'pending') return { ok: false, pending: true, error: '선생님이 승인하면 들어올 수 있어요. 조금만 기다려 주세요.' };
+      cache.put(ck, String(Number(cache.get(ck) || 0) + 1), 600);
+      return { ok: false, error: '이름 또는 비밀번호가 맞지 않아요.' };
+    }
   }
   cache.remove(ck);
   return { ok: true, display: String(f.row[0]), rowIndex: f.rowIndex };
@@ -1540,12 +1592,15 @@ function actionStuStatus_(p) {
 function actionStuRegister_(p) {
   const name = String(p.name || '').trim(), pin = String(p.pin || '');
   if (!nameKey_(name)) return { ok: false, error: '이름을 입력해 주세요.' };
-  if (!/^\d{4}$/.test(pin)) return { ok: false, error: '숫자 4자리로 정해 주세요.' };
+  if (pin.length < 4 || pin.length > 40) return { ok: false, error: '비밀번호는 4자 이상으로 정해 주세요.' };
   const lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
-    if (stuFind_(name)) return { ok: false, error: '이미 가입한 이름이에요. 번호를 잊었으면 선생님께 초기화를 부탁하세요.' };
+    if (stuFind_(name)) return { ok: false, error: '이미 가입한 이름이에요. 비밀번호를 잊었으면 선생님께 초기화를 부탁하세요.' };
+    const ac = acctGet_(name);
+    if (ac && ac.exists) return { ok: false, error: '다른 앱(과학 대시보드 등)에서 이미 가입한 이름이에요. 그때 정한 비밀번호로 로그인해 보세요.' };
     const salt = Utilities.getUuid();
     stuSheet_().appendRow([name, salt, stuHash_(salt, pin, name), new Date().toISOString(), '', '[]', 'pending']);
+    acctPost_({ action: 'signup', name: name, hash: acctHash_(name, pin) });      // 대시보드·면접앱에서도 같은 계정으로 로그인되게
   } finally { lock.releaseLock(); }
   try { pushToTeacher_('🙋 가입 신청이 왔어요', name + ' 학생이 가입을 신청했어요' + (stuAllowed_(name) ? '' : '\n⚠️ 반/알림장 명단에 없는 이름이에요') + '\n앱의 「학생용 앱」에서 승인해 주세요'); } catch (e) {}
   return { ok: true, display: name, pending: true };
@@ -1553,6 +1608,7 @@ function actionStuRegister_(p) {
 function actionStuLogin_(p) {
   const a = stuAuth_(p); if (!a.ok) return a;
   stuSheet_().getRange(a.rowIndex, 5).setValue(new Date().toISOString());
+  try { stuPushToAcct_(a.display, p.pin); } catch (e) {}
   return { ok: true, display: a.display };
 }
 // 학생 홈: 내게 예약된 시험(제출 기한), 전체 시험 목록, 내 제출 기록
@@ -1561,7 +1617,7 @@ function actionStuHome_(p) {
   const key = nameKey_(a.display);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   try { const cc = CacheService.getScriptCache(); if (!cc.get('cd_run')) { cc.put('cd_run', '1', 60); checkDeadlines_(); } } catch (e) {}
-  if (p.login) { try { stuSheet_().getRange(a.rowIndex, 5).setValue(new Date().toISOString()); } catch (e) {} }
+  if (p.login) { try { stuSheet_().getRange(a.rowIndex, 5).setValue(new Date().toISOString()); } catch (e) {} try { stuPushToAcct_(a.display, p.pin); } catch (e) {} }
   const ed = ss.getSheetByName(SHEET_EXAMS).getDataRange().getValues();
   const titleOf = {}, exams = [];
   for (let i = 1; i < ed.length; i++) {
@@ -1648,6 +1704,7 @@ function actionResetStudentPin_(p) {
   const f = stuFind_(p.name);
   if (!f) return { ok: false, error: '가입한 학생이 아니에요.' };
   stuSheet_().deleteRow(f.rowIndex);
+  try { const k = acctKey_(); if (k) acctPost_({ action: 'reject', name: String(f.row[0]).trim(), key: k }); } catch (e) {}
   CacheService.getScriptCache().remove('stufail_' + nameKey_(p.name));
   return { ok: true };
 }
@@ -1822,6 +1879,7 @@ function actionApproveStudent_(p) {
     if (String(r[6]) !== 'pending') return;
     if (names && names.map(nameKey_).indexOf(nameKey_(r[0])) < 0) return;
     sh.getRange(i + 2, 7).setValue('ok'); n++;
+    try { acctApprove_(r[0]); } catch (e) {}
   });
   return { ok: true, approved: n };
 }
