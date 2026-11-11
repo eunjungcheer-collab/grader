@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611111425">
+<link rel="stylesheet" href="css/style.css?v=202611111539">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -21,7 +21,7 @@
   <form id="new-exam-form">
     <div class="card">
       <label>시험지 PDF (문제 + 정답 페이지가 같이 있어도 돼요 · 여러 개를 한꺼번에 골라도 돼요)</label>
-      <input type="file" id="pdf-file" accept="application/pdf" multiple required>
+      <input type="file" id="pdf-file" accept="application/pdf" multiple>
       <div id="queue-note" class="banner" style="display:none; margin:8px 0 0;"></div>
       <label class="bank-include-label" style="margin-top:10px;"><input type="checkbox" id="auto-reg" checked> ⚡ <b>확인 없이 자동 등록</b> (시험지를 2개 이상 고르면 이 칸과 상관없이 항상 이렇게 해요) — 여러 시험지를 한꺼번에 고르면 기다릴 필요 없이 정답 읽기·단원 추정·QR 찍기·등록·문제은행 저장까지 알아서 해요. 못 읽은 정답은 비워 두고 등록한 뒤, 끝나면 나오는 결과 화면에서 문제 있는 것만 모아서 고치면 돼요. 같은 이름·내용의 시험지는 건너뛰어요. (시험지를 1개만 고르면 이 설정과 상관없이 하나씩 확인하며 등록해요) (단원·소단원은 확신 있는 것만 채우고 🤖 표시가 붙어요)</label>
       <div style="margin-top:8px;"><button type="button" class="btn outline" id="open-saved-review" style="padding:8px 14px;">🕘 최근 등록한 시험지 다시 확인 (정답·단원 · 다른 기기에서 등록한 것도)</button></div>
@@ -157,16 +157,16 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611111425"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611111425"></script>
-<script src="js/vendor/pdf.min.js?v=202611111425"></script>
-<script src="js/config.js?v=202611111425"></script>
-<script src="js/api.js?v=202611111425"></script>
-<script src="js/common.js?v=202611111425"></script>
-<script src="js/ocr.js?v=202611111425"></script>
-<script src="js/bankcore.js?v=202611111425"></script>
-<script src="js/pdfui.js?v=202611111425"></script>
-<script src="js/pdfview.js?v=202611111425"></script>
+<script src="js/vendor/qrcode.min.js?v=202611111539"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611111539"></script>
+<script src="js/vendor/pdf.min.js?v=202611111539"></script>
+<script src="js/config.js?v=202611111539"></script>
+<script src="js/api.js?v=202611111539"></script>
+<script src="js/common.js?v=202611111539"></script>
+<script src="js/ocr.js?v=202611111539"></script>
+<script src="js/bankcore.js?v=202611111539"></script>
+<script src="js/pdfui.js?v=202611111539"></script>
+<script src="js/pdfview.js?v=202611111539"></script>
 <script>
 requireLogin();
 ensureToc();
