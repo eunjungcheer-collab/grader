@@ -3745,7 +3745,7 @@
     for (let y = yA; y <= yB; y += 2) for (let x = 0; x < W; x++) if (dark(x, y)) vc[x]++;
     const full = (yB - yA) / 2, vl = [];
     const win = x => { let t = 0; for (let k = -3; k <= 3; k++) t = Math.max(t, vc[Math.max(0, Math.min(W - 1, x + k))]); return t; };
-    for (let x = 3; x < W - 3; x++) { const t = win(x); if (t > full * 0.7 && vc[x] >= vc[x - 1] && vc[x] > vc[x + 1]) { if (vl.length && x - vl[vl.length - 1] < 12) { if (vc[x] > vc[vl[vl.length - 1]]) vl[vl.length - 1] = x; } else vl.push(x); } }
+    for (let x = 3; x < W - 3; x++) { const t = win(x); if (t > full * 0.5 && vc[x] >= vc[x - 1] && vc[x] > vc[x + 1]) { if (vl.length && x - vl[vl.length - 1] < 12) { if (vc[x] > vc[vl[vl.length - 1]]) vl[vl.length - 1] = x; } else vl.push(x); } }
     if (vl.length < 9) return null;
     // 세로선 → 칸: 4칸이 한 묶음 (문항, 배점, 정답, 복수구분)
     const cols = []; for (let i = 1; i < vl.length; i++) cols.push([vl[i - 1], vl[i]]);
@@ -3758,7 +3758,8 @@
       // 행 하나씩 잘라 읽으면 빈 칸과 번호가 어긋나지 않는다 (한 칸짜리 읽기 모드)
       for (let r = 0; r < rows.length; r++) {
         const n = g * rows.length + r + 1, a = rows[r][0] + 4, b = rows[r][1] - 4;
-        const cell = crop(ac, a, b, 5);
+        if (cols[4 * g + 1]) { const sc0 = crop(cols[4 * g + 1], a, b, 5), sd = sc0.getContext('2d').getImageData(0, 0, sc0.width, sc0.height).data; let si = 0; for (let i = 0; i < sd.length; i += 4) if (sd[i] < 140) si++; if (si < sc0.width * sc0.height * 0.01) continue; }      // 배점 칸이 비면 문항이 없는 행
+        const cell = crop(ac, a, b, 5); { const cg = cell.getContext('2d'); cg.fillStyle = '#fff'; cg.fillRect(0, 0, cell.width, 7); cg.fillRect(0, cell.height - 7, cell.width, 7); cg.fillRect(0, 0, 4, cell.height); cg.fillRect(cell.width - 4, 0, 4, cell.height); }      // 칸 테두리 자국 지우기
         // 칸에 글자가 있는지 먼저 본다 (빈 칸은 건너뛴다)
         const gd = cell.getContext('2d').getImageData(0, 0, cell.width, cell.height).data; let ink = 0; for (let i = 0; i < gd.length; i += 4) if (gd[i] < 140) ink++;
         if (ink < cell.width * cell.height * 0.004) continue;
@@ -3770,6 +3771,28 @@
           t = (await root.OcrLite.digitWords(big, 10, '0123456789')).map(w => w.text).join('');
           digs = Array.from(new Set(t.replace(/[^1-5]/g, '').split(''))).filter(Boolean).sort().join('');
         }
+        if (!/^[1-5]{1,5}$/.test(digs)) {       // 여백을 넉넉히 두고 1~5만 고르게 해서 다시 읽는다
+          for (const [k, psm] of [[1, 10], [1, 7], [1, 8]]) {
+            const tc = document.createElement('canvas'); tc.width = cell.width * k + 120; tc.height = cell.height * k + 120; const tx = tc.getContext('2d'); tx.fillStyle = '#fff'; tx.fillRect(0, 0, tc.width, tc.height); tx.drawImage(cell, 60, 60, cell.width * k, cell.height * k);
+            const tt = (await root.OcrLite.digitWords(tc, psm, '12345,')).map(w => w.text).join('');
+            const dg = Array.from(new Set(tt.replace(/[^1-5]/g, '').split(''))).filter(Boolean).sort().join('');
+            if (/^[1-5]{1,5}$/.test(dg)) { digs = dg; break; }
+          }
+        }
+        if (!/^[1-5]{1,5}$/.test(digs)) {       // 그래도 못 읽었으면 글자 부분만 딱 잘라 여러 크기·모드로 다시 읽는다
+          const cd = cell.getContext('2d').getImageData(0, 0, cell.width, cell.height).data; let x0 = cell.width, x1 = -1, y0 = cell.height, y1 = -1;
+          for (let y = 0; y < cell.height; y++) for (let x = 0; x < cell.width; x++) if (cd[(y * cell.width + x) * 4] < 140) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+          if (x1 >= x0 && y1 >= y0) {
+            const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+            for (const [k, psm] of [[2, 10], [3, 10], [2, 8], [1.5, 7], [4, 10]]) {
+              const tc = document.createElement('canvas'); tc.width = Math.round(bw * k) + 80; tc.height = Math.round(bh * k) + 80; const tx = tc.getContext('2d'); tx.fillStyle = '#fff'; tx.fillRect(0, 0, tc.width, tc.height);
+              tx.imageSmoothingEnabled = true; tx.drawImage(cell, x0, y0, bw, bh, 40, 40, Math.round(bw * k), Math.round(bh * k));
+              const tt = (await root.OcrLite.digitWords(tc, psm, '12345,')).map(w => w.text).join('');
+              const dg = Array.from(new Set(tt.replace(/[^1-5]/g, '').split(''))).filter(Boolean).sort().join('');
+              if (/^[1-5]{1,5}$/.test(dg)) { digs = dg; break; }
+            }
+          }
+        }
         if (!/^[1-5]{1,5}$/.test(digs)) continue;
         let ans = digs;
         if (digs.length > 1 && mc) {       // 복수구분: AND = 모두 맞아야, OR = 하나만 맞아도
@@ -3779,6 +3802,7 @@
         out[n] = ans;
       }
     }
+    { const ks0 = Object.keys(out).map(Number).sort((a, b) => a - b); let last = 0; ks0.forEach(k => { if (k - last > 4 && last) delete out[k]; else last = k; }); }      // 문항이 이어지다 뚝 떨어진 뒤의 것은 빈 칸의 얼룩이다
     const ks = Object.keys(out).map(Number).sort((a, b) => a - b);
     if (ks.length < 5) return null;
     return out;
