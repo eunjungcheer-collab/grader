@@ -216,7 +216,7 @@
         let mi = Math.floor(wpx * 0.4); for (let q = mi; q < wpx * 0.62; q++) if (sm[q] < sm[mi]) mi = q;
         if (sm[mi] < mx * 0.4) { let q = mi; while (q < wpx && sm[q] <= Math.max(sm[mi] * 1.6, mx * 0.12)) q++; while (q < wpx && !on(q)) q++; if (q < wpx * 0.8) lefts.push(q); }
       }
-      const strips = lefts.map(l => ({ l: l, x0: Math.max(0, Math.floor(l - 10 * sc)), x1: Math.min(wpx, Math.ceil(l + 78 * sc)) }));
+      const strips = lefts.map(l => ({ l: l, x0: Math.max(0, Math.floor(l - 10 * sc)), x1: Math.min(wpx, Math.ceil(l + 120 * sc)) }));
       const outs = await Promise.all(strips.map(async st => {
         const sc2 = document.createElement('canvas'); sc2.width = st.x1 - st.x0; sc2.height = hpx;
         const g = sc2.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, sc2.width, sc2.height); g.drawImage(cv, st.x0, 0, st.x1 - st.x0, hpx, 0, 0, st.x1 - st.x0, hpx);
@@ -231,6 +231,7 @@
       }));
       const items = [].concat.apply([], outs);
       // 단 맨 아래 문항을 어디까지 자를지 정하도록, 단마다 바닥 근처에 표시를 하나 둔다
+      { let re = Math.floor(wpx * 0.975); while (re > wpx * 0.6 && !on(re)) re--; items.push({ str: '', x: re / sc, w: 0, size: 6, top: H - 70, bottom: H - 69, base: H - 69, sentinel: 1, rightInk: re / sc }); }       // 쪽 안쪽의 오른쪽 끝(글자나 테두리선)
       lefts.forEach(l => items.push({ str: '.', x: l / sc, w: 2, size: 6, top: H - 62, bottom: H - 56, base: H - 57, sentinel: 1 }));
       return items;
     })();
@@ -720,7 +721,9 @@
         const x0 = colX0[ci0];
         // 오른쪽 경계 = 다음 단 시작 직전, 마지막 단은 좌우 여백이 같다고 보고 페이지 폭에서 계산
         const measured = Math.max.apply(null, colItems.map(it => it.x + it.w).concat(colSpans.map(s => s.x1))) + 6;
-        const x1 = single2 ? (ci === 0 ? docSplit.r0 - 4 : Math.max(measured, pd.W - leftMargin)) : (ci0 + 1 < cols.length ? colX0[ci0 + 1] - 4 : Math.max(measured, pd.W - leftMargin));
+        const riIt = pd.ocr ? pd.items.find(it => it.rightInk) : null, rightInk = riIt ? riIt.rightInk - 4 : 0;     // 스캔: 오른쪽 단은 쪽 안쪽 오른쪽 끝(테두리선 바로 안)까지
+        const lastX1 = Math.max(measured, pd.W - leftMargin, Math.min(rightInk, pd.W - 4));
+        const x1 = single2 ? (ci === 0 ? docSplit.r0 - 4 : lastX1) : (ci0 + 1 < cols.length ? colX0[ci0 + 1] - 4 : lastX1);
         // "[선택형 11-13]" 같은 공통 지문 머리글: 이 줄부터 다음 문항 번호까지는 그 문항들이 함께 쓰는 지문·그림이라서 다음 문항 그림에 넣는다
         const colAll = pd.items.filter(it => it.top >= pd.H * 0.085 && it.top < pd.H - 62 && inCol(it));
         const colAllH = pd.items.filter(it => it.top >= pd.H * 0.035 && it.top < pd.H - 62 && inCol(it));   // 머리글은 쪽 맨 위 가까이에도 있다
@@ -876,6 +879,8 @@
 
   // "[선택형 11-13]"·"[서술형 1-2]" 처럼 여러 문항이 같이 쓰는 지문의 머리글 줄을 찾는다 (줄 맨 앞에서 시작하는 것만)
   const GROUP_HEAD_RE = /^[※\*★☆◆◇■□●○▶▷☞◎]*[\[［〔【]\s*(?:선택형|서술형|서답형|논술형|객관식|주관식)?\s*\d{1,2}\s*[-~∼–～]\s*\d{1,2}\s*(?:번)?\s*[\]］〕】]/;
+  // 스캔(OCR)은 단 왼쪽 끝 띠만 읽어서 머리글 뒤쪽 "19]"이 잘려 읽힐 수 있다 — 여는 괄호 + 선택형/서술형 + 숫자-숫자 앞부분만 있어도 머리글로 본다
+  const GROUP_HEAD_LOOSE = /^[※\*★☆◆◇■□●○▶▷☞◎]*[\[［〔【]\s*(?:선택형|서술형|서답형|논술형|객관식|주관식)\s*\d{1,2}\s*[-~∼–～]\s*\d{0,2}/;
   function findGroupHeads(items) {
     const sorted = items.filter(it => String(it.str).trim()).slice().sort((a, b) => a.top - b.top || a.x - b.x);
     const lines = [];
@@ -884,7 +889,7 @@
     lines.forEach(ln => {
       ln.items.sort((a, b) => a.x - b.x);
       const t = ln.items.map(i => i.str).join('').replace(/\s+/g, '');
-      if (GROUP_HEAD_RE.test(t)) {
+      if (GROUP_HEAD_RE.test(t) || GROUP_HEAD_LOOSE.test(t)) {
         const h = { top: Math.min.apply(null, ln.items.map(i => i.top)), bottom: Math.max.apply(null, ln.items.map(i => i.bottom)), x: ln.items[0].x, text: t };
         try {   // "[26~27]" 안의 숫자 부분(26~27)의 자리 — 글자 폭 비율로 어림한다
           const chars = [];
@@ -894,7 +899,7 @@
             const tw = wt.reduce((u, v) => u + v, 0); let acc = 0;
             cs.forEach((c, k) => { chars.push({ c: c, x0: it.x + it.w * acc / tw, x1: it.x + it.w * (acc + wt[k]) / tw }); acc += wt[k]; });
           });
-          const flat = chars.map(o => o.c).join(''), m1 = GROUP_HEAD_RE.exec(flat), m2 = /(\d{1,2})[-~∼–～](\d{1,2})/.exec(m1[0]);
+          const flat = chars.map(o => o.c).join(''), m1 = GROUP_HEAD_RE.exec(flat) || GROUP_HEAD_LOOSE.exec(flat), m2 = /(\d{1,2})[-~∼–～](\d{1,2})/.exec(m1[0]);
           if (m2) {
             const i0 = m2.index, i1 = m2.index + m2[0].length - 1;
             h.digits = [chars[i0].x0 + 0.5, h.top, chars[i1].x1 - 0.5, h.bottom]; h.a = parseInt(m2[1], 10); h.b = parseInt(m2[2], 10);
