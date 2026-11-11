@@ -3229,9 +3229,23 @@
         let line = '', prevEnd = null;       // 글자가 한 자씩 따로 들어 있는 목차도 있어서, 공백 조각은 살리고 틈이 벌어지면 띄운다
         r.its.sort((a, b) => a.x - b.x).forEach(i => { if (prevEnd !== null && i.x - prevEnd > 1.5 && !/^\s/.test(i.s) && !/\s$/.test(line)) line += ' '; line += i.s; prevEnd = i.x + i.w; });
         line = line.replace(/\s+/g, ' ').trim();
-        let m = line.match(/^(\d+)\s*단원\s+(.+)$/);
-        if (m) { unit = { no: parseInt(m[1], 10), name: m[2].trim() }; return; }
-        m = line.match(/^(최다빈출|최다오답|최상위)\s*공략\s+(.+?)\s+(\d+)\s*~\s*(\d+)\s+(\d+)\s*~\s*(\d+)$/);
+        // 목차 모양이 교재마다 달라도 읽도록 범용으로: 줄 끝에 「문제 a~b  정답 c~d」 쪽 범위 두 개가 있으면 소단원 줄, 그 앞은 (구분 이름 +) 소단원 이름
+        const RNG = '(\\d+)\\s*[~∼～\\-–—]\\s*(\\d+)';
+        const tail = line.match(new RegExp('^(.*?\\S)\\s*[\\s·|:]\\s*(?:문제\\s*)?' + RNG + '\\s*쪽?\\s*[\\s·|:,/]*\\s*(?:정답(?:\\s*[·및과]?\\s*해설)?\\s*)?' + RNG + '\\s*쪽?$'));
+        let m = null;
+        if (tail && !/^\s*(?:제\s*)?(?:\d+\s*(?:단원|장|강)|[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\s*[.．:)\s])/.test(line)) {
+          let head = tail[1].replace(/^\[\s*([^\]]*?)\s*\]\s*/, '$1 ').replace(/\s+/g, ' ').trim(), tag = '', name = head;
+          const hm = head.match(/^([^\d]{2,16}?)\s+(\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*[.．)]?\s*\S.*)$/);
+          if (hm) { tag = hm[1].replace(/\s*공략\s*$/, '').replace(/\s+/g, ''); name = hm[2].trim(); }
+          else { const hm2 = head.match(/^(\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*[.．)]?\s*\S.*)$/); if (hm2) name = hm2[1]; }
+          if (name.length >= 2) m = [line, tag, name, tail[2], tail[3], tail[4], tail[5]];
+        }
+        if (!m) {
+          const um = line.match(/^(?:제\s*)?(\d+)\s*(?:단원|장|강)\s*[.．:)]?\s*(.+)$/) || line.match(/^(?:제\s*)?([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ])\s*[.．:)]?\s*(.+)$/) || (!/[~∼～]/.test(line) ? line.match(/^(\d{1,2})\s*[.．]\s*([^\d~].{1,40})$/) : null);
+          if (um) { const no = /\d/.test(um[1]) ? parseInt(um[1], 10) : 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ'.indexOf(um[1]) + 1; unit = { no: no, name: um[2].replace(/\s+문제\s*\d+\s*~.*$/, '').trim() }; }
+          return;
+        }
+        if (m && !unit) { const nn = String(m[2]).match(/^(\d{1,2})/); unit = { no: nn ? parseInt(nn[1], 10) : 1, name: '' }; }
         if (m && unit) {
           const key = m[1] + m[2] + m[3];
           if (seen[key]) return; seen[key] = 1; if (!tocPage) tocPage = p;
