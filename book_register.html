@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611130109">
+<link rel="stylesheet" href="css/style.css?v=202611130121">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -70,14 +70,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611130109"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611130109"></script>
-<script src="js/vendor/pdf.min.js?v=202611130109"></script>
-<script src="js/config.js?v=202611130109"></script>
-<script src="js/api.js?v=202611130109"></script>
-<script src="js/common.js?v=202611130109"></script>
-<script src="js/bankcore.js?v=202611130109"></script>
-<script src="js/pdfui.js?v=202611130109"></script>
+<script src="js/vendor/qrcode.min.js?v=202611130121"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611130121"></script>
+<script src="js/vendor/pdf.min.js?v=202611130121"></script>
+<script src="js/config.js?v=202611130121"></script>
+<script src="js/api.js?v=202611130121"></script>
+<script src="js/common.js?v=202611130121"></script>
+<script src="js/bankcore.js?v=202611130121"></script>
+<script src="js/pdfui.js?v=202611130121"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -89,7 +89,7 @@ let bookBytes = null, bookDoc = null, bookFileName = '', sections = [], tocPage 
 $('book-file').addEventListener('change', () => {
   const f = $('book-file').files[0];
   $('read-btn').disabled = !f;
-  if (f && !$('book-name').value) { const m = f.name.match(/중\s*[123]|초\s*[3-6]|고\s*[123]/); if (m) $('book-name').value = m[0].replace(/\s+/g, ''); }
+  if (f && !$('book-name').value) { const m = f.name.match(/중\s*[123]|초\s*[3-6]|고\s*[123]/); if (m) $('book-name').value = m[0].replace(/\s+/g, ''); else if (/(공통|통합)\s*과학/.test(f.name)) $('book-name').value = '고1'; }
 });
 
 function hash36(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
@@ -324,7 +324,7 @@ $('go-btn').addEventListener('click', async () => {
       const qs = scan.questions;
       if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) { bankWarn.push(title + ' (문항 ' + qs.length + '개 ≠ 정답 ' + s.answers.length + '개)'); return null; }
       const tu = tocUnitByNo(toc, gradeG, s.unit);
-      const unit = tu ? tu.unit : (s.unit + '. ' + s.unitName), grade = tu ? tu.grade : gradeG;
+      const unit = tu ? tu.unit : (s.unit + '. ' + s.unitName), grade = gradeG === '고1' ? '고1' : (tu ? tu.grade : gradeG);
       const items = [];
       for (const q of qs) {
         const canvas = await BankCore.renderQuestion(doc, q, BankCore.CROP_SCALE, true);

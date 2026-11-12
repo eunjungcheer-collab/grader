@@ -259,7 +259,9 @@ function naturalCompare(a, b) { return String(a).localeCompare(String(b), 'ko', 
 // 글자 속에서 학년을 찾는다 (중학교 과학 기준): "3학년", "제 3 학년", "(3학년)", "과학3", "중3" … ("2023학년도"의 3은 제외)
 function gradeFromText(t) {
   t = String(t || '');
-  let m = t.match(/(?<![\d가-힣])중\s*([123])(?!\s*학기|\d)/); if (m) return '중' + m[1];
+  let m = t.match(/(?:공통|통합)\s*과학/); if (m) return '고1';        // 공통과학1·2, 통합과학 → 고1
+  m = t.match(/(?<![\d가-힣])고\s*([123])(?!\s*학기|\d)/); if (m) return '고' + m[1];
+  m = t.match(/(?<![\d가-힣])중\s*([123])(?!\s*학기|\d)/); if (m) return '중' + m[1];
   m = t.match(/(?<!\d)([123])\s*학년(?!도)/); if (m) return '중' + m[1];
   m = t.match(/과학\s*\(?\s*([123])(?![\d학])/); if (m) return '중' + m[1];
   return '';

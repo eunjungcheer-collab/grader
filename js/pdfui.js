@@ -635,7 +635,7 @@ async function pdfHeaderText(doc) {
 }
 // 목차에서 (학년, 번호)로 단원을 찾는다. 학년을 모르면 번호가 같은 단원이 한 학년뿐일 때만 돌려준다.
 function tocUnitByNo(toc, grade, no) {
-  const c = (toc || []).filter(t => t.no === no && (!grade || t.grade === grade));
+  const c = (toc || []).filter(t => t.no === no && (!grade || t.grade === grade || (grade === '고1' && t.grade === '공통과학')));
   return c.length === 1 || (grade && c.length) ? c[0] : null;
 }
 // 추정 결과 중 비어 있는 문항(그림뿐인 문제 등)은 바로 앞(없으면 뒤) 문항의 단원으로 채운다 — 문제집·시험지는 단원 순서대로 나오기 때문. 확신 낮음으로 표시.
