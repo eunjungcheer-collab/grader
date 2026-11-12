@@ -518,6 +518,34 @@
         base.sort((a, b) => (colOf(a) - colOf(b)) || (a.top - b.top));
       });
     } catch (e) {}
+    // 3차: "[서술형5]" · "[서답형 1]" 처럼 번호가 「N.」 모양이 아닌 서술형 문항 머리글도 따로 문항으로 자른다. 번호는 객관식 맨 끝 번호 뒤로 이어서(서술형1 → 객관식 마지막+1) 붙인다.
+    try {
+      const SUBJ_HEAD = /^[\[［〔【]\s*(?:서술형|서답형|논술형)\s*(\d{1,2})\s*[\]］〕】]?/;
+      const nums = []; Object.keys(out).forEach(k => out[k].forEach(sp => { if (!sp.subj) nums.push(sp.num); }));
+      const maxObj = nums.length ? Math.max.apply(null, nums) : 0;
+      pages.forEach((pd, idx) => {
+        if (skipPages && skipPages.includes(idx + 1)) return;
+        const its = pd.items, found = [];
+        its.forEach((it, i) => {
+          const t0 = String(it.str).trim();
+          if (!/^[\[［〔【]/.test(t0)) return;
+          let joined = it.str, last = it;
+          for (let k = 1; k <= 4 && !SUBJ_HEAD.test(joined.replace(/\s+/g, '')); k++) { const c = its[i + k]; if (!c || Math.abs(c.base - it.base) > 4 || c.x < last.x || c.x - (last.x + last.w) > 14) break; joined += c.str; last = c; }
+          const m = SUBJ_HEAD.exec(joined.replace(/\s+/g, '')); if (!m) return;
+          found.push({ num: maxObj + parseInt(m[1], 10), snum: parseInt(m[1], 10), x: it.x, x1: last.x + last.w, top: it.top, bottom: it.bottom, size: qSize, subj: true });
+        });
+        if (!found.length) return;
+        const base = out[idx] || [];
+        const colX = clusterColumns(base.concat(found)).map(cs => Math.min.apply(null, cs.map(sp => sp.x)));      // 서술형만 있는 단(오른쪽 단 등)도 한 단으로 센다
+        const keep = found.filter(f => colX.some(x => Math.abs(f.x - x) <= 10) && !base.some(b => Math.abs(b.top - f.top) < 4 && Math.abs(b.x - f.x) < 20));
+        if (!keep.length) return;
+        const haveN = new Set(); Object.keys(out).forEach(k => out[k].forEach(sp => haveN.add(sp.num)));
+        keep.forEach(f => { if (!haveN.has(f.num)) { base.push(f); haveN.add(f.num); } });
+        const colOf = sp => { const k = colX.findIndex(x => Math.abs(sp.x - x) <= 10); return k < 0 ? 9999 : colX[k]; };
+        base.sort((a, b) => (colOf(a) - colOf(b)) || (a.top - b.top));
+        out[idx] = base;
+      });
+    } catch (e) {}
     return out;
   }
 
@@ -582,6 +610,39 @@
       });
     }
     return out;
+  }
+
+
+  // ── 서술형 정답: 「서술형 정답 및 채점기준표」 쪽(글자로 된 표)에서 문항 번호별 칸을 잘라 해설로 붙인다 ──
+  // 문항 번호 칸(맨 왼쪽의 1, 2, 3…)을 기준으로, 가운데 「정답」 칸의 글자를 가장 가까운 번호 줄에 묶어 한 칸씩 자른다. 사진으로 된 표는 읽지 못한다.
+  function addSubjectiveAnswers(pages, questions, answers, explanations, answerPages) {
+    const subj = questions.filter(q => q.subj);
+    if (!subj.length) return;
+    const snumOf = q => q.num - (questions.filter(x => !x.subj).reduce((m, x) => Math.max(m, x.num), 0));
+    pages.forEach((pd, idx) => {
+      const all = pd.items.map(it => it.str).join('').replace(/\s+/g, '');
+      if (!/서술형|서답형/.test(all) || !/정답/.test(all) || !/채점|배점/.test(all)) return;
+      if (questions.some(q => q.page === idx + 1)) return;      // 문제가 있는 쪽은 표 쪽이 아니다
+      const hdr = pd.items.filter(it => /^(문항|번호|문항번호)$/.test(it.str.replace(/\s+/g, ''))).sort((a, b) => a.top - b.top)[0];
+      if (!hdr) return;
+      const W = pd.W;
+      const rowsN = pd.items.filter(it => it.top > hdr.bottom && it.x < hdr.x + 40 && /^\d{1,2}$/.test(it.str.trim())).sort((a, b) => a.top - b.top);
+      if (rowsN.length < 1) return;
+      const midY = it => (it.top + it.bottom) / 2;
+      const cells = pd.items.filter(it => it.top > hdr.bottom && it.x > hdr.x + 40 && it.x < W * 0.86 && it.str.trim());
+      const x0 = Math.min.apply(null, cells.map(c => c.x)) - 8, x1 = Math.max.apply(null, cells.map(c => c.x + c.w)) + 8;
+      const grp = rowsN.map(() => []);
+      cells.forEach(c => { let bi = 0, bd = 1e9; rowsN.forEach((r, i) => { const d = Math.abs(midY(c) - midY(r)); if (d < bd) { bd = d; bi = i; } }); if (bd < 70) grp[bi].push(c); });
+      rowsN.forEach((r, i) => {
+        const g = grp[i]; if (!g.length) return;
+        const n = parseInt(r.str.trim(), 10), q = subj.find(x => snumOf(x) === n); if (!q) return;
+        const top = Math.min.apply(null, g.map(c => c.top)) - 6, bottom = Math.max.apply(null, g.map(c => c.bottom)) + 6;
+        const rect = [Math.max(0, x0), Math.max(0, top), Math.min(W, x1), bottom];
+        answers[q.num] = { page: idx + 1, rect: rect, text: '', written: true, mr: x0, mtop: top, mbottom: bottom, g: null, fromSubjTable: true };
+        explanations[q.num] = { segments: [{ page: idx + 1, rect: rect }], numRect: null };
+        if (answerPages && answerPages.indexOf(idx + 1) < 0) answerPages.push(idx + 1);
+      });
+    });
   }
 
   // ── PDF 전체 스캔 ──
@@ -825,6 +886,7 @@
           { const tr = pd.tableRect; if (tr && i + 1 >= colSpans.length && tr[1] > s.top + 20 && x0 < tr[2] && x1 > tr[0] && bottom + BOTTOM_PAD > tr[1] - 1) bottom = Math.max(s.bottom + 4, tr[1] - 2 - BOTTOM_PAD); }   // 정답표 위에서 자른다
           const padB = (i + 1 < colSpans.length && headTop[i + 1] !== null) ? 0 : BOTTOM_PAD;      // 다음이 공통 지문 머리글이면 그 글자 윗부분까지 걸치지 않게 여유를 두지 않는다
           const qObj = { page: idx + 1, num: s.num, rect: [Math.max(0, x0), top, Math.min(pd.W, x1), bottom + padB], numRect: [s.x, s.top, s.x1, s.bottom] };
+          if (s.subj) qObj.subj = true;
           if (i === 0) (firstQ[idx] = firstQ[idx] || {})[ci] = qObj;
           questions.push(qObj);
           (lastQ[idx] = lastQ[idx] || {})[ci] = qObj;
@@ -870,6 +932,7 @@
     // 4) 추정 문항 수 = 가장 큰 문항 번호
     const questionCount = questions.reduce((m, q) => Math.max(m, q.num), 0);
     const explanations = computeExplanations(pages, answerPages, qSize);
+    try { addSubjectiveAnswers(pages, questions, answers, explanations, answerPages); } catch (e) { if (root.console) console.warn('서술형 정답 읽기 실패', e); }
     return { ocr: pages.some(pd => pd.ocr), pageCount: n, questions: questions, answers: answers, explanations: explanations, questionPages: questionPages, answerPages: answerPages, questionCount: questionCount, tableRects: pages.map(pd => pd.tableRect || null) };
   }
 
@@ -1685,6 +1748,83 @@
   }
 
 
+
+  // ── <보기> 속 ㄱ·ㄴ·ㄷ… 표시: 정답 보기(예: ③ ㄴ, ㄹ)에 든 글자를 <보기> 상자 안의 같은 글자에도 빨간 동그라미로 표시하려고 위치를 찾는다 ──
+  // 글자를 "읽지" 않고 모양을 견준다: <보기> 상자의 문장 맨 앞 글자가 위에서부터 ㄱ,ㄴ,ㄷ… 순서이니, 그 글자 그림을 견본으로 삼아 정답 보기 줄의 글자와 비교한다.
+  // 돌려주는 값: [{cx, cy, rx, ry}] (그림 픽셀 좌표). 확실하지 않으면 빈 배열.
+  function detectBogiMarks(canvas, markers, answerDigits) {
+    const w = canvas.width, h = canvas.height;
+    if (!markers || markers.length !== 5 || !answerDigits || !answerDigits.length || w < 80 || h < 80) return [];
+    const d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    const ink = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) ink[i] = ((d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3) < 165 ? 1 : 0;
+    const lab = new Int32Array(w * h), comps = [], stack = [];
+    for (let y0 = 0; y0 < h; y0++) for (let x0 = 0; x0 < w; x0++) {
+      const p0 = y0 * w + x0; if (!ink[p0] || lab[p0]) continue;
+      const id = comps.length + 1; lab[p0] = id; stack.length = 0; stack.push(p0);
+      let x1 = x0, x2 = x0, y1 = y0, y2 = y0, area = 0;
+      while (stack.length) {
+        const p = stack.pop(); area++; const px = p % w, py = (p - px) / w;
+        if (px < x1) x1 = px; if (px > x2) x2 = px; if (py < y1) y1 = py; if (py > y2) y2 = py;
+        for (let dy = -1; dy <= 1; dy++) { const ny = py + dy; if (ny < 0 || ny >= h) continue; for (let dx = -1; dx <= 1; dx++) { const nx = px + dx; if (nx < 0 || nx >= w) continue; const q = ny * w + nx; if (ink[q] && !lab[q]) { lab[q] = id; stack.push(q); } } }
+      }
+      comps.push({ id: id, x1: x1, x2: x2 + 1, y1: y1, y2: y2 + 1, area: area });
+    }
+    const topOpt = Math.min.apply(null, markers.map(m => m.cy)) - markers[0].r * 1.5;
+    // 1) <보기> 상자: 테두리만 있는 큰 사각형(안이 거의 비어 있음) 중 보기 번호들 바로 위에 있는 것
+    const boxes = comps.filter(c => (c.x2 - c.x1) >= w * 0.3 && (c.y2 - c.y1) >= 36 && c.area / ((c.x2 - c.x1) * (c.y2 - c.y1)) < 0.2 && c.y2 <= topOpt + 4).sort((a, b) => b.y2 - a.y2);
+    const box = boxes[0]; if (!box) return [];
+    const bw = box.x2 - box.x1;
+    // 2) 상자 안 글자 덩어리 → 줄로 묶어서, 줄 맨 앞(왼쪽 들여쓰기 없는 것)이 문장 표시
+    const inner = comps.filter(c => c !== box && c.x1 > box.x1 + 3 && c.x2 < box.x2 - 3 && c.y1 > box.y1 + 3 && c.y2 < box.y2 - 3 && (c.y2 - c.y1) >= 7 && c.area >= 8);
+    if (inner.length < 6) return [];
+    const hs = inner.map(c => c.y2 - c.y1).sort((a, b) => a - b), medH = hs[Math.floor(hs.length / 2)];
+    // 문장 표시 = 「ㄱ.」처럼 글자 바로 뒤에 점이 붙고, 왼쪽에 다른 글자가 바싹 붙어 있지 않은 덩어리 (2열로 놓인 <보기>도 읽는 순서대로: 줄 → 왼쪽부터)
+    const isDot = (c, g) => (c.x2 - c.x1) <= medH * 0.4 && (c.y2 - c.y1) <= medH * 0.4 && (c.y2 - c.y1) < (g.y2 - g.y1) * 0.6 && c.y2 >= g.y2 - medH * 0.55 && c.y2 <= g.y2 + medH * 0.6 && c.x1 - g.x2 >= -2 && c.x1 - g.x2 <= medH * 1.1;
+    const tiny = comps.filter(c => c !== box && c.x1 > box.x1 + 3 && c.x2 < box.x2 - 3 && c.y1 > box.y1 + 3 && c.y2 < box.y2 - 3 && (c.x2 - c.x1) <= medH * 0.4 && (c.y2 - c.y1) <= medH * 0.4 && c.area >= 3);
+    const cand = inner.filter(g => {
+      const gh = g.y2 - g.y1, gw = g.x2 - g.x1;
+      if (gh < medH * 0.5 || gh > medH * 1.6 || gw > gh * 1.6 || gw < gh * 0.4) return false;
+      if (!tiny.some(c => isDot(c, g))) return false;
+      const gy = (g.y1 + g.y2) / 2;
+      return !inner.some(c => c !== g && c.x2 <= g.x1 && g.x1 - c.x2 < medH * 1.0 && Math.abs((c.y1 + c.y2) / 2 - gy) < medH * 0.5);      // 왼쪽에 글자가 붙어 있으면 문장 속 글자
+    }).sort((a, b) => (a.y1 + a.y2) - (b.y1 + b.y2));
+    const rows2 = [];
+    cand.forEach(c => { const cy = (c.y1 + c.y2) / 2, r = rows2.find(r => Math.abs(r.cy - cy) < medH * 0.6); if (r) r.items.push(c); else rows2.push({ cy: cy, items: [c] }); });
+    const starts = [];
+    rows2.sort((a, b) => a.cy - b.cy).forEach(r => r.items.sort((a, b) => a.x1 - b.x1).forEach(c => starts.push({ first: c })));
+    if (starts.length < 2 || starts.length > 6) return [];
+    const LET = 'ㄱㄴㄷㄹㅁㅂ';
+    const N = 20, bmp = c => { const cw = c.x2 - c.x1, ch = c.y2 - c.y1, o = new Float32Array(N * N); for (let yy = 0; yy < N; yy++) for (let xx = 0; xx < N; xx++) { const sx = Math.min(w - 1, c.x1 + Math.floor((xx + 0.5) / N * cw)), sy = Math.min(h - 1, c.y1 + Math.floor((yy + 0.5) / N * ch)); o[yy * N + xx] = ink[sy * w + sx]; } return o; };
+    const tmpl = starts.map((l, i) => ({ ch: LET[i], c: l.first, b: bmp(l.first) }));
+    const sim = (a, b) => { let inter = 0, uni = 0; for (let i = 0; i < a.length; i++) { const x = a[i] > 0.5, y = b[i] > 0.5; if (x && y) inter++; if (x || y) uni++; } return uni ? inter / uni : 0; };
+    const labH = tmpl.map(t => t.c.y2 - t.c.y1).sort((a, b) => a - b)[Math.floor(tmpl.length / 2)];
+    // 3) 정답 보기 줄의 글자를 견본과 견줘서 어떤 글자들이 들어 있는지 안다
+    const want = new Set();
+    for (const dg of answerDigits) {
+      const m = markers[dg - 1]; if (!m) return [];
+      const row = markers.filter(o => Math.abs(o.cy - m.cy) < m.r * 1.1 && o.cx > m.cx).sort((a, b) => a.cx - b.cx)[0];
+      const xa = m.cx + m.r * 1.2, xb = row ? row.cx - row.r * 1.2 : w - 2, ya = m.cy - m.r * 1.2, yb = m.cy + m.r * 1.2;
+      const gl = comps.filter(c => c.x1 >= xa && c.x2 <= xb && (c.y1 + c.y2) / 2 >= ya && (c.y1 + c.y2) / 2 <= yb && (c.y2 - c.y1) >= labH * 0.55 && (c.y2 - c.y1) <= labH * 1.7 && (c.x2 - c.x1) <= labH * 2).sort((a, b) => a.x1 - b.x1);
+      if (!gl.length) return [];
+      for (const g of gl) {
+        const b = bmp(g); let best = null, bs = -1, second = -1;
+        tmpl.forEach(t => { const sc = sim(b, t.b); if (sc > bs) { second = bs; bs = sc; best = t; } else if (sc > second) second = sc; });
+        if (!best || bs < 0.42 || bs - second < 0.04) return [];       // 헷갈리면 아무것도 표시하지 않는다 (틀린 곳에 동그라미를 치는 것보다 낫다)
+        want.add(best.ch);
+      }
+    }
+    return tmpl.filter(t => want.has(t.ch)).map(t => { const c = t.c, cw = c.x2 - c.x1, ch = c.y2 - c.y1; return { cx: (c.x1 + c.x2) / 2, cy: (c.y1 + c.y2) / 2, rx: Math.max(cw, ch) * 0.78 + 2, ry: Math.max(cw, ch) * 0.78 + 2, ch: t.ch }; });
+  }
+  async function detectBogiMarksB64(b64, markers, answerDigits) {
+    try {
+      const im = await loadImage('data:image/png;base64,' + b64);
+      const c = createCanvas(im.width, im.height), ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(im, 0, 0);
+      return detectBogiMarks(c, markers, answerDigits);
+    } catch (e) { return []; }
+  }
+
   // ── 강사용 시험지: 문제 바로 밑에 정답(빨간 글씨)과 해설을 붙이고, 객관식 정답 번호에는 빨간 동그라미를 친다 ──
   // items: [{ base64, width, height, naturalW, num, answer, explBase64?, explW?, explH?, tag? }]
   function answerLabelPng(answer, widthPt, numStart) {
@@ -1778,6 +1918,12 @@
           const m = markers[n - 1], rr = m.r * k * 1.25;
           page.drawEllipse({ x: p.x + m.cx * k, y: p.top - m.cy * k, xScale: rr, yScale: rr, borderColor: RED, borderWidth: 1.6 });
         });
+        // 정답 보기가 「ㄴ, ㄹ」 같은 글자 조합이면, <보기> 상자 안의 같은 글자(ㄴ·ㄹ)에도 빨간 동그라미 (빨리 확인할 수 있게)
+        try {
+          const digs = Object.keys(seen).map(Number).filter(n => n >= 1 && n <= 5);
+          if (digs.length) { const bm = await detectBogiMarksB64(it.base64, markers, digs);
+            bm.forEach(b => page.drawEllipse({ x: p.x + b.cx * k, y: p.top - b.cy * k, xScale: b.rx * k, yScale: b.ry * k, borderColor: RED, borderWidth: 1.3 })); }
+        } catch (e) {}
       }
       page.drawImage(labImg, { x: p.x, y: p.top - dh - 2 - lab.h, width: dw, height: lab.h });
       let used = dh + lab.h + 4;
@@ -3955,7 +4101,7 @@
     scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
-    _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
+    _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, detectBogiMarks: detectBogiMarks, detectBogiMarksB64: detectBogiMarksB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
     _pageItems: pageItems, eraseEdgeRules: eraseEdgeRules, cleanImageBase64: cleanImageBase64,
     parseHeadRange: parseHeadRange, markAppendedAnswerPages: markAppendedAnswerPages, estimateUnits: estimateUnits, estimateSubs: estimateSubs, linkHeads: linkHeads, selectQuestionSpans: selectQuestionSpans, matchUnitName: matchUnitName, pastTagText: pastTagText, tagPng: tagPng, parseToc: parseToc, unitsToRanges: unitsToRanges, NO_UNIT: NO_UNIT,
     rasterizeToPdf: rasterizeToPdf, needsRasterize: needsRasterize,
