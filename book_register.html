@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611130058">
+<link rel="stylesheet" href="css/style.css?v=202611130109">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -34,6 +34,11 @@
   <p class="muted">교재 PDF 한 권을 올리면 목차대로 소단원(25문제씩)을 찾아 <b>정답을 읽고</b>, 단원마다 시험을 등록한 뒤 <b>각 단원 첫 쪽에 QR을 찍은 교재 합본 PDF</b> 한 개를 만들어 드려요. 그 PDF를 학생에게 나눠주면 풀다가 단원 QR을 찍어 답안을 입력해요.</p>
   <div id="error-banner"></div>
 
+  <div class="card" id="saved-card" style="display:none;">
+    <label>📁 전에 만들어 둔 합본 PDF <span class="muted" style="font-weight:400;">(이 기기에 저장돼 있어요 · 강사용/학생용 따로 내려받아요)</span></label>
+    <div id="saved-list"></div>
+  </div>
+
   <div class="card">
     <label>교재 PDF (문제편 + 정답편이 한 파일, 목차에 쪽수가 있는 교재)</label>
     <input type="file" id="book-file" accept="application/pdf">
@@ -60,18 +65,19 @@
       <label class="field-label-spaced"><input type="checkbox" id="multi-qr" checked> 목차 쪽에 「여러 단원 한꺼번에 채점」 QR도 찍기</label>
       <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 QR 합본 PDF 만들기</button>
       <p class="hint" id="go-msg" style="margin:8px 0 0;"></p>
+      <div id="dl-box" style="margin-top:10px;"></div>
     </div>
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611130058"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611130058"></script>
-<script src="js/vendor/pdf.min.js?v=202611130058"></script>
-<script src="js/config.js?v=202611130058"></script>
-<script src="js/api.js?v=202611130058"></script>
-<script src="js/common.js?v=202611130058"></script>
-<script src="js/bankcore.js?v=202611130058"></script>
-<script src="js/pdfui.js?v=202611130058"></script>
+<script src="js/vendor/qrcode.min.js?v=202611130109"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611130109"></script>
+<script src="js/vendor/pdf.min.js?v=202611130109"></script>
+<script src="js/config.js?v=202611130109"></script>
+<script src="js/api.js?v=202611130109"></script>
+<script src="js/common.js?v=202611130109"></script>
+<script src="js/bankcore.js?v=202611130109"></script>
+<script src="js/pdfui.js?v=202611130109"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -255,6 +261,37 @@ function updateRow(tr, s) {
 }
 
 // ── 3단계: 등록하고 QR 합본 만들기 ──
+// ── 만들어 둔 합본 PDF를 이 기기(IndexedDB)에 저장해 두고, 강사용/학생용을 따로 내려받는다 ──
+const mergeDb = () => new Promise((res, rej) => { const rq = indexedDB.open('qr_merges_db', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('m', { keyPath: 'id' }); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+const mergeDbOp = async (mode, fn) => { const db = await mergeDb(); return new Promise((res, rej) => { const tx = db.transaction('m', mode), st = tx.objectStore('m'), rq = fn(st); tx.oncomplete = () => res(rq && rq.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); }); };
+const mergeDbPut = rec => mergeDbOp('readwrite', st => st.put(rec));
+const mergeDbAll = () => mergeDbOp('readonly', st => st.getAll());
+const mergeDbDel = id => mergeDbOp('readwrite', st => st.delete(id));
+const blobDl = (blob, name) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+const mergeBtns = (rec, wrap) => {
+  const mk = (label, blob, suffix) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (suffix === '강사용' ? ' primary' : ''); b.style.cssText = 'margin:3px 6px 3px 0;'; b.textContent = label + ' (' + (blob.size / 1048576).toFixed(1) + 'MB)'; b.onclick = () => blobDl(blob, rec.name + ' (QR ' + (suffix === '강사용' ? '강사용 전체' : '학생용') + ').pdf'); wrap.appendChild(b); };
+  if (rec.teacher) mk('⬇ 강사용 내려받기', rec.teacher, '강사용');
+  if (rec.student) mk('⬇ 학생용 내려받기', rec.student, '학생용');
+};
+function showDownloads(rec) { const box = $('dl-box'); box.innerHTML = ''; mergeBtns(rec, box); }
+async function renderSaved() {
+  try {
+    const all = (await mergeDbAll()).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    $('saved-card').style.display = all.length ? '' : 'none';
+    const list = $('saved-list'); list.innerHTML = '';
+    all.forEach(rec => {
+      const row = document.createElement('div'); row.style.cssText = 'padding:8px 0; border-top:1px solid var(--line);';
+      const d = new Date(rec.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      const t = document.createElement('div'); t.innerHTML = '<b>' + escapeHtml(rec.name) + '</b> <span class="muted">' + ds + '</span>'; row.appendChild(t);
+      mergeBtns(rec, row);
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'btn'; del.style.cssText = 'margin:3px 0; color:#C1392B;'; del.textContent = '🗑 삭제';
+      del.onclick = async () => { if (!confirm('이 합본 PDF를 이 기기에서 지울까요? (등록된 시험은 그대로예요)')) return; try { await mergeDbDel(rec.id); } catch (e) {} renderSaved(); };
+      row.appendChild(del); list.appendChild(row);
+    });
+  } catch (e) {}
+}
+renderSaved();
+
 $('go-btn').addEventListener('click', async () => {
   const err = $('error-banner'); err.innerHTML = '';
   const chosen = sections.filter(s => s.on);
@@ -417,15 +454,16 @@ $('go-btn').addEventListener('click', async () => {
     const dl = (bytes, name) => { const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
     const wantStu = $('stu-ver').checked;
     msg('강사용 전체 합본을 만드는 중...');
-    dl(await makeVersion(true), stem + (wantStu ? ' (QR 강사용 전체).pdf' : ' (QR).pdf'));
-    if (wantStu) {
-      msg('학생용 합본(정답·해설 쪽 제외)을 만드는 중...');
-      const stuBytes = await makeVersion(false);
-      await new Promise(r => setTimeout(r, 800));       // 브라우저가 두 번째 내려받기를 막지 않게 잠깐 쉰다
-      dl(stuBytes, stem + ' (QR 학생용).pdf');
-    }
+    const teacherBytes = await makeVersion(true);
+    let stuBytes = null;
+    if (wantStu) { msg('학생용 합본(정답·해설 쪽 제외)을 만드는 중...'); stuBytes = await makeVersion(false); }
+    const saveKey = 'm' + Date.now();
+    const rec = { id: saveKey, name: stem, date: new Date().toISOString(), teacher: new Blob([teacherBytes], { type: 'application/pdf' }), student: stuBytes ? new Blob([stuBytes], { type: 'application/pdf' }) : null };
+    let savedOk = true; try { await mergeDbPut(rec); } catch (e) { savedOk = false; }
+    showDownloads(rec);
+    renderSaved();
     const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
-    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (wantStu ? '강사용 전체 합본과 학생용 합본, 두 파일이' : 'QR 합본 PDF가') + ' 내려받아졌어요.<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
+    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (savedOk ? '합본 PDF는 아래 버튼으로 내려받아요(이 기기에 저장돼 나중에도 받을 수 있어요).' : '합본 PDF는 아래 버튼으로 내려받아요. (이 기기에는 저장하지 못했어요)') + '<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
   } catch (e) {
     err.innerHTML = '<div class="banner error">' + escapeHtml(e.message) + '</div>';
     $('go-msg').textContent = '';
