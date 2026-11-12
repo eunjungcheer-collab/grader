@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611130236">
+<link rel="stylesheet" href="css/style.css?v=202611130212">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -62,6 +62,7 @@
       </div>
       <label class="field-label-spaced"><input type="checkbox" id="to-bank" checked> 문제도 <b>문제은행에 「내신교재」 문제로 저장</b> (오답노트·유사오답이 일반 시험지처럼 돼요. 시간이 더 걸려요)</label>
       <label class="field-label-spaced"><input type="checkbox" id="stu-ver" checked> <b>학생용 합본</b>(정답·해설 쪽을 뺀 것)도 따로 만들기 — 끄면 <b>강사용 전체 합본</b> 한 파일만 만들어요</label>
+      <label class="field-label-spaced"><input type="checkbox" id="teacher-expl" checked> <b>강사용 합본에 「문제 바로 아래 해설」 넣기</b> — 끄면 강사용도 교재 원본 쪽 그대로(QR만 찍힘)라 훨씬 빨리 만들어져요</label>
       <label class="field-label-spaced"><input type="checkbox" id="multi-qr" checked> 목차 쪽에 「여러 단원 한꺼번에 채점」 QR도 찍기</label>
       <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 QR 합본 PDF 만들기</button>
       <p class="hint" id="go-msg" style="margin:8px 0 0;"></p>
@@ -71,14 +72,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611130236"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611130236"></script>
-<script src="js/vendor/pdf.min.js?v=202611130236"></script>
-<script src="js/config.js?v=202611130236"></script>
-<script src="js/api.js?v=202611130236"></script>
-<script src="js/common.js?v=202611130236"></script>
-<script src="js/bankcore.js?v=202611130236"></script>
-<script src="js/pdfui.js?v=202611130236"></script>
+<script src="js/vendor/qrcode.min.js?v=202611130212"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611130212"></script>
+<script src="js/vendor/pdf.min.js?v=202611130212"></script>
+<script src="js/config.js?v=202611130212"></script>
+<script src="js/api.js?v=202611130212"></script>
+<script src="js/common.js?v=202611130212"></script>
+<script src="js/bankcore.js?v=202611130212"></script>
+<script src="js/pdfui.js?v=202611130212"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -437,7 +438,7 @@ $('go-btn').addEventListener('click', async () => {
     const teacherSec = {};      // s.order → { doc: 새로 짠 PDF(pdf-lib) }
     try {
       let ci = 0;
-      for (const s of chosen) {
+      for (const s of ($('teacher-expl').checked ? chosen : [])) {
         ci++; msg('강사용 해설서 만드는 중... ' + ci + '/' + chosen.length + ' ' + secTitle(s));
         try {
           const sub = await PDFLib.PDFDocument.create();
