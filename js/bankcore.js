@@ -3311,9 +3311,10 @@
       const labs = [];
       pd.items.forEach(l => {
         let m = String(l.str).match(/^\s*(\d{1,2})\)\s*\[정답\]/);
-        if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top }); return; }
+        if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w }); return; }
         m = String(l.str).match(/^\s*(\d{1,2})\)\s*$/);
-        if (m && pd.items.some(q => String(q.str).trim() === '정답' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14)) labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top });
+        const tg = m && pd.items.find(q => String(q.str).trim() === '정답' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14);
+        if (tg) labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: tg.x + tg.w - l.x });
       });
       return labs;
     };
@@ -3325,13 +3326,28 @@
     const rightXs = all.filter(x => two && x >= half), rightX0 = two && rightXs.length ? Math.min.apply(null, rightXs) - 12 : W0;
     for (const o of pds) {
       const pd = o.pd; if (!pd) continue;
-      const labs = labelsOf(pd), contentTop = pd.H * 0.096, bottomLimit = pd.H - 62;
+      // 어떤 교재는 쪽마다 글자 층이 겹쳐(보이지 않는 사본이 몇 pt 어긋나게) 들어 있다 → 실제로 그려진 먹물이 있는 번호표만 쓴다
+      let ink = null; const SCI = 3;
+      try { const cv = await renderRect(doc, o.p, [0, 0, pd.W, pd.H], SCI, false), cx = cv.getContext('2d'), im = cx.getImageData(0, 0, cv.width, cv.height).data, w = cv.width;
+        ink = (r) => { let n = 0; const x0 = Math.max(0, Math.floor(r[0] * SCI)), x1 = Math.min(w - 1, Math.ceil(r[2] * SCI)), y0 = Math.max(0, Math.floor(r[1] * SCI)), y1 = Math.min(cv.height - 1, Math.ceil(r[3] * SCI));
+          for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const k = (y * w + x) * 4; if (im[k] < 120 && im[k + 1] < 120 && im[k + 2] < 120) n++; } return n; }; } catch (e) { ink = null; }
+      let labs = labelsOf(pd);
+      if (ink) {
+        // 번호표 줄(「3) [정답] ④」)은 그 줄에 번호표만 있다 → 글자 영역엔 먹물이 있고, 오른쪽 나머지엔 없어야 진짜 (겹친 가짜 글자 층은 해설 글줄 위에 놓여 오른쪽에 먹물이 있다)
+        labs.forEach(l => { const cr = (!two || l.x < half) ? (two ? half - 2 : pd.W) : pd.W - 6; l.ink = ink([l.x - 1, l.top - 1, l.x + l.w + 1, l.bottom + 1]); l.tail = ink([l.x + l.w + 4, l.top, cr, l.bottom]); });
+        const real = labs.filter(l => l.ink > 60 && l.tail <= 8);
+        const best = {}; real.forEach(l => { const k = l.n + '_' + (two ? (l.x < half ? 0 : 1) : 0); if (!best[k] || l.ink > best[k].ink) best[k] = l; });
+        labs = real.filter(l => best[l.n + '_' + (two ? (l.x < half ? 0 : 1) : 0)] === l);
+      }
+      const contentTop = pd.H * 0.096, bottomLimit = pd.H - 62;
       const cols = two ? [[leftX0, rightX0 - 4, x => x < half], [rightX0, pd.W - leftX0, x => x >= half]] : [[leftX0, pd.W - leftX0, () => true]];
       cols.forEach(cd => {
         const ms = labs.filter(l => cd[2](l.x)).sort((a, b) => a.top - b.top);
-        const body = pd.items.filter(it => cd[2](it.x) && it.top >= contentTop && it.top < bottomLimit);
         const firstTop = ms.length ? ms[0].top - 4 : bottomLimit;
-        if (lastNum !== null && out[lastNum] && body.some(it => it.top < firstTop - 2)) out[lastNum].segments.push({ page: o.p, rect: [cd[0], contentTop, cd[1], firstTop] });
+        let cont;
+        if (ink) cont = firstTop - contentTop > 10 && ink([cd[0], contentTop, cd[1], firstTop - 2]) > 40;
+        else cont = firstTop - contentTop > 10 && pd.items.some(it => cd[2](it.x) && it.top >= contentTop && it.top < firstTop - 2);
+        if (lastNum !== null && out[lastNum] && cont) out[lastNum].segments.push({ page: o.p, rect: [cd[0], contentTop, cd[1], firstTop] });
         ms.forEach((m, i) => {
           const top = Math.max(0, m.top - 4);
           const bottom = i + 1 < ms.length ? ms[i + 1].top - 6 : bottomLimit;
