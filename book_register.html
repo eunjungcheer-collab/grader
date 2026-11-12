@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611122248">
+<link rel="stylesheet" href="css/style.css?v=202611130036">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -64,14 +64,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611122248"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611122248"></script>
-<script src="js/vendor/pdf.min.js?v=202611122248"></script>
-<script src="js/config.js?v=202611122248"></script>
-<script src="js/api.js?v=202611122248"></script>
-<script src="js/common.js?v=202611122248"></script>
-<script src="js/bankcore.js?v=202611122248"></script>
-<script src="js/pdfui.js?v=202611122248"></script>
+<script src="js/vendor/qrcode.min.js?v=202611130036"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611130036"></script>
+<script src="js/vendor/pdf.min.js?v=202611130036"></script>
+<script src="js/config.js?v=202611130036"></script>
+<script src="js/api.js?v=202611130036"></script>
+<script src="js/common.js?v=202611130036"></script>
+<script src="js/bankcore.js?v=202611130036"></script>
+<script src="js/pdfui.js?v=202611130036"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -304,8 +304,8 @@ $('go-btn').addEventListener('click', async () => {
       }
       const chunks = []; for (let i = 0; i < items.length; i += 2) chunks.push(items.slice(i, i + 2));
       let cn = 0, ferr = null;
-      await Promise.all(Array.from({ length: Math.min(6, chunks.length) }, async () => {
-        while (!ferr) { const k = cn++; if (k >= chunks.length) return; const r = await callApi('saveQuestions', { password: getTeacherPassword(), questions: chunks[k] }); if (!r.ok) ferr = new Error(r.error || '문제 저장 실패'); }
+      await Promise.all(Array.from({ length: Math.min(4, chunks.length) }, async () => {
+        while (!ferr) { const k = cn++; if (k >= chunks.length) return; let r = null; for (let at = 0; at < 4; at++) { try { r = await callApi('saveQuestions', { password: getTeacherPassword(), questions: chunks[k] }); break; } catch (e) { if (at === 3 || !/연결하지 못했어요|이상한 응답|서버 요청에 실패/.test(e.message)) throw e; await new Promise(res => setTimeout(res, 2000 * (at + 1))); } } if (!r.ok) ferr = new Error(r.error || '문제 저장 실패'); }
       }));
       if (ferr) throw ferr;
       bankQ += items.length;

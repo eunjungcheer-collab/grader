@@ -560,6 +560,16 @@ function actionSaveQuestions_(p) {
   });
   let msLock = 0, msSheet = 0;
   if (rows.length) {
+    // 연결이 끊겨 같은 요청을 다시 보낸 경우 같은 문항이 두 번 쌓이지 않게, 이미 있는 id는 건너뛴다
+    try {
+      const last = sheet.getLastRow();
+      if (last > 1) {
+        const have = {}; sheet.getRange(2, 1, last - 1, 1).getValues().forEach(function (r) { have[r[0]] = 1; });
+        for (let i = rows.length - 1; i >= 0; i--) if (have[rows[i][0]]) rows.splice(i, 1);
+      }
+    } catch (e) {}
+  }
+  if (rows.length) {
     // 여러 저장 요청이 동시에 와도 행이 겹쳐 쓰이지 않게, 시트에 쓰는 순간만 잠근다
     const lock = LockService.getScriptLock();
     const L0 = Date.now();
