@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611130121">
+<link rel="stylesheet" href="css/style.css?v=202611130210">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -70,14 +70,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611130121"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611130121"></script>
-<script src="js/vendor/pdf.min.js?v=202611130121"></script>
-<script src="js/config.js?v=202611130121"></script>
-<script src="js/api.js?v=202611130121"></script>
-<script src="js/common.js?v=202611130121"></script>
-<script src="js/bankcore.js?v=202611130121"></script>
-<script src="js/pdfui.js?v=202611130121"></script>
+<script src="js/vendor/qrcode.min.js?v=202611130210"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611130210"></script>
+<script src="js/vendor/pdf.min.js?v=202611130210"></script>
+<script src="js/config.js?v=202611130210"></script>
+<script src="js/api.js?v=202611130210"></script>
+<script src="js/common.js?v=202611130210"></script>
+<script src="js/bankcore.js?v=202611130210"></script>
+<script src="js/pdfui.js?v=202611130210"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -376,34 +376,31 @@ $('go-btn').addEventListener('click', async () => {
       msg('QR 찍는 중... ' + (++i) + '/' + chosen.length);
       await stampQrOnPage(pdf, s.qa - 1, studentLinkFor(ids[s.order]), { size: size, corner: corner, margin: 8, caption: 'QR코드로 답안 입력하세요' });
     }
-    // 강사용 합본: 문제 쪽의 정답 번호(①~⑤)와, 정답이 「ㄱ, ㄴ」 꼴이면 <보기> 속 ㄱ·ㄴ에도 빨간 동그라미를 그리려고 위치를 미리 찾아 둔다
-    const circles = {};      // 원래 쪽 번호(0부터) → [{ x, y(위에서부터), rx, ry }]
+    // 강사용 합본: 각 단원의 문제 쪽을 「문제 + 정답 동그라미 + 바로 아래 해설」 모양으로 새로 짜 둔다 (다른 시험지의 강사용 해설서와 같은 모양)
+    const teacherSec = {};      // s.order → { doc: 새로 짠 PDF(pdf-lib) }
     try {
       let ci = 0;
       for (const s of chosen) {
-        ci++; msg('강사용 정답 동그라미 위치 찾는 중... ' + ci + '/' + chosen.length + ' ' + secTitle(s));
+        ci++; msg('강사용 해설서 만드는 중... ' + ci + '/' + chosen.length + ' ' + secTitle(s));
         try {
           const sub = await PDFLib.PDFDocument.create();
           const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1);
           (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
           const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
           const scan = await BankCore.scanPdf(doc);
-          const qs = scan.questions;
+          const qs = scan.questions.slice().sort((a, b) => a.num - b.num);
           if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) continue;
-          const SC = BankCore.CROP_SCALE;
+          const pgs = []; for (let p = s.aa; p <= s.ab; p++) pgs.push(p);
+          let exps = {}; try { exps = await BankCore.bookExplanations(bookDoc, pgs); } catch (e) {}
+          const items = [];
           for (const q of qs) {
-            if ((q.pre && q.pre.length) || (q.extra && q.extra.length)) continue;
-            const digs = String(s.answers[q.num - 1] == null ? '' : s.answers[q.num - 1]).replace(/[^0-9]/g, '').split('').map(Number).filter(n => n >= 1 && n <= 5);
-            if (!digs.length) continue;
-            const canvas = await BankCore.renderQuestion(doc, q, SC, true);
-            const mk = BankCore.detectOptionMarkers(canvas);
-            if (!mk || mk.length !== 5) continue;
-            const list = (circles[s.qa - 1 + (q.page - 1)] = circles[s.qa - 1 + (q.page - 1)] || []);
-            const put = (cx, cy, rx, ry) => list.push({ x: q.rect[0] + cx / SC, y: q.rect[1] + cy / SC, rx: rx / SC, ry: ry / SC });
-            const seen = {};
-            digs.forEach(n => { if (seen[n]) return; seen[n] = 1; const m = mk[n - 1], rr = m.r * 1.25; put(m.cx, m.cy, rr, rr); });
-            try { BankCore.detectBogiMarks(canvas, mk, Object.keys(seen).map(Number)).forEach(b => put(b.cx, b.cy, b.rx, b.ry)); } catch (e) {}
+            const canvas = await BankCore.renderQuestion(doc, q, BankCore.CROP_SCALE, true);
+            const it = { base64: BankCore.canvasToBase64(canvas), width: canvas.width, height: canvas.height, naturalW: canvas.width / BankCore.CROP_SCALE, num: q.num, noBadge: true, answer: s.answers[q.num - 1] || '' };
+            const ex = exps[q.num];
+            if (ex && ex.segments.length) { try { const ec = await BankCore.renderExplanation(bookDoc, ex, 2.2); it.explBase64 = BankCore.canvasToBase64(ec); it.explW = ec.width; it.explH = ec.height; } catch (e) {} }
+            items.push(it);
           }
+          teacherSec[s.order] = { doc: await BankCore.composeTeacherPdf(PDFLib, secTitle(s), items, { keepTitle: false }), withExpl: items.filter(x => x.explBase64).length, n: items.length };
         } catch (e) {}
       }
     } catch (e) {}
@@ -416,12 +413,24 @@ $('go-btn').addEventListener('click', async () => {
     const makeVersion = async (withAns) => {
       const doc = await PDFLib.PDFDocument.load(stampedBytes, { ignoreEncryption: true, updateMetadata: false });
       const drop = new Set(); if (!withAns) sections.forEach(s => { for (let p = s.aa; p <= s.ab; p++) drop.add(p - 1); });
-      const kept = doc.getPageIndices().filter(i => !drop.has(i));
+      let kept = doc.getPageIndices().filter(i => !drop.has(i));
       for (let i = doc.getPageCount() - 1; i >= 0; i--) if (drop.has(i)) doc.removePage(i);
+      if (withAns) {
+        // 문제 쪽을 새로 짠 강사용 해설서 쪽으로 바꿔 끼운다 (kept: 원래 쪽 번호, 새 쪽은 1e6+원래 첫 쪽 / -1)
+        const reps = chosen.filter(s => teacherSec[s.order]).sort((a, b) => b.qa - a.qa);
+        for (const s of reps) {
+          const t = teacherSec[s.order].doc, n = t.getPageCount(), at = kept.indexOf(s.qa - 1);
+          if (at < 0) continue;
+          const cnt = s.qb - s.qa + 1, copied = await doc.copyPages(t, t.getPageIndices());
+          copied.forEach((pg, k) => doc.insertPage(at + k, pg));
+          for (let k = 0; k < cnt; k++) doc.removePage(at + n);
+          kept.splice(at, cnt, ...copied.map((_, k) => k === 0 ? 1e6 + s.qa - 1 : -1));
+          await stampQrOnPage(doc, at, studentLinkFor(ids[s.order]), { size: size, corner: corner, margin: 8, caption: 'QR코드로 답안 입력하세요' });
+        }
+      }
       const white = PDFLib.rgb(1, 1, 1);
       kept.forEach((orig, j) => { const pgj = doc.getPage(j); (numBoxes[orig] || []).forEach(bx => pgj.drawRectangle({ x: bx.x0 - 3, y: bx.y0 - 1, width: bx.x1 - bx.x0 + 6, height: bx.y1 - bx.y0 + 3, color: white, borderWidth: 0 })); });
-      if (withAns) kept.forEach((orig, j) => { const pgj = doc.getPage(j), H = pgj.getHeight(); (circles[orig] || []).forEach(c => pgj.drawEllipse({ x: c.x, y: H - c.y, xScale: c.rx, yScale: c.ry, borderColor: PDFLib.rgb(0.76, 0.22, 0.17), borderWidth: 1.5 })); });
-      const posOf = p => kept.indexOf(p - 1) + 1;
+      const posOf = p => { let i = kept.indexOf(p - 1); if (i < 0) i = kept.indexOf(1e6 + p - 1); return i + 1; };
       let nIns = 0;
       // 표지가 있으면(첫 단원이 1쪽부터 시작하지 않으면) 목차는 표지 바로 뒤에, 없으면 맨 앞에
       const firstQ = Math.min.apply(null, chosen.map(s => posOf(s.qa)).filter(n => n > 0));

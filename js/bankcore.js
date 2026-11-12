@@ -3300,6 +3300,49 @@
   }
   function _centered(a) { let m = 0; for (let i = 0; i < a.length; i++) m += a[i]; m /= a.length; const o = new Float32Array(a.length); for (let i = 0; i < a.length; i++) o[i] = a[i] - m; return o; }
   function _sim(a, b) { let da = 0, db = 0, ab = 0; for (let i = 0; i < a.length; i++) { da += a[i] * a[i]; db += b[i] * b[i]; ab += a[i] * b[i]; } return ab / Math.sqrt(da * db + 1e-9); }
+
+  // ── 교재 정답·해설 쪽(「3) [정답] ③ [해설] …」 모양, 2단)에서 문항별 해설 영역을 찾는다 ──
+  // 반환: { 문항번호: { segments: [{ page, rect }] } }  (page는 doc의 쪽 번호). 다음 번호표 전까지, 단·쪽을 넘어가면 이어서.
+  async function bookExplanations(doc, pages) {
+    const out = {}; let lastNum = null;
+    const pds = [];
+    for (const p of pages) { try { pds.push({ p: p, pd: await pageItems(doc, p, false) }); } catch (e) { pds.push({ p: p, pd: null }); } }
+    const labelsOf = pd => {
+      const labs = [];
+      pd.items.forEach(l => {
+        let m = String(l.str).match(/^\s*(\d{1,2})\)\s*\[정답\]/);
+        if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top }); return; }
+        m = String(l.str).match(/^\s*(\d{1,2})\)\s*$/);
+        if (m && pd.items.some(q => String(q.str).trim() === '정답' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14)) labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top });
+      });
+      return labs;
+    };
+    const all = []; pds.forEach(o => { if (o.pd) labelsOf(o.pd).forEach(l => all.push(l.x)); });
+    if (!all.length) return out;
+    const W0 = pds.find(o => o.pd).pd.W, half = W0 / 2;
+    const two = Math.max.apply(null, all) - Math.min.apply(null, all) > 40;
+    const leftX0 = Math.min.apply(null, all.filter(x => !two || x < half)) - 12;
+    const rightXs = all.filter(x => two && x >= half), rightX0 = two && rightXs.length ? Math.min.apply(null, rightXs) - 12 : W0;
+    for (const o of pds) {
+      const pd = o.pd; if (!pd) continue;
+      const labs = labelsOf(pd), contentTop = pd.H * 0.096, bottomLimit = pd.H - 62;
+      const cols = two ? [[leftX0, rightX0 - 4, x => x < half], [rightX0, pd.W - leftX0, x => x >= half]] : [[leftX0, pd.W - leftX0, () => true]];
+      cols.forEach(cd => {
+        const ms = labs.filter(l => cd[2](l.x)).sort((a, b) => a.top - b.top);
+        const body = pd.items.filter(it => cd[2](it.x) && it.top >= contentTop && it.top < bottomLimit);
+        const firstTop = ms.length ? ms[0].top - 4 : bottomLimit;
+        if (lastNum !== null && out[lastNum] && body.some(it => it.top < firstTop - 2)) out[lastNum].segments.push({ page: o.p, rect: [cd[0], contentTop, cd[1], firstTop] });
+        ms.forEach((m, i) => {
+          const top = Math.max(0, m.top - 4);
+          const bottom = i + 1 < ms.length ? ms[i + 1].top - 6 : bottomLimit;
+          if (!out[m.n]) out[m.n] = { segments: [] };
+          out[m.n].segments.push({ page: o.p, rect: [cd[0], top, cd[1], bottom] });
+          lastNum = m.n;
+        });
+      });
+    }
+    return out;
+  }
   async function readLabeledImageAnswers(doc, pages, onProgress) {
     const rows = [], items = [], tpl = _digitTemplates().map(t => ({ d: t.d, c: _centered(t.v.f), ar: t.v.ar }));
     let pi = 0;
@@ -4102,7 +4145,7 @@
   }
 
   root.BankCore = {
-    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
+    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
     _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, detectBogiMarks: detectBogiMarks, detectBogiMarksB64: detectBogiMarksB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
