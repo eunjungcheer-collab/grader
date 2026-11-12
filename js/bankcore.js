@@ -521,17 +521,20 @@
     // 3차: "[서술형5]" · "[서답형 1]" 처럼 번호가 「N.」 모양이 아닌 서술형 문항 머리글도 따로 문항으로 자른다. 번호는 객관식 맨 끝 번호 뒤로 이어서(서술형1 → 객관식 마지막+1) 붙인다.
     try {
       const SUBJ_HEAD = /^[\[［〔【]\s*(?:서술형|서답형|논술형)\s*(\d{1,2})\s*[\]］〕】]?/;
+      const SUBJ_HEAD_GARBLED = /^[\[［〔【][^\d\]\[］〕】]{1,8}(\d{1,2})[\]］〕】]/;   // 글꼴이 깨져 「서술형」 글자를 못 읽어도 「[깨진글자1]」 모양이면 서술형 머리글로 본다
       const nums = []; Object.keys(out).forEach(k => out[k].forEach(sp => { if (!sp.subj) nums.push(sp.num); }));
       const maxObj = nums.length ? Math.max.apply(null, nums) : 0;
       pages.forEach((pd, idx) => {
         if (skipPages && skipPages.includes(idx + 1)) return;
         const its = pd.items, found = [];
+        // 글자 조각이 읽는 순서대로 안 들어 있는 PDF도 있어서, 같은 줄에서 오른쪽으로 가장 가까운 조각을 찾는다
+        const lineNext = (it, last, i, k) => { let best = null; for (const c of its) { if (c === it || c === last || Math.abs(c.base - it.base) > 4 || c.x < last.x + last.w - 2 || c.sentinel) continue; if (!best || c.x < best.x) best = c; } return best || its[i + k]; };
         its.forEach((it, i) => {
           const t0 = String(it.str).trim();
           if (!/^[\[［〔【]/.test(t0)) return;
           let joined = it.str, last = it;
-          for (let k = 1; k <= 4 && !SUBJ_HEAD.test(joined.replace(/\s+/g, '')); k++) { const c = its[i + k]; if (!c || Math.abs(c.base - it.base) > 4 || c.x < last.x || c.x - (last.x + last.w) > 14) break; joined += c.str; last = c; }
-          const m = SUBJ_HEAD.exec(joined.replace(/\s+/g, '')); if (!m) return;
+          for (let k = 1; k <= 4 && !SUBJ_HEAD.test(joined.replace(/\s+/g, '')) && !SUBJ_HEAD_GARBLED.test(joined.replace(/\s+/g, '')); k++) { const c = lineNext(it, last, i, k); if (!c || c.x - (last.x + last.w) > 14) break; joined += c.str; last = c; }
+          const m = SUBJ_HEAD.exec(joined.replace(/\s+/g, '')) || SUBJ_HEAD_GARBLED.exec(joined.replace(/\s+/g, '')); if (!m) return;
           found.push({ num: maxObj + parseInt(m[1], 10), snum: parseInt(m[1], 10), x: it.x, x1: last.x + last.w, top: it.top, bottom: it.bottom, size: qSize, subj: true });
         });
         if (!found.length) return;
