@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611120357">
+<link rel="stylesheet" href="css/style.css?v=202611121939">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,16 +157,16 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611120357"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611120357"></script>
-<script src="js/vendor/pdf.min.js?v=202611120357"></script>
-<script src="js/config.js?v=202611120357"></script>
-<script src="js/api.js?v=202611120357"></script>
-<script src="js/common.js?v=202611120357"></script>
-<script src="js/ocr.js?v=202611120357"></script>
-<script src="js/bankcore.js?v=202611120357"></script>
-<script src="js/pdfui.js?v=202611120357"></script>
-<script src="js/pdfview.js?v=202611120357"></script>
+<script src="js/vendor/qrcode.min.js?v=202611121939"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611121939"></script>
+<script src="js/vendor/pdf.min.js?v=202611121939"></script>
+<script src="js/config.js?v=202611121939"></script>
+<script src="js/api.js?v=202611121939"></script>
+<script src="js/common.js?v=202611121939"></script>
+<script src="js/ocr.js?v=202611121939"></script>
+<script src="js/bankcore.js?v=202611121939"></script>
+<script src="js/pdfui.js?v=202611121939"></script>
+<script src="js/pdfview.js?v=202611121939"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -189,13 +189,18 @@ function commonLen(a, b) { let i = 0; while (i < a.length && i < b.length && a[i
 function pairByName(files, isAnsOverride) {
   const isA = files.map((f, i) => ANS_NAME_RE.test(f.name) || !!(isAnsOverride && isAnsOverride[i]));
   if (isA.every(x => x)) return files.map(f => ({ file: f, ans: null }));
-  const qs = files.filter((f, i) => !isA[i]).map(f => ({ file: f, ans: null }));
-  files.filter((f, i) => isA[i]).forEach(af => {
-    let best = null, bs = -Infinity;
-    qs.forEach((q, k) => { const sc = commonLen(normName(q.file.name), normName(af.name)) * 10 - (q.ans ? 1000 : 0) - Math.abs(files.indexOf(q.file) - files.indexOf(af)); if (sc > bs) { bs = sc; best = q; } });
-    if (best) best.ans = af;
-  });
-  return qs;
+  const yr = n => { const m = String(n).match(/(20\d\d)/); return m ? m[1] : ''; };
+  const qs = files.map((f, i) => ({ file: f, ans: null, idx: i })).filter((q, k) => !isA[q.idx]);
+  const cands = [];
+  files.forEach((af, ai) => { if (!isA[ai]) return;
+    qs.forEach(q => { const ya = yr(af.name), yq = yr(q.file.name); if (ya && yq && ya !== yq) return;      // 연도가 다르면(2023 ↔ 2024) 짝이 아니다
+      cands.push({ ai: ai, q: q, sc: commonLen(normName(q.file.name), normName(af.name)) * 10 - Math.abs(q.idx - ai) }); }); });
+  cands.sort((x, y) => y.sc - x.sc);
+  const usedA = {};
+  cands.forEach(c => { if (usedA[c.ai] || c.q.ans) return; c.q.ans = files[c.ai]; usedA[c.ai] = true; });      // 시험지 하나에 정답지 하나, 정답지 하나는 시험지 하나에만
+  // 짝을 못 찾은 "정답지" 파일은 버리지 않고 따로 시험지로 연다 (다른 해의 시험지가 정답이라는 이름을 갖고 있을 수 있다)
+  files.forEach((af, ai) => { if (isA[ai] && !usedA[ai]) qs.push({ file: af, ans: null, idx: ai }); });
+  return qs.sort((x, y) => x.idx - y.idx);
 }
 // 이름에 "정답"이 없어도 내용으로 정답지인지 본다: 1~4쪽짜리 사진(글자 거의 없음) 또는 「정답/배점」 표 머리글이 있는 PDF
 async function looksLikeAnswerSheet(file) {
