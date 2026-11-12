@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611130210">
+<link rel="stylesheet" href="css/style.css?v=202611130236">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -35,7 +35,7 @@
   <div id="error-banner"></div>
 
   <div class="card" id="saved-card" style="display:none;">
-    <label>📁 전에 만들어 둔 합본 PDF <span class="muted" style="font-weight:400;">(이 기기에 저장돼 있어요 · 강사용/학생용 따로 내려받아요)</span></label>
+    <label>📁 전에 만들어 둔 합본 PDF <span class="muted" style="font-weight:400;">(강사용/학생용 따로 내려받아요)</span></label>
     <div id="saved-list"></div>
   </div>
 
@@ -66,18 +66,19 @@
       <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 QR 합본 PDF 만들기</button>
       <p class="hint" id="go-msg" style="margin:8px 0 0;"></p>
       <div id="dl-box" style="margin-top:10px;"></div>
+      <p class="hint" id="sync-msg" style="margin:4px 0 0;"></p>
     </div>
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611130210"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611130210"></script>
-<script src="js/vendor/pdf.min.js?v=202611130210"></script>
-<script src="js/config.js?v=202611130210"></script>
-<script src="js/api.js?v=202611130210"></script>
-<script src="js/common.js?v=202611130210"></script>
-<script src="js/bankcore.js?v=202611130210"></script>
-<script src="js/pdfui.js?v=202611130210"></script>
+<script src="js/vendor/qrcode.min.js?v=202611130236"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611130236"></script>
+<script src="js/vendor/pdf.min.js?v=202611130236"></script>
+<script src="js/config.js?v=202611130236"></script>
+<script src="js/api.js?v=202611130236"></script>
+<script src="js/common.js?v=202611130236"></script>
+<script src="js/bankcore.js?v=202611130236"></script>
+<script src="js/pdfui.js?v=202611130236"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -273,19 +274,75 @@ const mergeBtns = (rec, wrap) => {
   if (rec.teacher) mk('⬇ 강사용 내려받기', rec.teacher, '강사용');
   if (rec.student) mk('⬇ 학생용 내려받기', rec.student, '학생용');
 };
+// ── 서버(드라이브) 보관: 조각으로 올리고 내려받는다 ──
+const u8ToB64 = u8 => { let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(bin); };
+async function serverUpload(rec, kind, blob, onProg) {
+  const buf = new Uint8Array(await blob.arrayBuffer()), CH = 900000, total = Math.max(1, Math.ceil(buf.length / CH));
+  for (let i = 0; i < total; i++) {
+    let r = null;
+    for (let at = 0; at < 4; at++) { try { r = await callApi('mergeUpload', { password: getTeacherPassword(), id: rec.id, kind: kind, name: rec.name, idx: i, total: total, data: u8ToB64(buf.subarray(i * CH, (i + 1) * CH)) }); break; } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); } }
+    if (!r || !r.ok) throw new Error((r && r.error) || '서버 보관 실패');
+    if (onProg) onProg(i + 1, total);
+  }
+}
+async function serverDownload(fileId, onProg) {
+  const parts = []; let total = 1;
+  for (let i = 0; i < total; i++) {
+    let r = null;
+    for (let at = 0; at < 4; at++) { try { r = await callApi('mergeGetPart', { password: getTeacherPassword(), fileId: fileId, part: i, partSize: 1500000 }); break; } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); } }
+    if (!r || !r.ok) throw new Error((r && r.error) || '내려받기 실패');
+    total = r.total; const bin = atob(r.base64), u = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k); parts.push(u);
+    if (onProg) onProg(i + 1, total);
+  }
+  return new Blob(parts, { type: 'application/pdf' });
+}
+async function syncToServer(rec) {
+  const st = $('sync-msg'); const say = t => { if (st) st.textContent = t; };
+  try {
+    if (rec.teacher) await serverUpload(rec, 'teacher', rec.teacher, (i, n) => say('☁ 다른 기기에서도 받을 수 있게 서버(드라이브)에 보관하는 중... 강사용 ' + i + '/' + n));
+    if (rec.student) await serverUpload(rec, 'student', rec.student, (i, n) => say('☁ 서버(드라이브)에 보관하는 중... 학생용 ' + i + '/' + n));
+    say('☁ 서버(드라이브)에도 보관했어요. 다른 기기에서도 이 페이지에서 내려받을 수 있어요.');
+  } catch (e) { say('☁ 서버 보관은 못 했어요(' + e.message + '). 이 기기에는 저장돼 있어요.'); }
+  renderSaved();
+}
 function showDownloads(rec) { const box = $('dl-box'); box.innerHTML = ''; mergeBtns(rec, box); }
+let serverMerges = [];
 async function renderSaved() {
   try {
-    const all = (await mergeDbAll()).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    let local = []; try { local = await mergeDbAll(); } catch (e) {}
+    try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) serverMerges = r.merges || []; } catch (e) {}
+    const by = {};
+    serverMerges.forEach(m => { by[m.id] = { id: m.id, name: m.name, date: m.date, sTeacher: m.teacher, sStudent: m.student }; });
+    local.forEach(m => { const r = by[m.id] = by[m.id] || { id: m.id, name: m.name, date: m.date }; r.teacher = m.teacher; r.student = m.student; });
+    const all = Object.keys(by).map(k => by[k]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     $('saved-card').style.display = all.length ? '' : 'none';
     const list = $('saved-list'); list.innerHTML = '';
     all.forEach(rec => {
       const row = document.createElement('div'); row.style.cssText = 'padding:8px 0; border-top:1px solid var(--line);';
       const d = new Date(rec.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-      const t = document.createElement('div'); t.innerHTML = '<b>' + escapeHtml(rec.name) + '</b> <span class="muted">' + ds + '</span>'; row.appendChild(t);
-      mergeBtns(rec, row);
+      const t = document.createElement('div'); t.innerHTML = '<b>' + escapeHtml(rec.name) + '</b> <span class="muted">' + ds + (rec.sTeacher || rec.sStudent ? ' · ☁ 서버 보관' : ' · 이 기기에만') + '</span>'; row.appendChild(t);
+      const mk = (kind, label, local, srv) => {
+        if (!local && !srv) return;
+        const sz = local ? local.size : srv.size;
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (kind === 'teacher' ? ' primary' : ''); b.style.cssText = 'margin:3px 6px 3px 0;';
+        b.textContent = '⬇ ' + label + ' 내려받기 (' + (sz / 1048576).toFixed(1) + 'MB)';
+        b.onclick = async () => {
+          const fname = rec.name + ' (QR ' + (kind === 'teacher' ? '강사용 전체' : '학생용') + ').pdf';
+          if (local) { blobDl(local, fname); return; }
+          const old = b.textContent; b.disabled = true;
+          try { blobDl(await serverDownload(srv.fileId, (i, n) => { b.textContent = '받는 중... ' + i + '/' + n; }), fname); } catch (e) { alert('내려받지 못했어요: ' + e.message); }
+          b.textContent = old; b.disabled = false;
+        };
+        row.appendChild(b);
+      };
+      mk('teacher', '강사용', rec.teacher, rec.sTeacher); mk('student', '학생용', rec.student, rec.sStudent);
+      if (!(rec.sTeacher || rec.sStudent) && (rec.teacher || rec.student)) {
+        const up = document.createElement('button'); up.type = 'button'; up.className = 'btn'; up.style.cssText = 'margin:3px 6px 3px 0;'; up.textContent = '☁ 서버에 보관';
+        up.onclick = async () => { up.disabled = true; await syncToServer({ id: rec.id, name: rec.name, teacher: rec.teacher, student: rec.student }); };
+        row.appendChild(up);
+      }
       const del = document.createElement('button'); del.type = 'button'; del.className = 'btn'; del.style.cssText = 'margin:3px 0; color:#C1392B;'; del.textContent = '🗑 삭제';
-      del.onclick = async () => { if (!confirm('이 합본 PDF를 이 기기에서 지울까요? (등록된 시험은 그대로예요)')) return; try { await mergeDbDel(rec.id); } catch (e) {} renderSaved(); };
+      del.onclick = async () => { if (!confirm('이 합본 PDF를 지울까요? (이 기기와 서버 보관본 모두 지워져요. 등록된 시험은 그대로예요)')) return; try { await mergeDbDel(rec.id); } catch (e) {} try { await callApi('mergeDelete', { password: getTeacherPassword(), id: rec.id }); } catch (e) {} renderSaved(); };
       row.appendChild(del); list.appendChild(row);
     });
   } catch (e) {}
@@ -471,6 +528,7 @@ $('go-btn').addEventListener('click', async () => {
     let savedOk = true; try { await mergeDbPut(rec); } catch (e) { savedOk = false; }
     showDownloads(rec);
     renderSaved();
+    syncToServer(rec);
     const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
     $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (savedOk ? '합본 PDF는 아래 버튼으로 내려받아요(이 기기에 저장돼 나중에도 받을 수 있어요).' : '합본 PDF는 아래 버튼으로 내려받아요. (이 기기에는 저장하지 못했어요)') + '<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
   } catch (e) {

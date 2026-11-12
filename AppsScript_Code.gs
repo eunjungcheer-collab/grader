@@ -130,6 +130,10 @@ function handle_(e) {
       case 'deleteExam': result = actionDeleteExam_(params); break;
       case 'deleteExams': result = actionDeleteExams_(params); break;
       case 'getExamPdf': result = actionGetExamPdf_(params); break;
+      case 'mergeUpload': result = actionMergeUpload_(params); break;
+      case 'mergeList': result = actionMergeList_(params); break;
+      case 'mergeGetPart': result = actionMergeGetPart_(params); break;
+      case 'mergeDelete': result = actionMergeDelete_(params); break;
       case 'deleteQuestion': result = actionDeleteQuestion_(params); break;
       case 'getQuestionImages': result = actionGetQuestionImages_(params); break;
       case 'getRosters': result = actionGetRosters_(params); break;
@@ -1113,6 +1117,64 @@ function actionDeleteExam_(p) {
 // 등록된 시험지 PDF를 base64로 내려준다.
 // 브라우저가 구글 드라이브 주소를 직접 읽으면 보안 규칙(CORS)에 막혀서("Failed to fetch"),
 // 서버를 거쳐서 받는다. (비슷한 문제 찾기가 예전 시험의 PDF 글자를 다시 읽을 때 쓴다)
+
+// ── 교재 QR 합본 PDF를 드라이브에 보관해 다른 기기에서도 내려받게 한다 (조각으로 나눠 올리고 마지막 조각에서 한 파일로 합친다) ──
+const MERGE_FOLDER_NAME = '교재 QR 합본 PDF';
+function mergeFolder_() {
+  const it = DriveApp.getFoldersByName(MERGE_FOLDER_NAME);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(MERGE_FOLDER_NAME);
+}
+function actionMergeUpload_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const id = String(p.id || '').replace(/[^A-Za-z0-9_-]/g, ''), kind = p.kind === 'student' ? 'student' : 'teacher';
+  const idx = parseInt(p.idx, 10), total = parseInt(p.total, 10);
+  if (!id || !(total >= 1) || !(idx >= 0 && idx < total)) return { ok: false, error: '잘못된 요청이에요.' };
+  const folder = mergeFolder_();
+  folder.createFile('__chunk__' + id + '_' + kind + '_' + ('000' + idx).slice(-3) + '.txt', String(p.data || ''), MimeType.PLAIN_TEXT);
+  if (idx < total - 1) return { ok: true, done: false };
+  // 마지막 조각: 모아서 한 PDF로
+  const bytes = [];
+  const names = [];
+  for (let i = 0; i < total; i++) names.push('__chunk__' + id + '_' + kind + '_' + ('000' + i).slice(-3) + '.txt');
+  const files = [];
+  for (let i = 0; i < total; i++) {
+    const it = folder.getFilesByName(names[i]);
+    if (!it.hasNext()) return { ok: false, error: '올리다 만 조각이 있어요. 다시 올려 주세요.' };
+    files.push(it.next());
+  }
+  files.forEach(function (f) { const b = Utilities.base64Decode(f.getBlob().getDataAsString()); for (let k = 0; k < b.length; k++) bytes.push(b[k]); });
+  const old = folder.getFilesByName(id + '__' + kind + '.pdf'); while (old.hasNext()) old.next().setTrashed(true);
+  const out = folder.createFile(Utilities.newBlob(bytes, 'application/pdf', id + '__' + kind + '.pdf'));
+  out.setDescription(JSON.stringify({ name: String(p.name || ''), date: new Date().toISOString() }));
+  files.forEach(function (f) { f.setTrashed(true); });
+  return { ok: true, done: true, size: bytes.length };
+}
+function actionMergeList_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const folder = mergeFolder_(), it = folder.getFiles(), by = {};
+  while (it.hasNext()) {
+    const f = it.next(), m = f.getName().match(/^([A-Za-z0-9_-]+)__(teacher|student)\.pdf$/); if (!m) continue;
+    let meta = {}; try { meta = JSON.parse(f.getDescription() || '{}'); } catch (e) {}
+    const r = by[m[1]] = by[m[1]] || { id: m[1], name: meta.name || m[1], date: meta.date || f.getDateCreated().toISOString() };
+    r[m[2]] = { fileId: f.getId(), size: f.getSize() };
+  }
+  return { ok: true, merges: Object.keys(by).map(function (k) { return by[k]; }) };
+}
+function actionMergeGetPart_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const f = DriveApp.getFileById(String(p.fileId || '')), all = f.getBlob().getBytes();
+  const size = Math.max(100000, Math.min(parseInt(p.partSize, 10) || 1000000, 3000000)), part = parseInt(p.part, 10) || 0;
+  const total = Math.ceil(all.length / size);
+  return { ok: true, total: total, base64: Utilities.base64Encode(all.slice(part * size, Math.min(all.length, (part + 1) * size))) };
+}
+function actionMergeDelete_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const id = String(p.id || '').replace(/[^A-Za-z0-9_-]/g, ''); if (!id) return { ok: false, error: '잘못된 요청이에요.' };
+  const folder = mergeFolder();
+  ['teacher', 'student'].forEach(function (k) { const it = folder.getFilesByName(id + '__' + k + '.pdf'); while (it.hasNext()) it.next().setTrashed(true); });
+  return { ok: true };
+}
+
 function actionGetExamPdf_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
