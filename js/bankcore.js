@@ -3363,7 +3363,10 @@
         if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w }); return; }
         m = String(l.str).match(/^\s*(\d{1,3})\)\s*$/);
         const tg = m && pd.items.find(q => String(q.str).trim() === '정답' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14);
-        if (tg) labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: tg.x + tg.w - l.x });
+        if (tg) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: tg.x + tg.w - l.x }); return; }
+        // 서술형 해설: 「142)」 번호만 있고 바로 밑 줄에 「모범 답안」이 오는 모양
+        const md = m && pd.items.find(q => /모범\s*답안/.test(String(q.str)) && q.top > l.top && q.top - l.top < 26 && Math.abs(q.x - l.x) < 30);
+        if (md) labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w });
       });
       return labs;
     };

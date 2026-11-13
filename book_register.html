@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611132216">
+<link rel="stylesheet" href="css/style.css?v=202611140248">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -77,14 +77,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611132216"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611132216"></script>
-<script src="js/vendor/pdf.min.js?v=202611132216"></script>
-<script src="js/config.js?v=202611132216"></script>
-<script src="js/api.js?v=202611132216"></script>
-<script src="js/common.js?v=202611132216"></script>
-<script src="js/bankcore.js?v=202611132216"></script>
-<script src="js/pdfui.js?v=202611132216"></script>
+<script src="js/vendor/qrcode.min.js?v=202611140248"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611140248"></script>
+<script src="js/vendor/pdf.min.js?v=202611140248"></script>
+<script src="js/config.js?v=202611140248"></script>
+<script src="js/api.js?v=202611140248"></script>
+<script src="js/common.js?v=202611140248"></script>
+<script src="js/bankcore.js?v=202611140248"></script>
+<script src="js/pdfui.js?v=202611140248"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -208,7 +208,8 @@ $('read-btn').addEventListener('click', async () => {
     const byBlock = null;      // 단원 쪽 번호가 어긋난 교재는 문제 번호로 다시 맞춘다(getSec). 쪽 번호 기준이 기본.
       // 번호가 1번부터 다시 시작하는 덩어리 = 한 단원 (목차의 정답 쪽 번호가 어긋나도 맞춘다)
     sections.forEach((s, si) => {
-      const rr = byBlock ? byBlock[si] : rows.filter(r => r.p >= s.aa && r.p <= s.ab);
+      const essayTitle = /서술|논술/.test(String(s.name || '') + ' ' + String(s.tag || ''));
+      const rr = essayTitle ? [] : (byBlock ? byBlock[si] : rows.filter(r => r.p >= s.aa && r.p <= s.ab));      // 서술형 단원은 객관식 정답을 읽지 않는다(해설만 문제 밑에 붙임)
       if (byBlock && rr.length) { s.aa = Math.min.apply(null, rr.map(r => r.p)); s.ab = Math.max.apply(null, rr.map(r => r.p)); }
       const minN = rr.reduce((m, r) => Math.min(m, r.n), 1e9);
       s.base = rr.length && minN > 3 ? minN - 1 : 0;      // 교재 전체 번호(289번~)면 이 단원의 첫 번호를 1번으로
@@ -377,7 +378,20 @@ async function renderSaved() {
         row.appendChild(up);
       }
       const del = document.createElement('button'); del.type = 'button'; del.className = 'btn'; del.style.cssText = 'margin:3px 0; color:#C1392B;'; del.textContent = '🗑 삭제';
-      del.onclick = async () => { if (!confirm('이 합본 PDF를 지울까요? (이 기기와 서버 보관본 모두 지워져요. 등록된 시험은 그대로예요)')) return; try { await mergeDbDel(rec.id); } catch (e) {} try { await callApi('mergeDelete', { password: getTeacherPassword(), id: rec.id }); } catch (e) {} renderSaved(); };
+      let armed = false, tm = null;
+      del.onclick = async () => {
+        if (!armed) { armed = true; del.textContent = '⚠ 한 번 더 누르면 삭제'; del.style.background = '#FDECEA'; tm = setTimeout(() => { armed = false; del.textContent = '🗑 삭제'; del.style.background = ''; }, 5000); return; }
+        clearTimeout(tm); del.disabled = true; del.textContent = '삭제 중...';
+        try { await mergeDbDel(rec.id); } catch (e) {}
+        serverMerges = serverMerges.filter(m => m.id !== rec.id);
+        row.remove();
+        if (rec.sTeacher || rec.sStudent) {
+          let msgTxt = '';
+          try { const r = await callApi('mergeDelete', { password: getTeacherPassword(), id: rec.id }); if (!r || !r.ok) msgTxt = '서버 보관본은 못 지웠어요(' + ((r && r.error) || '앱스스크립트를 새 버전으로 다시 배포해야 해요') + ').'; } catch (e) { msgTxt = '서버 보관본은 못 지웠어요(' + e.message + '). 앱스스크립트를 새 버전으로 다시 배포했는지 확인해 주세요.'; }
+          if (msgTxt) { const m = $('sync-msg'); if (m) m.textContent = msgTxt; alert(msgTxt); }
+        }
+        renderSaved();
+      };
       row.appendChild(del); list.appendChild(row);
     });
   } catch (e) {}
@@ -428,7 +442,7 @@ $('go-btn').addEventListener('click', async () => {
           sorted.forEach((q, i) => {
             const o = origOf(q), r = cand[o];
             q.origNum = o; q.num = i + 1;
-            ans.push(r ? r.d : (essaySec ? '-' : '?'));
+            ans.push(essaySec ? '-' : (r ? r.d : '?'));
             if (r) { if (r.rect) peek[i + 1] = { p: r.p, rect: r.rect }; if (r.p > maxP && r.p - s.ab <= 3) maxP = r.p; }
           });
           s.answers = ans; s.peek = peek; s.base = 0; s.ab = maxP;
