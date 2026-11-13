@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611132042">
+<link rel="stylesheet" href="css/style.css?v=202611132058">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -77,14 +77,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611132042"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611132042"></script>
-<script src="js/vendor/pdf.min.js?v=202611132042"></script>
-<script src="js/config.js?v=202611132042"></script>
-<script src="js/api.js?v=202611132042"></script>
-<script src="js/common.js?v=202611132042"></script>
-<script src="js/bankcore.js?v=202611132042"></script>
-<script src="js/pdfui.js?v=202611132042"></script>
+<script src="js/vendor/qrcode.min.js?v=202611132058"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611132058"></script>
+<script src="js/vendor/pdf.min.js?v=202611132058"></script>
+<script src="js/config.js?v=202611132058"></script>
+<script src="js/api.js?v=202611132058"></script>
+<script src="js/common.js?v=202611132058"></script>
+<script src="js/bankcore.js?v=202611132058"></script>
+<script src="js/pdfui.js?v=202611132058"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -379,17 +379,36 @@ $('go-btn').addEventListener('click', async () => {
     msg('교재 PDF를 여는 중...');
     const pdf = await PDFLib.PDFDocument.load(bookBytes.slice(0), { ignoreEncryption: true, updateMetadata: false });
     const gradeG = gradeFromText($('book-name').value + ' ' + bookFileName);
-    const toc = toBank ? await ensureToc() : [];
-    const bookName = $('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '');
-    // 한 단원의 문제를 잘라 문제은행에 저장하고 문항 id 목록(번호 순서)을 돌려준다. 문항 수가 정답 수와 다르면 null.
-    const bankSection = async (s, title) => {
+    // 단원마다 문제 쪽을 한 번만 읽어 두고 (등록·강사용 해설서가 함께 쓴다), 서술형인 문항은 객관식 정답을 지우고 '-'(서술형)로 바꾼다
+    const secCache = {};
+    const getSec = s => secCache[s.order] || (secCache[s.order] = (async () => {
       const sub = await PDFLib.PDFDocument.create();
       const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1); for (let p = s.aa; p <= s.ab; p++) idx.push(p - 1);
       (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
       const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
       const scan = await BankCore.scanPdf(doc); unbase(scan, s);
-      const qs = scan.questions;
-      if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) { bankWarn.push(title + ' (문항 ' + qs.length + '개 ≠ 정답 ' + s.answers.length + '개)'); return null; }
+      const qs = scan.questions.slice().sort((a, b) => a.num - b.num);
+      const ok = qs.length === s.answers.length && qs.every((q, i) => q.num === i + 1);
+      if (ok) {
+        for (const q of qs) {
+          const a = String(s.answers[q.num - 1] == null ? '' : s.answers[q.num - 1]);
+          if (!/^[1-5]/.test(a)) continue;
+          try {
+            const cv = await BankCore.renderQuestion(doc, q, BankCore.CROP_SCALE, true), mk = BankCore.detectOptionMarkers(cv);
+            const txt = await BankCore.textPreviewQ(doc, q, 600);
+            const hasOpts = (mk && mk.length === 5) || /①[\s\S]*②[\s\S]*③/.test(txt);
+            if (!hasOpts && /서술|논술|쓰시오|쓰고|설명하시오|설명하고|까닭|이유를|구하시오|\(1\)/.test(txt)) s.answers[q.num - 1] = '-';
+          } catch (e) {}
+        }
+      }
+      return { doc: doc, scan: scan, qs: qs, ok: ok };
+    })());
+    const toc = toBank ? await ensureToc() : [];
+    const bookName = $('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '');
+    // 한 단원의 문제를 잘라 문제은행에 저장하고 문항 id 목록(번호 순서)을 돌려준다. 문항 수가 정답 수와 다르면 null.
+    const bankSection = async (s, title) => {
+      const sc = await getSec(s), doc = sc.doc, scan = sc.scan, qs = scan.questions;
+      if (!sc.ok) { bankWarn.push(title + ' (문항 ' + qs.length + '개 ≠ 정답 ' + s.answers.length + '개)'); return null; }
       const tu = tocUnitByNo(toc, gradeG, s.unit);
       const unit = tu ? tu.unit : (s.unit + '. ' + s.unitName), grade = gradeG === '고1' ? '고1' : (tu ? tu.grade : gradeG);
       const items = [];
@@ -415,6 +434,7 @@ $('go-btn').addEventListener('click', async () => {
       bankQ += items.length;
       return items.map(x => ({ id: x.id, text: x.textPreview }));
     };
+    { let pi = 0; for (const s of chosen) { pi++; msg('문제 쪽을 읽는 중... ' + pi + '/' + chosen.length + ' ' + secTitle(s)); try { await getSec(s); } catch (e) {} } }
     const worker = async () => {
       while (!fail) {
         const k = next++; if (k >= chosen.length) return;
@@ -450,13 +470,8 @@ $('go-btn').addEventListener('click', async () => {
       for (const s of ($('teacher-mode').value === 'expl' ? chosen : [])) {
         ci++; msg('강사용 해설서 만드는 중... ' + ci + '/' + chosen.length + ' ' + secTitle(s));
         try {
-          const sub = await PDFLib.PDFDocument.create();
-          const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1);
-          (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
-          const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
-          const scan = await BankCore.scanPdf(doc); unbase(scan, s);
-          const qs = scan.questions.slice().sort((a, b) => a.num - b.num);
-          if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) continue;
+          const sc = await getSec(s); if (!sc.ok) continue;
+          const doc = sc.doc, qs = sc.qs;
           const pgs = []; for (let p = s.aa; p <= s.ab; p++) pgs.push(p);
           let exps = {}; try { exps = await BankCore.bookExplanations(bookDoc, pgs); } catch (e) {}
           const items = [];
@@ -478,12 +493,8 @@ $('go-btn').addEventListener('click', async () => {
       for (const s of chosen) {
         ci++; msg('정답 동그라미 위치 찾는 중... ' + ci + '/' + chosen.length + ' ' + secTitle(s));
         try {
-          const sub = await PDFLib.PDFDocument.create();
-          const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1);
-          (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
-          const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
-          const sc0 = await BankCore.scanPdf(doc); unbase(sc0, s); const qs = sc0.questions;
-          if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) continue;
+          const sc = await getSec(s); if (!sc.ok) continue;
+          const doc = sc.doc, qs = sc.qs;
           const SC = BankCore.CROP_SCALE;
           for (const q of qs) {
             if ((q.pre && q.pre.length) || (q.extra && q.extra.length)) continue;
