@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611140321">
+<link rel="stylesheet" href="css/style.css?v=202611140331">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -70,6 +70,8 @@
         <option value="circle">교재 원본 쪽에 정답 동그라미만 (해설은 뒤쪽 정답·해설 쪽 그대로 · 빨라요)</option>
         <option value="none">동그라미·해설 없이 교재 원본 그대로 + QR (가장 빨라요)</option>
       </select>
+      <label class="field-label-spaced"><input type="checkbox" id="new-cover"> <b>표지를 새로 만들기</b> — 체크하면 교재의 첫 쪽(표지)을 학년 색깔의 새 표지로 바꿔요. 체크 안 하면 교재 표지를 그대로 써요</label>
+      <label class="field-label-spaced"><input type="checkbox" id="new-toc"> <b>목차를 새로 만들기</b> — 체크하면 교재에 있던 목차 쪽을 지우고 새 목차(눌러서 이동)를 넣어요. 체크 안 하면 교재 목차를 그대로 써요(목차가 없는 교재는 자동으로 만들어요)</label>
       <label class="field-label-spaced"><input type="checkbox" id="multi-qr" checked> 목차 쪽에 「여러 단원 한꺼번에 채점」 QR도 찍기</label>
       <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 QR 합본 PDF 만들기</button>
       <p class="hint" id="go-msg" style="margin:8px 0 0;"></p>
@@ -79,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611140321"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611140321"></script>
-<script src="js/vendor/pdf.min.js?v=202611140321"></script>
-<script src="js/config.js?v=202611140321"></script>
-<script src="js/api.js?v=202611140321"></script>
-<script src="js/common.js?v=202611140321"></script>
-<script src="js/bankcore.js?v=202611140321"></script>
-<script src="js/pdfui.js?v=202611140321"></script>
+<script src="js/vendor/qrcode.min.js?v=202611140331"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611140331"></script>
+<script src="js/vendor/pdf.min.js?v=202611140331"></script>
+<script src="js/config.js?v=202611140331"></script>
+<script src="js/api.js?v=202611140331"></script>
+<script src="js/common.js?v=202611140331"></script>
+<script src="js/bankcore.js?v=202611140331"></script>
+<script src="js/pdfui.js?v=202611140331"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -135,6 +137,35 @@ function addPageLink(pdf, fromIdx, rect, toIdx) {
 }
 // 목차가 없는 교재: 표지 바로 뒤(표지가 없으면 맨 앞)에 목차 쪽을 새로 만들어 끼운다 (단원 이름 · 문제 쪽 · 정답 쪽). 끼운 쪽 수를 돌려준다.
 // at = 목차를 끼울 자리(0이면 맨 앞, 1이면 표지 뒤). 끼운 자리 뒤의 쪽 번호만 nIns만큼 밀린다.
+// 학년별 색깔의 새 표지 (한 쪽, 그림으로 만들어 첫 쪽에 올린다)
+function coverCanvas(bookName, secs, W, H) {
+  const K = 3, cv = document.createElement('canvas'); cv.width = Math.round(W * K); cv.height = Math.round(H * K);
+  const x = cv.getContext('2d'); x.scale(K, K);
+  const pal = /중\s*1/.test(bookName) ? { main: '#E4566D', soft: '#FDEBEE', deep: '#B93A50', grade: '중학교 1학년' }
+    : /중\s*2/.test(bookName) ? { main: '#2F7BC0', soft: '#E4F0FA', deep: '#1D5A93', grade: '중학교 2학년' }
+    : /중\s*3/.test(bookName) ? { main: '#7A55C2', soft: '#EFE9FA', deep: '#59399A', grade: '중학교 3학년' }
+    : /고\s*1|공통|통합/.test(bookName) ? { main: '#139186', soft: '#E0F4F1', deep: '#0C6B62', grade: '고등학교 1학년' }
+    : { main: '#0B1F5C', soft: '#E6EAF6', deep: '#08153F', grade: '' };
+  const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, pal.soft); g.addColorStop(1, '#FFFFFF'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  x.fillStyle = pal.main; x.globalAlpha = 0.08; x.beginPath(); x.arc(W * 0.92, H * 0.12, 190, 0, 7); x.fill(); x.beginPath(); x.arc(W * 0.05, H * 0.62, 120, 0, 7); x.fill(); x.globalAlpha = 1;
+  const pill = (t, cx, cy) => { x.font = '700 15px ' + FONT; const w = x.measureText(t).width + 36; x.fillStyle = '#fff'; x.strokeStyle = pal.main; x.lineWidth = 1.6; x.beginPath(); x.roundRect(cx, cy, w, 32, 16); x.fill(); x.stroke(); x.fillStyle = pal.main; x.textBaseline = 'middle'; x.fillText(t, cx + 18, cy + 17); };
+  const ml = 54; if (pal.grade) pill(pal.grade + ' · 내신대비', ml, 74);
+  const subj = (bookName.replace(/\s+/g, ' ').trim() || '과학'), base = /과학/.test(subj) ? subj : subj + ' 과학';
+  x.textBaseline = 'alphabetic'; x.fillStyle = '#17203A'; x.font = '900 64px ' + FONT; x.fillText(base, ml, 250);
+  x.fillStyle = pal.main; x.font = '800 38px ' + FONT; x.fillText('내신대비 교재', ml, 312);
+  x.fillStyle = pal.main; x.fillRect(ml, 338, 74, 5);
+  // CONTENTS
+  const units = []; const seen = {};
+  secs.forEach(s => { const k = (s.unit || '') + '|' + (s.unitName || ''); if (!seen[k] && (s.unitName || s.unit)) { seen[k] = 1; units.push({ n: s.unit, t: s.unitName || '' }); } });
+  const list = units.slice(0, 10), rowH = 40, boxH = 64 + list.length * rowH, by = 410;
+  x.shadowColor = 'rgba(20,30,60,.14)'; x.shadowBlur = 24; x.shadowOffsetY = 8; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(ml, by, W - ml * 2, boxH, 22); x.fill(); x.shadowColor = 'transparent';
+  x.fillStyle = pal.deep; x.font = '800 13px ' + FONT; x.fillText('C O N T E N T S', ml + 28, by + 38);
+  list.forEach((u, i) => { const cy = by + 64 + i * rowH; x.fillStyle = pal.main; x.beginPath(); x.roundRect(ml + 28, cy - 8, 46, 28, 8); x.fill(); x.fillStyle = '#fff'; x.font = '800 16px ' + FONT; x.textAlign = 'center'; x.fillText(String(u.n || i + 1), ml + 51, cy + 12); x.textAlign = 'left'; x.fillStyle = '#17203A'; x.font = '700 18px ' + FONT; x.fillText(u.t, ml + 92, cy + 12); if (i < list.length - 1) { x.fillStyle = '#E8EAF0'; x.fillRect(ml + 92, cy + 26, W - ml * 2 - 120, 1); } });
+  x.fillStyle = pal.main; x.font = '800 20px ' + FONT; x.fillText('이은정 과학', ml, H - 62);
+  x.fillStyle = '#7B8197'; x.font = '600 10.5px ' + FONT; x.fillText('MIDDLE SCHOOL SCIENCE · EXAM PREP', ml, H - 44);
+  return cv;
+}
 async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at) {
   at = at || 0;
   const ref = pdf.getPage(0).getSize(), W = ref.width, H = ref.height;
@@ -586,7 +617,11 @@ $('go-btn').addEventListener('click', async () => {
     // 한 가지 버전 만들기: 정답·해설 쪽을 뺄지 정하고 → 원래 쪽 번호를 하얗게 지우고 → (목차가 없던 교재면) 목차 쪽을 표지 뒤에 끼우고 → 새 쪽 번호를 쓴다
     const makeVersion = async (withAns) => {
       const doc = await PDFLib.PDFDocument.load(stampedBytes, { ignoreEncryption: true, updateMetadata: false });
-      const drop = new Set(); if (false) sections.forEach(s => { for (let p = s.aa; p <= s.ab; p++) drop.add(p - 1); });
+      const drop = new Set();
+      const useGen = genToc || $('new-toc').checked;
+      if ($('new-toc').checked && tocPage) {        // 교재의 원래 목차 쪽(목차 첫 쪽 ~ 첫 문제 바로 앞 쪽)을 지운다
+        const fq = Math.min.apply(null, chosen.map(s => s.qa)); for (let p = tocPage; p < fq; p++) drop.add(p - 1);
+      }
       let kept = doc.getPageIndices().filter(i => !drop.has(i));
       for (let i = doc.getPageCount() - 1; i >= 0; i--) if (drop.has(i)) doc.removePage(i);
       if (withAns) {
@@ -610,8 +645,8 @@ $('go-btn').addEventListener('click', async () => {
       // 표지가 있으면(첫 단원이 1쪽부터 시작하지 않으면) 목차는 표지 바로 뒤에, 없으면 맨 앞에
       const firstQ = Math.min.apply(null, chosen.map(s => posOf(s.qa)).filter(n => n > 0));
       const tocAt = (isFinite(firstQ) && firstQ > 1) ? 1 : 0;
-      if (genToc) nIns = await insertGeneratedToc(doc, chosen, bookNm, posOf, withAns, tocAt);
-      if (!genToc) {
+      if (useGen) nIns = await insertGeneratedToc(doc, chosen, bookNm, posOf, withAns, tocAt);
+      if (!useGen) {
         // 교재에 원래 있던 목차: 각 줄(단원·문제 쪽)을 누르면 문제 첫 쪽, 정답 쪽 숫자를 누르면 정답 첫 쪽으로
         sections.forEach(s => {
           const L = s.tocLink; if (!L) return;
@@ -621,13 +656,22 @@ $('go-btn').addEventListener('click', async () => {
           else addPageLink(doc, from, [L.x0, L.y0, L.x1, L.y1], q);
         });
       }
-      if ($('multi-qr').checked && (tocPage || genToc)) {
+      if ($('multi-qr').checked && (tocPage || useGen)) {
         const base = location.origin + location.pathname.replace(/[^/]*$/, '');
-        const ti = genToc ? tocAt : kept.indexOf(tocPage - 1);
+        const ti = useGen ? tocAt : kept.indexOf(tocPage - 1);
         if (ti >= 0) await stampQrOnPage(doc, ti, base + 'student_multi.html?book=' + bookId, { size: 56, corner: 'top-right', margin: 8, caption: '여러 단원 한꺼번에 채점 → QR' });
+      }
+      let coverDone = false;
+      if ($('new-cover').checked && isFinite(firstQ) && firstQ > 1) {        // 첫 쪽(표지)을 새 표지로 바꾼다 (쪽 수는 그대로)
+        try {
+          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, chosen.slice().sort((a, b) => a.order - b.order), ref.width, ref.height);
+          const png = await doc.embedPng(cvs.toDataURL('image/png')), np = doc.insertPage(0, [ref.width, ref.height]);
+          np.drawImage(png, { x: 0, y: 0, width: ref.width, height: ref.height }); doc.removePage(1); coverDone = true;
+        } catch (e) { console.warn('cover', e); }
       }
       const font = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
       doc.getPages().forEach((pgj, j) => {
+        if (coverDone && j === 0) return;
         const orig = j < tocAt ? kept[j] : (j - nIns >= tocAt ? kept[j - nIns] : -1), bx = (numBoxes[orig] || [])[0];
         const t = (bx && bx.dash ? '- ' + (j + 1) + ' -' : String(j + 1)), fs = 9.5, tw = font.widthOfTextAtSize(t, fs);
         const cx = bx ? (bx.x0 + bx.x1) / 2 : pgj.getWidth() / 2, y = bx ? bx.y0 + 1 : 16;
