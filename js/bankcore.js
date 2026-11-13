@@ -3303,6 +3303,28 @@
 
   // ── 교재 정답·해설 쪽(「3) [정답] ③ [해설] …」 모양, 2단)에서 문항별 해설 영역을 찾는다 ──
   // 반환: { 문항번호: { segments: [{ page, rect }] } }  (page는 doc의 쪽 번호). 다음 번호표 전까지, 단·쪽을 넘어가면 이어서.
+  // 글자로 읽히지 않는 보기(①~⑤가 도형인 교재 등) 때문에 문항 그림이 보기 첫 줄 중간에서 잘린 경우:
+  // 문항 그림 바로 밑(3pt 안)에 먹물이 이어지면, 같은 단의 다음 문항 위(없으면 쪽 아래 여백) 전까지 글이 이어지는 만큼 아래로 늘린다.
+  async function extendCutQuestions(doc, qs) {
+    const SCx = 1.5, pageInfo = {};
+    for (const q of qs) {
+      try {
+        const pg = pageInfo[q.page] || (pageInfo[q.page] = await (async () => { const pgn = await doc.getPage(q.page); return { H: pgn.getViewport({ scale: 1 }).height, W: pgn.getViewport({ scale: 1 }).width }; })());
+        const nexts = qs.filter(o => o !== q && o.page === q.page && o.rect[1] > q.rect[1] + 20 && o.rect[0] < q.rect[2] - 10 && o.rect[2] > q.rect[0] + 10).map(o => o.rect[1]);
+        const limit = Math.min.apply(null, nexts.concat([pg.H - 62]));
+        const y0 = q.rect[3] - 2; if (limit - y0 < 6) continue;
+        const cv = await renderRect(doc, q.page, [q.rect[0], y0, q.rect[2], limit], SCx, false);
+        const cx = cv.getContext('2d'), w = cv.width, h = cv.height, im = cx.getImageData(0, 0, w, h).data;
+        const rowInk = y => { let n = 0; for (let x = 0; x < w; x++) { const k = (y * w + x) * 4; if (im[k] < 140 && im[k + 1] < 140 && im[k + 2] < 140) n++; } return n; };
+        let first = -1; for (let y = 0, lim = Math.min(h, Math.ceil(5 * SCx)); y < lim; y++) if (rowInk(y) > 1) { first = y; break; }
+        if (first < 0) continue;
+        let last = first, gap = 0;
+        for (let y = first; y < h; y++) { if (rowInk(y) > 1) { last = y; gap = 0; } else if (++gap > 14 * SCx) break; }
+        if (last - first < 2) continue;
+        q.rect[3] = Math.min(limit, y0 + (last + 1) / SCx + 3);
+      } catch (e) {}
+    }
+  }
   async function bookExplanations(doc, pages) {
     const out = {}; let lastNum = null;
     const pds = [];
@@ -3310,9 +3332,9 @@
     const labelsOf = pd => {
       const labs = [];
       pd.items.forEach(l => {
-        let m = String(l.str).match(/^\s*(\d{1,2})\)\s*\[정답\]/);
+        let m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[정답\]/);
         if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w }); return; }
-        m = String(l.str).match(/^\s*(\d{1,2})\)\s*$/);
+        m = String(l.str).match(/^\s*(\d{1,3})\)\s*$/);
         const tg = m && pd.items.find(q => String(q.str).trim() === '정답' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14);
         if (tg) labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: tg.x + tg.w - l.x });
       });
@@ -3334,7 +3356,7 @@
       let labs = labelsOf(pd);
       if (ink) {
         // 번호표 줄(「3) [정답] ④」)은 그 줄에 번호표만 있다 → 글자 영역엔 먹물이 있고, 오른쪽 나머지엔 없어야 진짜 (겹친 가짜 글자 층은 해설 글줄 위에 놓여 오른쪽에 먹물이 있다)
-        labs.forEach(l => { const cr = (!two || l.x < half) ? (two ? half - 2 : pd.W) : pd.W - 6; l.ink = ink([l.x - 1, l.top - 1, l.x + l.w + 1, l.bottom + 1]); l.tail = ink([l.x + l.w + 4, l.top, cr, l.bottom]); });
+        labs.forEach(l => { const cr = (!two || l.x < half) ? (two ? half - 2 : pd.W) : pd.W - 6; l.ink = ink([l.x - 1, l.top - 1, l.x + l.w + 1, l.bottom + 1]); l.tail = ink([l.x + l.w + 22, l.top, cr, l.bottom]); });
         const real = labs.filter(l => l.ink > 60 && l.tail <= 8);
         const best = {}; real.forEach(l => { const k = l.n + '_' + (two ? (l.x < half ? 0 : 1) : 0); if (!best[k] || l.ink > best[k].ink) best[k] = l; });
         labs = real.filter(l => best[l.n + '_' + (two ? (l.x < half ? 0 : 1) : 0)] === l);
@@ -4161,7 +4183,7 @@
   }
 
   root.BankCore = {
-    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
+    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, extendCutQuestions: extendCutQuestions, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
     _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, detectBogiMarks: detectBogiMarks, detectBogiMarksB64: detectBogiMarksB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
