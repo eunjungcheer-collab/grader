@@ -3453,7 +3453,7 @@
       rows.slice(rowStart).forEach(r => { const lb = labs.find(x => x.n === r.n); if (lb) r.rect = [Math.max(0, lb.right - 80), Math.max(0, lb.top - 6), Math.min(pd.W, lb.right + 300), Math.min(pd.H, lb.top + 64)]; });
     }
     // 책 전체를 한꺼번에 묶으면 단원마다 숫자 그림 크기가 달라 다섯 묶음을 넘어서 못 읽는다 → 숫자 딱지 크기가 비슷한 것끼리 따로 묶어서 읽는다
-    const allCls = [];
+    const allCls = [], mainAll = [];
     const classify = items => {
     // 같은 숫자 그림끼리 묶는다 (같은 모양이면 거의 똑같이 보인다)
     const cls = [];
@@ -3477,7 +3477,7 @@
         for (const d of digs) if (!used[d]) { used[d] = 1; cur.push(d); rec(k + 1, used, cur, sum + best[mainIdx[k]][d]); cur.pop(); used[d] = 0; }
       })(0, {}, [], 0);
     }
-    const digOf = {}; if (assign) mainIdx.forEach((k, i) => { digOf[k] = assign[i]; });
+    const digOf = {}; if (assign) mainIdx.forEach((k, i) => { digOf[k] = assign[i]; mainAll.push({ mean: cls[k].mean, ar: cls[k].ar, d: assign[i] }); });
     cls.forEach((c, k) => {
       const per = best[k], ranked = Object.keys(per).sort((a, b) => per[b] - per[a]);
       let d, ok;
@@ -3494,6 +3494,12 @@
     const bySize = items.slice().sort((u, v) => (u.bw + u.bh) - (v.bw + v.bh)), groups = [];
     bySize.forEach(it => { const g = groups[groups.length - 1]; if (g && Math.abs((it.bw + it.bh) - g.ref) <= 1.2) { g.items.push(it); } else groups.push({ ref: it.bw + it.bh, items: [it] }); });
     groups.forEach(g => classify(g.items));
+    // 다른 크기 묶음에서 못 읽은 숫자 그림은, 책 전체의 큰 묶음 중 가장 닮은 것의 숫자를 따른다
+    items.forEach(it => {
+      if (it.row.d !== '?' || !mainAll.length) return;
+      let bm = null, bsim = -1; mainAll.forEach(m => { const sc = _sim(it.c, m.mean); if (sc > bsim && Math.abs(Math.log(it.ar / m.ar)) < 0.35) { bsim = sc; bm = m; } });
+      if (bm && bsim >= 0.6) it.row.d = bm.d;
+    });
     rows.clusters = allCls.map(c => ({ n: c.items.length }));
     return rows;
   }

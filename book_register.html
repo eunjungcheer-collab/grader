@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611140331">
+<link rel="stylesheet" href="css/style.css?v=202611140339">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611140331"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611140331"></script>
-<script src="js/vendor/pdf.min.js?v=202611140331"></script>
-<script src="js/config.js?v=202611140331"></script>
-<script src="js/api.js?v=202611140331"></script>
-<script src="js/common.js?v=202611140331"></script>
-<script src="js/bankcore.js?v=202611140331"></script>
-<script src="js/pdfui.js?v=202611140331"></script>
+<script src="js/vendor/qrcode.min.js?v=202611140339"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611140339"></script>
+<script src="js/vendor/pdf.min.js?v=202611140339"></script>
+<script src="js/config.js?v=202611140339"></script>
+<script src="js/api.js?v=202611140339"></script>
+<script src="js/common.js?v=202611140339"></script>
+<script src="js/bankcore.js?v=202611140339"></script>
+<script src="js/pdfui.js?v=202611140339"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -303,6 +303,7 @@ function renderTable() {
     tr.querySelector('.bk-on').addEventListener('change', e => { s.on = e.target.checked; });
     tr.querySelectorAll('.bk-c input').forEach(inp => inp.addEventListener('focus', () => peekAnswer(s, +inp.dataset.k + 1)));
     tr.querySelectorAll('.bk-c input').forEach(inp => inp.addEventListener('input', () => { s.answers[+inp.dataset.k] = inp.value.trim().replace(/[\s,]/g, '') || '?'; updateRow(tr, s); }));
+    tr.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.bk-fix'); if (b) peekAnswer(s, +b.dataset.n); });
     updateRow(tr, s);
   });
 }
@@ -311,6 +312,16 @@ async function peekAnswer(s, n) {
   let box = $('bk-peek');
   if (!box) { box = document.createElement('div'); box.id = 'bk-peek'; box.style.cssText = 'position:fixed; right:12px; bottom:12px; width:min(460px,92vw); background:#fff; border:2px solid #0B1F5C; border-radius:12px; padding:8px 10px; box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:50; font-size:13px;'; document.body.appendChild(box); }
   const pk = s.peek && s.peek[n];
+  if (!pk && typeof bookDoc !== 'undefined' && bookDoc) {      // 정확한 줄 위치를 못 찾았으면 이 단원의 정답 쪽 전체를 보여 준다 (◀ ▶ 로 넘겨 가며 직접 찾는다)
+    let pgNo = s.aa; box.dataset.key = '';
+    const draw = async () => {
+      box.innerHTML = '<b>' + escapeHtml(secTitle(s)) + ' ' + n + '번</b> <span class="muted">— 정확한 위치를 못 찾아 정답 쪽을 보여드려요 (교재 ' + pgNo + '쪽)</span> <button type="button" style="float:right; border:0; background:none; font-size:16px; cursor:pointer;" onclick="this.parentNode.remove()">✕</button><div style="margin:4px 0;"><button type="button" class="btn" id="pk-prev">◀ 이전 쪽</button> <button type="button" class="btn" id="pk-next">다음 쪽 ▶</button></div><div class="muted" id="pk-img">그림 만드는 중...</div>';
+      box.querySelector('#pk-prev').onclick = () => { if (pgNo > s.aa) { pgNo--; draw(); } };
+      box.querySelector('#pk-next').onclick = () => { if (pgNo < s.ab) { pgNo++; draw(); } };
+      try { const pgd = await bookDoc.getPage(pgNo), vp = pgd.getViewport({ scale: 1 }); const c = await BankCore.renderRect(bookDoc, pgNo, [0, 0, vp.width, vp.height], 1.6, false); box.querySelector('#pk-img').outerHTML = '<div style="max-height:62vh; overflow:auto;"><img src="' + c.toDataURL('image/png') + '" style="width:100%; display:block; border:1px solid #E5E7EB;"></div>'; } catch (e) { const el = box.querySelector('#pk-img'); if (el) el.textContent = '그림을 만들지 못했어요: ' + e.message; }
+    };
+    draw(); return;
+  }
   if (!pk || typeof bookDoc === 'undefined' || !bookDoc) { box.innerHTML = '<b>' + escapeHtml(secTitle(s)) + ' ' + n + '번</b> <span class="muted">— 원본 그림을 찾지 못했어요. 교재 정답 쪽 ' + s.aa + '~' + s.ab + '를 확인하세요.</span>'; return; }
   const key = s.order + ':' + n; box.dataset.key = key;
   box.innerHTML = '<b>' + escapeHtml(secTitle(s)) + ' · ' + n + '번</b> <span class="muted">(교재 ' + pk.p + '쪽)</span> <button type="button" style="float:right; border:0; background:none; font-size:16px; cursor:pointer;" onclick="this.parentNode.remove()">✕</button><div class="muted" style="margin:4px 0;">그림을 만드는 중...</div>';
@@ -329,7 +340,8 @@ function updateRow(tr, s) {
   const issue = rowIssue(s), subj = s.answers.filter(a => a === '-').length;
   tr.querySelectorAll('.bk-c input').forEach(inp => { const a = s.answers[+inp.dataset.k]; inp.classList.toggle('bk-bad', !/^([1-9]{1,5}(\/[1-9]{1,5})*|-)$/.test(a)); inp.classList.toggle('bk-sub', a === '-'); });
   tr.querySelector('.bk-n').textContent = s.answers.length;
-  tr.querySelector('.bk-st').innerHTML = issue ? '<span class="bk-st-bad">' + issue + '</span>' : (subj ? '<span class="bk-st-warn">서술형 ' + subj + '개</span>' : '<span class="bk-st-ok">OK</span>');
+  const badNums = s.answers.map((a, i) => (/^([1-9]{1,5}(\/[1-9]{1,5})*|-)$/.test(a) ? 0 : i + 1)).filter(Boolean);
+  tr.querySelector('.bk-st').innerHTML = issue ? '<span class="bk-st-bad">확인 필요 — 눌러서 정답 보기<br>' + badNums.slice(0, 12).map(n => '<button type="button" class="btn bk-fix" data-n="' + n + '" style="padding:1px 7px; margin:1px; color:#C1392B;">' + n + '번</button>').join('') + (badNums.length > 12 ? ' …' : '') + '</span>' : (subj ? '<span class="bk-st-warn">서술형 ' + subj + '개</span>' : '<span class="bk-st-ok">OK</span>');
 }
 
 // ── 3단계: 등록하고 QR 합본 만들기 ──
@@ -624,6 +636,10 @@ $('go-btn').addEventListener('click', async () => {
       }
       let kept = doc.getPageIndices().filter(i => !drop.has(i));
       for (let i = doc.getPageCount() - 1; i >= 0; i--) if (drop.has(i)) doc.removePage(i);
+      if ($('new-cover').checked) {      // 교재에 표지가 없으면(첫 쪽이 바로 문제) 맨 앞에 표지 쪽을 하나 끼워 둔다 (아래에서 새 표지로 채운다)
+        const fq = Math.min.apply(null, chosen.map(s => s.qa - 1)), at0 = kept.indexOf(fq);
+        if (at0 === 0) { const sz = doc.getPage(0).getSize(); doc.insertPage(0, [sz.width, sz.height]); kept.unshift(-1); }
+      }
       if (withAns) {
         // 문제 쪽을 새로 짠 강사용 해설서 쪽으로 바꿔 끼운다 (kept: 원래 쪽 번호, 새 쪽은 1e6+원래 첫 쪽 / -1)
         const reps = chosen.filter(s => teacherSec[s.order]).sort((a, b) => b.qa - a.qa);
