@@ -222,6 +222,13 @@ function driveThumb(fileId, width) {
 
 // (escapeHtml은 모든 화면이 불러오는 api.js로 옮겼어요)
 
+// 한글 파일 이름이 압축 해제·전송 중 깨져(「_¸°_³¸ _°___」처럼) 한글이 하나도 없고 라틴 문자만 남은 이름인가?
+function isGarbledName(filename) {
+  const n = String(filename || '').replace(/\.pdf$/i, '');
+  if (/[가-힣]/.test(n)) return false;
+  return (n.match(/[\u00A0-\u00FF]/g) || []).length >= 2 || /^[\W_\d]*$/.test(n.replace(/[A-Za-z]/g, '')) && (n.match(/_/g) || []).length >= 6 && !/[A-Za-z]{4}/.test(n);
+}
+
 function baseNoExt(filename) {
   return filename.replace(/\.pdf$/i, '').replace(/_+/g, ' ').replace(/(\d)-(?=\d)/g, '$1\u0001').replace(/-+/g, ' ').replace(/\u0001/g, '-').replace(/\s+/g, ' ').trim();
 }

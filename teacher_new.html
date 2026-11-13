@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611132119">
+<link rel="stylesheet" href="css/style.css?v=202611132121">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -157,16 +157,16 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611132119"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611132119"></script>
-<script src="js/vendor/pdf.min.js?v=202611132119"></script>
-<script src="js/config.js?v=202611132119"></script>
-<script src="js/api.js?v=202611132119"></script>
-<script src="js/common.js?v=202611132119"></script>
-<script src="js/ocr.js?v=202611132119"></script>
-<script src="js/bankcore.js?v=202611132119"></script>
-<script src="js/pdfui.js?v=202611132119"></script>
-<script src="js/pdfview.js?v=202611132119"></script>
+<script src="js/vendor/qrcode.min.js?v=202611132121"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611132121"></script>
+<script src="js/vendor/pdf.min.js?v=202611132121"></script>
+<script src="js/config.js?v=202611132121"></script>
+<script src="js/api.js?v=202611132121"></script>
+<script src="js/common.js?v=202611132121"></script>
+<script src="js/ocr.js?v=202611132121"></script>
+<script src="js/bankcore.js?v=202611132121"></script>
+<script src="js/pdfui.js?v=202611132121"></script>
+<script src="js/pdfview.js?v=202611132121"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -343,6 +343,12 @@ async function loadExamFile(file, ansOverride) {
   showSpinner('PDF 분석 중...');
   try {
     const _info = await loadPdfDoc(file); if (stale()) return; pdfInfo = _info;
+    if (isGarbledName(file.name)) {          // 파일 이름이 깨져 있으면 PDF 안에 적힌 제목으로 시험지 이름을 대신한다
+      let t = ''; try { const md = await _info.doc.getMetadata(); t = String((md.info && md.info.Title) || '').trim(); } catch (e) {}
+      if (/[가-힣]/.test(t)) { $('title').value = t.replace(/\.pdf$/i, '').replace(/\s+/g, ' ').trim(); }
+      $('error-banner').innerHTML = '<div class="banner error">⚠ 파일 이름이 깨져 있어요(' + escapeHtml(file.name) + ').' + (/[가-힣]/.test(t) ? ' PDF 안에 적힌 제목으로 시험지 이름을 넣었어요.' : ' 시험지 이름을 직접 입력해 주세요.') + ' 컴퓨터에서 파일 이름을 한글로 다시 바꿔 올리면 더 정확해요.</div>';
+      try { $('title').focus(); $('title').select(); } catch (e) {}
+    }
     const _scan = await BankCore.scanPdf(_info.doc, (p, n) => { if (!stale()) updateSpinner('PDF 분석 중... ' + p + '/' + n + '쪽'); }); if (stale()) return; scanned = _scan;
     if (appendedPages) BankCore.markAppendedAnswerPages(scanned, appendedPages);     // 붙인 정답지 쪽은 문항이 아니라 정답 쪽
 
