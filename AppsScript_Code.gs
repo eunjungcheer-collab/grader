@@ -112,6 +112,7 @@ function handle_(e) {
       case 'getBookPublic': result = actionGetBookPublic_(params); break;
       case 'getExamDetail': result = actionGetExamDetail_(params); break;
       case 'submitAnswer': result = actionSubmitAnswer_(params); break;
+      case 'retryCheck': result = actionRetryCheck_(params); break;
       case 'listSubmissions': result = actionListSubmissions_(params); break;
       case 'deleteSubmission': result = actionDeleteSubmission_(params); break;
       case 'updateSubmissionScore': result = actionUpdateSubmissionScore_(params); break;
@@ -422,6 +423,20 @@ function actionGetExamDetail_(p) {
     questionTexts: safeJson_(found.row[9], []),
     submissions: submissions,
   };
+}
+
+// 틀린 문제를 다시 입력해 본 것을 맞는지만 확인해 준다 (점수·기록에는 넣지 않고, 정답 자체도 알려 주지 않는다)
+function actionRetryCheck_(p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const correct = examAnswers_(found.row), results = [];
+  for (let i = 0; i < correct.length; i++) {
+    const a = (p.answers || [])[i];
+    if (a === undefined || a === null || String(a).trim() === '' || isSubjective_(correct[i])) { results.push(''); continue; }
+    results.push(ansMatches_(normAns_(a), correct[i]) ? 'ok' : 'x');
+  }
+  return { ok: true, results: results };
 }
 
 function actionSubmitAnswer_(p) {

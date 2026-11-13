@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611130322">
+<link rel="stylesheet" href="css/style.css?v=202611131958">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,9 +41,9 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611130322"></script>
-<script src="js/api.js?v=202611130322"></script>
-<script src="js/common.js?v=202611130322"></script>
+<script src="js/config.js?v=202611131958"></script>
+<script src="js/api.js?v=202611131958"></script>
+<script src="js/common.js?v=202611131958"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -229,6 +229,7 @@ async function submitAnswers(e) {
       <div class="sx-chips">
         ${res.results.map((rs, i) => rs === 'ok' ? '<div class="sx-chip ok">' + (i + 1) + '번<small>⭕ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : rs === 'x' ? '<div class="sx-chip x">' + (i + 1) + '번<small>❌ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : '<div class="sx-chip na">' + (i + 1) + '번<small>' + (rs === 'subj' ? '주관식' : '안 품') + '</small></div>').join('')}
       </div>
+      ${wrongN ? '<div id="retry-card" class="card" style="margin:14px 0;"><h2 style="margin:0 0 4px;">❌ 틀린 문제 다시 입력하기</h2><p class="hint" style="margin:0 0 10px;">틀린 ' + wrongN + '문항만 다시 답을 골라 「다시 채점」을 누르세요. 정답은 알려 주지 않고 맞았는지만 알려 줘요. 이 연습은 점수에 들어가지 않아요.</p><div id="retry-grid"></div><div id="retry-msg" class="hint" style="margin:8px 0 0;font-weight:700;"></div><button type="button" id="retry-btn" class="btn primary" style="width:100%;margin-top:8px;">다시 채점</button></div>' : ''}
       <p class="hint">❌ 표시한 문항은 다시 풀어 보세요. ${FROM_APP ? '「오답 복습」에서 틀린 문제만 모아서 다시 풀 수 있어요.' : ''}</p>
       <div class="actions">
         ${FROM_APP || STU_NAME ? '<a class="btn primary" href="student_app.html' + (wrongN ? '#wrong' : '') + '" style="width:100%;">' + (wrongN ? '🔁 틀린 문제 복습하러 가기' : '🏠 내 시험 현황으로') + '</a>' : ''}
@@ -236,11 +237,55 @@ async function submitAnswers(e) {
       </div>
     `;
     window.scrollTo(0, 0);
+    if (wrongN) setupRetry(res);
   } catch (err) {
     alert('오류가 발생했어요: ' + err.message);
     btn.disabled = false;
     btn.textContent = '제출하고 채점받기';
   }
+}
+
+// ── 틀린 문제만 다시 입력해서 맞는지 확인 (점수에는 안 들어가고, 정답은 알려 주지 않는다) ──
+function setupRetry(res) {
+  const wrong = []; res.results.forEach((r, i) => { if (r === 'x') wrong.push(i); });
+  const pending = new Set(wrong), picked = {};
+  const grid = document.getElementById('retry-grid'), msg = document.getElementById('retry-msg'), btn = document.getElementById('retry-btn');
+  wrong.forEach(i => {
+    const row = document.createElement('div'); row.className = 'qrow'; row.id = 'rq' + i;
+    row.innerHTML = '<span class="qnum">' + (i + 1) + '</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(n => '<button type="button" class="ans-btn" data-q="' + i + '" data-v="' + n + '">' + n + '</button>').join('') + '</div>' + (isMulti(i) ? '<span class="multi-note">복수 선택</span>' : '') + '<span class="rq-st" style="margin-left:8px;font-weight:800;"></span>';
+    grid.appendChild(row);
+  });
+  grid.querySelectorAll('.ans-btn').forEach(b => b.addEventListener('click', function () {
+    const q = +this.dataset.q, v = this.dataset.v; if (!pending.has(q)) return;
+    if (isMulti(q)) { this.classList.toggle('selected'); picked[q] = Array.from(grid.querySelectorAll('.ans-btn[data-q="' + q + '"].selected')).map(x => x.dataset.v).sort().join(''); }
+    else { picked[q] = v; grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => x.classList.remove('selected')); this.classList.add('selected'); }
+    document.querySelector('#rq' + q + ' .rq-st').textContent = '';
+  }));
+  let tries = 0;
+  btn.addEventListener('click', async () => {
+    const todo = Array.from(pending), empty = todo.filter(q => !picked[q]);
+    if (empty.length) { msg.style.color = '#B45309'; msg.textContent = (empty[0] + 1) + '번에 답을 골라 주세요.'; return; }
+    btn.disabled = true; btn.textContent = '채점 중...';
+    try {
+      const arr = new Array(answerCount).fill(''); todo.forEach(q => { arr[q] = picked[q]; });
+      const r = await callApi('retryCheck', { id: examId, answers: arr });
+      if (!r.ok) throw new Error(r.error || '채점하지 못했어요.');
+      tries++;
+      todo.forEach(q => {
+        const st = document.querySelector('#rq' + q + ' .rq-st');
+        if (r.results[q] === 'ok') {
+          pending.delete(q); st.style.color = '#1a7a4a'; st.textContent = '⭕ 맞았어요!';
+          grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => { x.disabled = true; });
+        } else {
+          st.style.color = '#C1392B'; st.textContent = '❌ 아니에요. 다시 골라 보세요';
+          grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => x.classList.remove('selected')); delete picked[q];
+        }
+      });
+      if (!pending.size) { msg.style.color = '#1a7a4a'; msg.textContent = '🎉 틀렸던 문제를 모두 맞혔어요! (' + tries + '번 만에)'; btn.style.display = 'none'; }
+      else { msg.style.color = '#C1392B'; msg.textContent = '아직 ' + pending.size + '문항이 남았어요. 다시 골라서 「다시 채점」을 눌러요.'; }
+    } catch (e) { msg.style.color = '#C1392B'; msg.textContent = e.message; }
+    btn.disabled = false; btn.textContent = '다시 채점';
+  });
 }
 
 loadExam();
