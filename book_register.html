@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611131958">
+<link rel="stylesheet" href="css/style.css?v=202611132042">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -77,14 +77,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611131958"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611131958"></script>
-<script src="js/vendor/pdf.min.js?v=202611131958"></script>
-<script src="js/config.js?v=202611131958"></script>
-<script src="js/api.js?v=202611131958"></script>
-<script src="js/common.js?v=202611131958"></script>
-<script src="js/bankcore.js?v=202611131958"></script>
-<script src="js/pdfui.js?v=202611131958"></script>
+<script src="js/vendor/qrcode.min.js?v=202611132042"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611132042"></script>
+<script src="js/vendor/pdf.min.js?v=202611132042"></script>
+<script src="js/config.js?v=202611132042"></script>
+<script src="js/api.js?v=202611132042"></script>
+<script src="js/common.js?v=202611132042"></script>
+<script src="js/bankcore.js?v=202611132042"></script>
+<script src="js/pdfui.js?v=202611132042"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -205,10 +205,12 @@ $('read-btn').addEventListener('click', async () => {
     if (!rows.length) rows = await BankCore.readDapAnswers(bookDoc, pages, (i, n) => { $('read-msg').textContent = '정답(「N. (답) ④」 모양)을 읽는 중... ' + i + '/' + n + '쪽'; });
     sections.forEach(s => {
       const rr = rows.filter(r => r.p >= s.aa && r.p <= s.ab);
-      const N = rr.reduce((m, r) => Math.max(m, r.n), 0);
+      const minN = rr.reduce((m, r) => Math.min(m, r.n), 1e9);
+      s.base = rr.length && minN > 3 ? minN - 1 : 0;      // 교재 전체 번호(289번~)면 이 단원의 첫 번호를 1번으로
+      const N = rr.reduce((m, r) => Math.max(m, r.n - s.base), 0);
       s.answers = new Array(N).fill('?');
       s.peek = {};
-      rr.forEach(r => { if (r.n >= 1 && r.n <= N) { s.answers[r.n - 1] = r.d; if (r.rect) s.peek[r.n] = { p: r.p, rect: r.rect }; } });
+      rr.forEach(r => { const k = r.n - s.base; if (k >= 1 && k <= N) { s.answers[k - 1] = r.d; if (r.rect) s.peek[k] = { p: r.p, rect: r.rect }; } });
     });
     renderTable();
     $('step2').style.display = 'block';
@@ -223,6 +225,8 @@ $('read-btn').addEventListener('click', async () => {
   $('read-btn').disabled = false;
 });
 
+// 교재 전체에서 번호를 이어서 매긴 경우(예: 이 단원이 289번부터) 문항 번호에서 시작 번호를 빼서 1번부터로 맞춘다
+function unbase(scan, s) { const b = s.base || 0; if (!b || !scan || !scan.questions) return; scan.questions.forEach(q => { if (q.origNum === undefined) q.origNum = q.num; q.num -= b; }); }
 function renderTable() {
   let html = '<tr><th style="width:34px;">선택</th><th>단원 / 시험 이름</th><th>문제 쪽</th><th>정답 쪽</th><th>문항</th><th>정답 (번호 순서대로)</th><th>상태</th></tr>';
   let lastUnit = 0;
@@ -383,7 +387,7 @@ $('go-btn').addEventListener('click', async () => {
       const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1); for (let p = s.aa; p <= s.ab; p++) idx.push(p - 1);
       (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
       const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
-      const scan = await BankCore.scanPdf(doc);
+      const scan = await BankCore.scanPdf(doc); unbase(scan, s);
       const qs = scan.questions;
       if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) { bankWarn.push(title + ' (문항 ' + qs.length + '개 ≠ 정답 ' + s.answers.length + '개)'); return null; }
       const tu = tocUnitByNo(toc, gradeG, s.unit);
@@ -450,7 +454,7 @@ $('go-btn').addEventListener('click', async () => {
           const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1);
           (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
           const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
-          const scan = await BankCore.scanPdf(doc);
+          const scan = await BankCore.scanPdf(doc); unbase(scan, s);
           const qs = scan.questions.slice().sort((a, b) => a.num - b.num);
           if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) continue;
           const pgs = []; for (let p = s.aa; p <= s.ab; p++) pgs.push(p);
@@ -459,7 +463,7 @@ $('go-btn').addEventListener('click', async () => {
           for (const q of qs) {
             const canvas = await BankCore.renderQuestion(doc, q, BankCore.CROP_SCALE, true);
             const it = { base64: BankCore.canvasToBase64(canvas), width: canvas.width, height: canvas.height, naturalW: canvas.width / BankCore.CROP_SCALE, num: q.num, noBadge: true, answer: s.answers[q.num - 1] || '' };
-            const ex = exps[q.num];
+            const ex = exps[q.num + (s.base || 0)];
             if (ex && ex.segments.length) { try { const ec = await BankCore.renderExplanation(bookDoc, ex, 2.2); it.explBase64 = BankCore.canvasToBase64(ec); it.explW = ec.width; it.explH = ec.height; } catch (e) {} }
             items.push(it);
           }
@@ -478,7 +482,7 @@ $('go-btn').addEventListener('click', async () => {
           const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1);
           (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
           const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
-          const qs = (await BankCore.scanPdf(doc)).questions;
+          const sc0 = await BankCore.scanPdf(doc); unbase(sc0, s); const qs = sc0.questions;
           if (qs.length !== s.answers.length || qs.some((q, i) => q.num !== i + 1)) continue;
           const SC = BankCore.CROP_SCALE;
           for (const q of qs) {

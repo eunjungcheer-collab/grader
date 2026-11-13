@@ -44,7 +44,7 @@
     pages.forEach(pd => { if (pd.ocr) pd.items.forEach(it => { const m = /^(\d{1,2})[,;:]$/.exec(it.str); if (m) it.str = m[1] + '.'; }); });      // "10," 처럼 점이 쉼표로 읽힌 번호
     pages.forEach(pd => {       // 표의 번호 칸·머리글 목록("1. 2. 3. …")처럼 촘촘히 줄지은 번호(3개 이상이 28pt 안 간격으로 이어짐)는 문항 번호가 아니다
       if (!pd.ocr) return;
-      const nl = pd.items.filter(it => /^\d{1,2}[.)]$/.test(it.str)).sort((a, b) => a.top - b.top), drop = new Set();
+      const nl = pd.items.filter(it => /^\d{1,3}[.)]$/.test(it.str)).sort((a, b) => a.top - b.top), drop = new Set();
       let run = [];
       const flush = () => { if (run.length >= 3) run.forEach(it => drop.add(it)); run = []; };
       nl.forEach(it => { const l = run[run.length - 1]; if (l && it.top - l.top < 28 && Math.abs(it.x - l.x) < 20) run.push(it); else { flush(); run = [it]; } });
@@ -173,7 +173,7 @@
     const colOf = x => { let bi = 0; cols.forEach((c, i) => { if (Math.abs(c - x) < Math.abs(cols[bi] - x)) bi = i; }); return bi; };
     const list = [];
     pages.forEach((pd, pi) => { if (!pd.ocr) return; pd.items.forEach(it => {
-      const m = /^(\d{1,2})[.)]$/.exec(it.str); if (!m || Math.abs(it.size - qs) > 0.1) return;
+      const m = /^(\d{1,3})[.)]$/.exec(it.str); if (!m || Math.abs(it.size - qs) > 0.1) return;
       const ci = colOf(it.x); if (Math.abs(it.x - cols[ci]) > 9) { it.__drop = 1; return; }
       list.push({ it: it, pd: pd, num: parseInt(m[1], 10), k: pi * 1e6 + ci * 1e5 + it.top });
     }); });
@@ -315,7 +315,7 @@
     return b > from ? b : -1;
   }
 
-  const NUM_RE = /^(\d{1,2})[.)](\s|$)/;
+  const NUM_RE = /^(\d{1,3})[.)](\s|$)/;
 
   function numberSpans(pd) {
     const out = [];
@@ -329,7 +329,7 @@
         const ld = it.str.length >= 2 && /^\d[.)]/.test(it.str) ? leftDigit(it) : null;
         if (ld && !leftDigit(ld)) out.push({ num: parseInt(ld.str + m[1], 10), x: ld.x, x1: it.x + it.w, top: Math.min(it.top, ld.top), bottom: Math.max(it.bottom, ld.bottom), size: it.size });
         else if (!ld) out.push({ num: parseInt(m[1], 10), x: it.x, x1: it.x + it.w, top: it.top, bottom: it.bottom, size: it.size });
-      } else if (/^\d{1,2}$/.test(it.str) && !leftDigit(it) && !its.some(o => o !== it && /[(（\[]$/.test(o.str.trim()) && Math.abs(o.base - it.base) < 3 && it.x - (o.x + o.w) < 3 && it.x - (o.x + o.w) > -2)) {   // "총(6)쪽" 같은 꼬리말 쪽번호는 문항 번호가 아니다
+      } else if (/^\d{1,3}$/.test(it.str) && !leftDigit(it) && !its.some(o => o !== it && /[(（\[]$/.test(o.str.trim()) && Math.abs(o.base - it.base) < 3 && it.x - (o.x + o.w) < 3 && it.x - (o.x + o.w) > -2)) {   // "총(6)쪽" 같은 꼬리말 쪽번호는 문항 번호가 아니다
         // 번호와 점이 글꼴이 달라 따로 조각난 경우: "8" + "." / "1" + "8" + "."
         const d2 = it.str.length === 1 ? rightPiece(it, /^\d$/) : null;
         const base = d2 ? d2 : it; let dot = rightPiece(base, /^[.)]/);
@@ -3369,9 +3369,9 @@
       // 번호 표지: 「3) [정답]」 한 덩어리이거나, 「3)」 옆에 「정답」 딱지가 따로 있는 두 가지 모양
       const labs = [];
       pd.items.forEach(l => {
-        let m = String(l.str).match(/^\s*(\d{1,2})\)\s*\[정답\]\s*([①-⑨](?:[①-⑨,，、·\s]*[①-⑨])*)?/);
+        let m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[정답\]\s*([①-⑨](?:[①-⑨,，、·\s]*[①-⑨])*)?/);
         if (m) { labs.push({ n: parseInt(m[1], 10), right: l.x + l.w, top: l.top, bottom: l.bottom, inline: m[2] || '' }); return; }
-        m = String(l.str).match(/^\s*(\d{1,2})\)\s*$/);
+        m = String(l.str).match(/^\s*(\d{1,3})\)\s*$/);
         if (m) { const t = pd.items.find(q => String(q.str).trim() === '정답' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14); if (t) labs.push({ n: parseInt(m[1], 10), right: t.x + t.w, top: l.top, bottom: l.bottom }); }
       });
       const rowStart = rows.length;
