@@ -1797,8 +1797,31 @@
     cand.forEach(c => { const cy = (c.y1 + c.y2) / 2, r = rows2.find(r => Math.abs(r.cy - cy) < medH * 0.6); if (r) r.items.push(c); else rows2.push({ cy: cy, items: [c] }); });
     const starts = [];
     rows2.sort((a, b) => a.cy - b.cy).forEach(r => r.items.sort((a, b) => a.x1 - b.x1).forEach(c => starts.push({ first: c })));
+    // 「(가) (나) (다)」 모양의 <보기>: 줄 맨 앞의 「( 글자 )」 묶음 (가·나처럼 글자가 조각으로 갈라져도 괄호 사이를 한 덩어리로 묶는다)
+    const parenGroups = list => {
+      const thin = list.filter(c => (c.x2 - c.x1) <= (c.y2 - c.y1) * 0.42 && (c.y2 - c.y1) >= medH * 0.85 && (c.y2 - c.y1) <= medH * 2.2).sort((a, b) => a.x1 - b.x1);
+      const out = [];
+      thin.forEach(a => {
+        const cyA = (a.y1 + a.y2) / 2;
+        const b = thin.find(t => t.x1 > a.x2 && Math.abs((t.y1 + t.y2) / 2 - cyA) < medH * 0.4 && t.x1 - a.x2 <= medH * 2.6 && t.x1 - a.x2 >= medH * 0.5);
+        if (!b) return;
+        const mid = list.filter(c => c !== a && c !== b && c.x1 >= a.x2 - 1 && c.x2 <= b.x1 + 1 && (c.y1 + c.y2) / 2 > a.y1 && (c.y1 + c.y2) / 2 < a.y2);
+        if (!mid.length) return;
+        out.push({ x1: Math.min.apply(null, mid.map(c => c.x1)), x2: Math.max.apply(null, mid.map(c => c.x2)), y1: Math.min.apply(null, mid.map(c => c.y1)), y2: Math.max.apply(null, mid.map(c => c.y2)), open: a, close: b });
+      });
+      return out;
+    };
+    let styleP = false;
+    if (starts.length < 2) {
+      const pg = parenGroups(inner.concat(comps.filter(c => c !== box && c.x1 > box.x1 + 3 && c.x2 < box.x2 - 3 && c.y1 > box.y1 + 3 && c.y2 < box.y2 - 3 && !inner.includes(c))))
+        .filter(g => !inner.some(c => c !== g.open && c.x2 <= g.open.x1 && g.open.x1 - c.x2 < medH * 1.0 && Math.abs((c.y1 + c.y2) / 2 - (g.open.y1 + g.open.y2) / 2) < medH * 0.5));
+      const rows3 = [];
+      pg.sort((a, b) => (a.y1 + a.y2) - (b.y1 + b.y2)).forEach(c => { const cy = (c.y1 + c.y2) / 2, r = rows3.find(r => Math.abs(r.cy - cy) < medH * 0.6); if (r) r.items.push(c); else rows3.push({ cy: cy, items: [c] }); });
+      const st2 = []; rows3.sort((a, b) => a.cy - b.cy).forEach(r => r.items.sort((a, b) => a.x1 - b.x1).forEach(c => st2.push({ first: c })));
+      if (st2.length >= 2 && st2.length <= 6) { starts.length = 0; st2.forEach(x => starts.push(x)); styleP = true; }
+    }
     if (starts.length < 2 || starts.length > 6) return [];
-    const LET = 'ㄱㄴㄷㄹㅁㅂ';
+    const LET = styleP ? '가나다라마바' : 'ㄱㄴㄷㄹㅁㅂ';
     const N = 20, bmp = c => { const cw = c.x2 - c.x1, ch = c.y2 - c.y1, o = new Float32Array(N * N); for (let yy = 0; yy < N; yy++) for (let xx = 0; xx < N; xx++) { const sx = Math.min(w - 1, c.x1 + Math.floor((xx + 0.5) / N * cw)), sy = Math.min(h - 1, c.y1 + Math.floor((yy + 0.5) / N * ch)); o[yy * N + xx] = ink[sy * w + sx]; } return o; };
     const tmpl = starts.map((l, i) => ({ ch: LET[i], c: l.first, b: bmp(l.first) }));
     const sim = (a, b) => { let inter = 0, uni = 0; for (let i = 0; i < a.length; i++) { const x = a[i] > 0.5, y = b[i] > 0.5; if (x && y) inter++; if (x || y) uni++; } return uni ? inter / uni : 0; };
@@ -1809,7 +1832,8 @@
       const m = markers[dg - 1]; if (!m) return [];
       const row = markers.filter(o => Math.abs(o.cy - m.cy) < m.r * 1.1 && o.cx > m.cx).sort((a, b) => a.cx - b.cx)[0];
       const xa = m.cx + m.r * 1.2, xb = row ? row.cx - row.r * 1.2 : w - 2, ya = m.cy - m.r * 1.2, yb = m.cy + m.r * 1.2;
-      const gl = comps.filter(c => c.x1 >= xa && c.x2 <= xb && (c.y1 + c.y2) / 2 >= ya && (c.y1 + c.y2) / 2 <= yb && (c.y2 - c.y1) >= labH * 0.55 && (c.y2 - c.y1) <= labH * 1.7 && (c.x2 - c.x1) <= labH * 2).sort((a, b) => a.x1 - b.x1);
+      let gl = comps.filter(c => c.x1 >= xa && c.x2 <= xb && (c.y1 + c.y2) / 2 >= ya && (c.y1 + c.y2) / 2 <= yb && (c.y2 - c.y1) >= labH * 0.55 && (c.y2 - c.y1) <= labH * 1.7 && (c.x2 - c.x1) <= labH * 2).sort((a, b) => a.x1 - b.x1);
+      if (styleP) { const reg = comps.filter(c => c.x1 >= xa && c.x2 <= xb && (c.y1 + c.y2) / 2 >= ya && (c.y1 + c.y2) / 2 <= yb); gl = parenGroups(reg); }
       if (!gl.length) return [];
       // 정답 보기 줄의 글자들은 항상 ㄱ,ㄴ,ㄷ… 순서로 늘어선다 → 견본과의 닮은 정도 합이 가장 큰 「순서가 늘어나는」 짝짓기를 찾는다 (비슷한 글자끼리 헷갈려도 순서로 가려낸다)
       const K = gl.length, T = tmpl.length; if (K > T) return [];
