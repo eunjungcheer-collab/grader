@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611140254">
+<link rel="stylesheet" href="css/style.css?v=202611140321">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -79,14 +79,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611140254"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611140254"></script>
-<script src="js/vendor/pdf.min.js?v=202611140254"></script>
-<script src="js/config.js?v=202611140254"></script>
-<script src="js/api.js?v=202611140254"></script>
-<script src="js/common.js?v=202611140254"></script>
-<script src="js/bankcore.js?v=202611140254"></script>
-<script src="js/pdfui.js?v=202611140254"></script>
+<script src="js/vendor/qrcode.min.js?v=202611140321"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611140321"></script>
+<script src="js/vendor/pdf.min.js?v=202611140321"></script>
+<script src="js/config.js?v=202611140321"></script>
+<script src="js/api.js?v=202611140321"></script>
+<script src="js/common.js?v=202611140321"></script>
+<script src="js/bankcore.js?v=202611140321"></script>
+<script src="js/pdfui.js?v=202611140321"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -195,7 +195,9 @@ $('read-btn').addEventListener('click', async () => {
     if (!toc.sections.length) throw new Error('목차도, 쪽 위쪽의 「[최다빈출 공략] 1-1.○○(01)」 같은 단원 머리글도 찾지 못했어요. 이 교재는 단원 쪽 범위를 직접 알려 주셔야 해요.');
     tocPage = toc.tocPage;
     if (genToc) $('read-msg').textContent = '📑 이 교재엔 목차가 없어서 단원 ' + toc.sections.length + '개를 쪽 머리글로 찾았어요. 합본의 표지 바로 뒤에 목차 쪽을 새로 만들어 넣어요.';
-    sections = toc.sections.map((s, i) => Object.assign(s, { order: i + 1, on: true, answers: [] }));
+    // 「Ⅳ단원 … 문제 4~58 · 정답 236~264」처럼 소단원 여러 개를 감싸는 단원 제목 줄은 시험 단위가 아니다 → 뺀다
+    const secsRaw = toc.sections.filter(s => toc.sections.filter(o => o !== s && o.qa >= s.qa && o.qb <= s.qb && o.aa >= s.aa && o.ab <= s.ab).length < 2);
+    sections = secsRaw.map((s, i) => Object.assign(s, { order: i + 1, on: true, answers: [] }));
     bookId = 'b' + hash36(f.name + '|' + bookDoc.numPages + '|' + sections.length);
     const pages = []; const lo0 = Math.min.apply(null, sections.map(s => s.aa)), hi = Math.max.apply(null, sections.map(s => s.ab));
     const lo = Math.max(1, lo0 - 4);       // 목차의 정답 시작 쪽이 한 쪽 늦게 적힌 교재가 있어서, 앞쪽도 조금 더 읽는다

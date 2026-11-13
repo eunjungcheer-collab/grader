@@ -3447,11 +3447,14 @@
         const mx = Math.round(c.width * 0.22), my = Math.round(c.height * 0.2);
         ix.drawImage(c, mx, my, c.width - 2 * mx, c.height - 2 * my, mx, my, c.width - 2 * mx, c.height - 2 * my);   // 바깥 동그라미 테두리는 빼고 속의 숫자만
         const v = _inkFeature(ic); const row = { p: p, n: n, d: '?', conf: 0 }; rows.push(row);
-        if (v) items.push({ row: row, c: _centered(v.f), ar: v.ar });
+        if (v) items.push({ row: row, c: _centered(v.f), ar: v.ar, bw: r[2] - r[0], bh: r[3] - r[1] });
       }
       // 사람이 정답을 눈으로 확인할 수 있도록, 이 번호의 「N) [정답]」 줄 주변 위치를 같이 돌려준다
       rows.slice(rowStart).forEach(r => { const lb = labs.find(x => x.n === r.n); if (lb) r.rect = [Math.max(0, lb.right - 80), Math.max(0, lb.top - 6), Math.min(pd.W, lb.right + 300), Math.min(pd.H, lb.top + 64)]; });
     }
+    // 책 전체를 한꺼번에 묶으면 단원마다 숫자 그림 크기가 달라 다섯 묶음을 넘어서 못 읽는다 → 숫자 딱지 크기가 비슷한 것끼리 따로 묶어서 읽는다
+    const allCls = [];
+    const classify = items => {
     // 같은 숫자 그림끼리 묶는다 (같은 모양이면 거의 똑같이 보인다)
     const cls = [];
     items.forEach(it => {
@@ -3462,23 +3465,36 @@
     });
     const score = (c, t) => Math.max(0, _sim(c.mean, t.c)) * Math.exp(-2.2 * Math.abs(Math.log(c.ar / t.ar)));
     const best = cls.map(c => { const per = {}; tpl.forEach(t => { const s = score(c, t); if (!(t.d in per) || s > per[t.d]) per[t.d] = s; }); return per; });
+    // 큰 묶음(실제 숫자 1~5)만 짝짓기하고, 잡티 같은 작은 묶음은 가장 닮은 큰 묶음의 숫자를 따른다
+    const minSz = Math.max(3, Math.round(items.length * 0.05));
+    const mainIdx = cls.map((c, k) => k).filter(k => cls[k].items.length >= minSz);
     let assign = null;
-    if (cls.length <= 5 && cls.length >= 2) {
+    if (mainIdx.length <= 5 && mainIdx.length >= 2) {
       // 숫자 1~5가 한 번씩만 쓰이므로, 합이 가장 높은 짝짓기를 고른다
       let bestSum = -1; const digs = ['1', '2', '3', '4', '5'];
       (function rec(k, used, cur, sum) {
-        if (k === cls.length) { if (sum > bestSum) { bestSum = sum; assign = cur.slice(); } return; }
-        for (const d of digs) if (!used[d]) { used[d] = 1; cur.push(d); rec(k + 1, used, cur, sum + best[k][d]); cur.pop(); used[d] = 0; }
+        if (k === mainIdx.length) { if (sum > bestSum) { bestSum = sum; assign = cur.slice(); } return; }
+        for (const d of digs) if (!used[d]) { used[d] = 1; cur.push(d); rec(k + 1, used, cur, sum + best[mainIdx[k]][d]); cur.pop(); used[d] = 0; }
       })(0, {}, [], 0);
     }
+    const digOf = {}; if (assign) mainIdx.forEach((k, i) => { digOf[k] = assign[i]; });
     cls.forEach((c, k) => {
       const per = best[k], ranked = Object.keys(per).sort((a, b) => per[b] - per[a]);
-      const d = assign ? assign[k] : ranked[0];
+      let d, ok;
+      if (assign && digOf[k] !== undefined) { d = digOf[k]; ok = mainIdx.length === 5 || per[d] >= 0.2; }
+      else if (assign) {
+        let bm = null, bsim = -1; mainIdx.forEach(m => { const sc = _sim(c.mean, cls[m].mean); if (sc > bsim && Math.abs(Math.log(c.ar / cls[m].ar)) < 0.3) { bsim = sc; bm = m; } });
+        if (bm !== null && bsim >= 0.6) { d = digOf[bm]; ok = true; } else { d = ranked[0]; ok = per[d] >= 0.25 && per[d] - Math.max.apply(null, Object.keys(per).filter(x => x !== d).map(x => per[x])) >= 0.08; }
+      } else { d = ranked[0]; ok = per[d] >= 0.25 && per[d] - Math.max.apply(null, Object.keys(per).filter(x => x !== d).map(x => per[x])) >= 0.08; }
       const conf = per[d] - Math.max.apply(null, Object.keys(per).filter(x => x !== d).map(x => per[x]));
-      const ok = assign ? (cls.length === 5 || per[d] >= 0.2) : (per[d] >= 0.25 && conf >= 0.08);
       c.items.forEach(it => { Object.assign(it.row, { d: ok ? d : '?', conf: conf, top: per[d], guess: d, alt: ranked.find(x => x !== d), cluster: k, size: c.items.length }); });
     });
-    rows.clusters = cls.map((c, k) => ({ n: c.items.length, d: assign ? assign[k] : null }));
+      allCls.push.apply(allCls, cls);
+    };
+    const bySize = items.slice().sort((u, v) => (u.bw + u.bh) - (v.bw + v.bh)), groups = [];
+    bySize.forEach(it => { const g = groups[groups.length - 1]; if (g && Math.abs((it.bw + it.bh) - g.ref) <= 1.2) { g.items.push(it); } else groups.push({ ref: it.bw + it.bh, items: [it] }); });
+    groups.forEach(g => classify(g.items));
+    rows.clusters = allCls.map(c => ({ n: c.items.length }));
     return rows;
   }
 
