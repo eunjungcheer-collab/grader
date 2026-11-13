@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611140248">
+<link rel="stylesheet" href="css/style.css?v=202611140254">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -35,8 +35,10 @@
   <div id="error-banner"></div>
 
   <div class="card" id="saved-card" style="display:none;">
-    <label>📁 전에 만들어 둔 합본 PDF <span class="muted" style="font-weight:400;">(강사용/학생용 따로 내려받아요)</span></label>
-    <div id="saved-list"></div>
+    <details id="saved-drawer">
+      <summary style="cursor:pointer; font-weight:700; padding:2px 0;">📁 전에 만들어 둔 합본 PDF <span class="muted" id="saved-count" style="font-weight:400;"></span> <span class="muted" style="font-weight:400;">— 눌러서 열기 (강사용/학생용 따로 내려받아요)</span></summary>
+      <div id="saved-list" style="margin-top:8px;"></div>
+    </details>
   </div>
 
   <div class="card">
@@ -77,14 +79,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611140248"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611140248"></script>
-<script src="js/vendor/pdf.min.js?v=202611140248"></script>
-<script src="js/config.js?v=202611140248"></script>
-<script src="js/api.js?v=202611140248"></script>
-<script src="js/common.js?v=202611140248"></script>
-<script src="js/bankcore.js?v=202611140248"></script>
-<script src="js/pdfui.js?v=202611140248"></script>
+<script src="js/vendor/qrcode.min.js?v=202611140254"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611140254"></script>
+<script src="js/vendor/pdf.min.js?v=202611140254"></script>
+<script src="js/config.js?v=202611140254"></script>
+<script src="js/api.js?v=202611140254"></script>
+<script src="js/common.js?v=202611140254"></script>
+<script src="js/bankcore.js?v=202611140254"></script>
+<script src="js/pdfui.js?v=202611140254"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -352,6 +354,7 @@ async function renderSaved() {
     local.forEach(m => { const r = by[m.id] = by[m.id] || { id: m.id, name: m.name, date: m.date }; r.teacher = m.teacher; r.student = m.student; });
     const all = Object.keys(by).map(k => by[k]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     $('saved-card').style.display = all.length ? '' : 'none';
+    $('saved-count').textContent = all.length ? '(' + all.length + '개)' : '';
     const list = $('saved-list'); list.innerHTML = '';
     all.forEach(rec => {
       const row = document.createElement('div'); row.style.cssText = 'padding:8px 0; border-top:1px solid var(--line);';
