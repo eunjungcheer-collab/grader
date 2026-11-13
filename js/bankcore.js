@@ -1811,12 +1811,15 @@
       const xa = m.cx + m.r * 1.2, xb = row ? row.cx - row.r * 1.2 : w - 2, ya = m.cy - m.r * 1.2, yb = m.cy + m.r * 1.2;
       const gl = comps.filter(c => c.x1 >= xa && c.x2 <= xb && (c.y1 + c.y2) / 2 >= ya && (c.y1 + c.y2) / 2 <= yb && (c.y2 - c.y1) >= labH * 0.55 && (c.y2 - c.y1) <= labH * 1.7 && (c.x2 - c.x1) <= labH * 2).sort((a, b) => a.x1 - b.x1);
       if (!gl.length) return [];
-      for (const g of gl) {
-        const b = bmp(g); let best = null, bs = -1, second = -1;
-        tmpl.forEach(t => { const sc = sim(b, t.b); if (sc > bs) { second = bs; bs = sc; best = t; } else if (sc > second) second = sc; });
-        if (!best || bs < 0.42 || bs - second < 0.04) return [];       // 헷갈리면 아무것도 표시하지 않는다 (틀린 곳에 동그라미를 치는 것보다 낫다)
-        want.add(best.ch);
-      }
+      // 정답 보기 줄의 글자들은 항상 ㄱ,ㄴ,ㄷ… 순서로 늘어선다 → 견본과의 닮은 정도 합이 가장 큰 「순서가 늘어나는」 짝짓기를 찾는다 (비슷한 글자끼리 헷갈려도 순서로 가려낸다)
+      const K = gl.length, T = tmpl.length; if (K > T) return [];
+      const S = gl.map(g => { const b = bmp(g); return tmpl.map(t => sim(b, t.b)); });
+      const dp = [], bk = [];
+      for (let i = 0; i < K; i++) { dp.push(new Array(T).fill(-1e9)); bk.push(new Array(T).fill(-1)); for (let t = 0; t < T; t++) {
+        if (i === 0) dp[i][t] = S[i][t]; else for (let t0 = 0; t0 < t; t0++) if (dp[i - 1][t0] + S[i][t] > dp[i][t]) { dp[i][t] = dp[i - 1][t0] + S[i][t]; bk[i][t] = t0; } } }
+      let bt = -1, bv = -1e9; for (let t = 0; t < T; t++) if (dp[K - 1][t] > bv) { bv = dp[K - 1][t]; bt = t; }
+      if (bt < 0 || bv / K < 0.36) return [];
+      for (let i = K - 1, t = bt; i >= 0; i--) { want.add(tmpl[t].ch); t = bk[i][t]; }
     }
     return tmpl.filter(t => want.has(t.ch)).map(t => { const c = t.c, cw = c.x2 - c.x1, ch = c.y2 - c.y1; return { cx: (c.x1 + c.x2) / 2, cy: (c.y1 + c.y2) / 2, rx: Math.max(cw, ch) * 0.78 + 2, ry: Math.max(cw, ch) * 0.78 + 2, ch: t.ch }; });
   }
