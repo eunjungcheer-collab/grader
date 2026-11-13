@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611140351">
+<link rel="stylesheet" href="css/style.css?v=202611140431">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611140351"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611140351"></script>
-<script src="js/vendor/pdf.min.js?v=202611140351"></script>
-<script src="js/config.js?v=202611140351"></script>
-<script src="js/api.js?v=202611140351"></script>
-<script src="js/common.js?v=202611140351"></script>
-<script src="js/bankcore.js?v=202611140351"></script>
-<script src="js/pdfui.js?v=202611140351"></script>
+<script src="js/vendor/qrcode.min.js?v=202611140431"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611140431"></script>
+<script src="js/vendor/pdf.min.js?v=202611140431"></script>
+<script src="js/config.js?v=202611140431"></script>
+<script src="js/api.js?v=202611140431"></script>
+<script src="js/common.js?v=202611140431"></script>
+<script src="js/bankcore.js?v=202611140431"></script>
+<script src="js/pdfui.js?v=202611140431"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -477,7 +477,16 @@ $('go-btn').addEventListener('click', async () => {
       const idx = []; for (let p = s.qa; p <= s.qb; p++) idx.push(p - 1); for (let p = s.aa; p <= s.ab; p++) idx.push(p - 1);
       (await sub.copyPages(pdf, idx)).forEach(pg => sub.addPage(pg));
       const doc = await pdfjsLib.getDocument({ data: await sub.save() }).promise;
-      const scan = await BankCore.scanPdf(doc); unbase(scan, s);
+      let scan;
+      if (isEssay(s)) {
+        // 서술형: 정답 쪽의 'N) 모범 답안' 표시가 문제 번호로 잘못 읽히지 않도록 문제 쪽만 따로 읽는다 (쪽 순서는 합친 문서와 같다)
+        const qsub = await PDFLib.PDFDocument.create();
+        const qi = []; for (let p = s.qa; p <= s.qb; p++) qi.push(p - 1);
+        (await qsub.copyPages(pdf, qi)).forEach(pg => qsub.addPage(pg));
+        const qdoc = await pdfjsLib.getDocument({ data: await qsub.save() }).promise;
+        scan = await BankCore.scanPdf(qdoc);
+      } else scan = await BankCore.scanPdf(doc);
+      unbase(scan, s);
       try { await BankCore.extendCutQuestions(doc, scan.questions); } catch (e) {}
       const qs = scan.questions.slice().sort((a, b) => a.num - b.num);
       let ok = qs.length === s.answers.length && qs.every((q, i) => q.num === i + 1);
