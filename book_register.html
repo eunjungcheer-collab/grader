@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611140339">
+<link rel="stylesheet" href="css/style.css?v=202611140351">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,19 +81,20 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611140339"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611140339"></script>
-<script src="js/vendor/pdf.min.js?v=202611140339"></script>
-<script src="js/config.js?v=202611140339"></script>
-<script src="js/api.js?v=202611140339"></script>
-<script src="js/common.js?v=202611140339"></script>
-<script src="js/bankcore.js?v=202611140339"></script>
-<script src="js/pdfui.js?v=202611140339"></script>
+<script src="js/vendor/qrcode.min.js?v=202611140351"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611140351"></script>
+<script src="js/vendor/pdf.min.js?v=202611140351"></script>
+<script src="js/config.js?v=202611140351"></script>
+<script src="js/api.js?v=202611140351"></script>
+<script src="js/common.js?v=202611140351"></script>
+<script src="js/bankcore.js?v=202611140351"></script>
+<script src="js/pdfui.js?v=202611140351"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
 setupPdfJs();
 const $ = id => document.getElementById(id);
+const isEssay = s => /서술|논술/.test(String(s.name || '') + ' ' + String(s.tag || ''));
 
 let bookBytes = null, bookDoc = null, bookFileName = '', sections = [], tocPage = 0, bookId = '';
 
@@ -293,7 +294,7 @@ function renderTable() {
   let lastUnit = 0;
   sections.forEach((s, i) => {
     if (s.unit !== lastUnit) { lastUnit = s.unit; html += '<tr class="bk-unit"><td colspan="7">' + s.unit + '단원 ' + escapeHtml(s.unitName) + '</td></tr>'; }
-    html += '<tr data-i="' + i + '"><td><input type="checkbox" class="bk-on" ' + (s.on ? 'checked' : '') + '></td>' +
+    html += '<tr data-i="' + i + '"><td><input type="checkbox" class="bk-on" ' + (s.on || isEssay(s) ? 'checked' : '') + (isEssay(s) ? ' disabled title="서술형은 항상 포함돼요(강사용에 해설만 붙음)"' : '') + '></td>' +
       '<td>' + escapeHtml(secTitle(s)) + '</td><td>' + s.qa + '~' + s.qb + '</td><td>' + s.aa + '~' + s.ab + '</td><td class="bk-n">' + s.answers.length + '</td>' +
       '<td><div class="bk-grid">' + s.answers.map((a, k) => '<label class="bk-c"><span>' + (k + 1) + '</span><input type="text" data-k="' + k + '" value="' + escapeHtml(a) + '" maxlength="5"></label>').join('') + '</div></td><td class="bk-st"></td></tr>';
   });
@@ -332,6 +333,7 @@ async function peekAnswer(s, n) {
   } catch (e) { box.querySelector('.muted:last-child').textContent = '그림을 만들지 못했어요: ' + e.message; }
 }
 function rowIssue(s) {
+  if (isEssay(s)) return '';
   if (!s.answers.length) return '정답 없음';
   const bad = s.answers.map((a, i) => (/^([1-9]{1,5}(\/[1-9]{1,5})*|-)$/.test(a) ? null : (i + 1))).filter(Boolean);
   return bad.length ? ('확인 필요: ' + bad.slice(0, 6).join(', ') + '번') : '';
@@ -341,6 +343,7 @@ function updateRow(tr, s) {
   tr.querySelectorAll('.bk-c input').forEach(inp => { const a = s.answers[+inp.dataset.k]; inp.classList.toggle('bk-bad', !/^([1-9]{1,5}(\/[1-9]{1,5})*|-)$/.test(a)); inp.classList.toggle('bk-sub', a === '-'); });
   tr.querySelector('.bk-n').textContent = s.answers.length;
   const badNums = s.answers.map((a, i) => (/^([1-9]{1,5}(\/[1-9]{1,5})*|-)$/.test(a) ? 0 : i + 1)).filter(Boolean);
+  if (isEssay(s)) { tr.querySelector('.bk-st').innerHTML = '<span class="bk-st-warn">서술형 · 시험 등록 안 함<br>강사용에 해설만 붙어요</span>'; return; }
   tr.querySelector('.bk-st').innerHTML = issue ? '<span class="bk-st-bad">확인 필요 — 눌러서 정답 보기<br>' + badNums.slice(0, 12).map(n => '<button type="button" class="btn bk-fix" data-n="' + n + '" style="padding:1px 7px; margin:1px; color:#C1392B;">' + n + '번</button>').join('') + (badNums.length > 12 ? ' …' : '') + '</span>' : (subj ? '<span class="bk-st-warn">서술형 ' + subj + '개</span>' : '<span class="bk-st-ok">OK</span>');
 }
 
@@ -448,11 +451,12 @@ renderSaved();
 
 $('go-btn').addEventListener('click', async () => {
   const err = $('error-banner'); err.innerHTML = '';
-  const chosen = sections.filter(s => s.on);
-  if (!chosen.length) { alert('등록할 단원을 선택해 주세요.'); return; }
-  const bad = chosen.filter(s => rowIssue(s));
+  const chosen = sections.filter(s => s.on || isEssay(s));      // 서술형 단원은 체크와 상관없이 강사용에 해설만 붙인다 (시험·QR은 만들지 않음)
+  const regList = chosen.filter(s => !isEssay(s));
+  if (!regList.length) { alert('등록할 단원을 선택해 주세요.'); return; }
+  const bad = regList.filter(s => rowIssue(s));
   if (bad.length) { alert('정답을 확인해야 하는 단원이 있어요:\n' + bad.slice(0, 8).map(s => '· ' + secTitle(s) + ' (' + rowIssue(s) + ')').join('\n') + '\n\n표의 정답 칸에서 고치거나, 그 단원은 선택을 빼 주세요.'); return; }
-  if (!confirm(chosen.length + '개 단원을 시험으로 등록하고 QR 합본 PDF를 만들까요?\n(이미 같은 이름으로 등록된 단원은 새로 만들지 않고 그 시험의 QR을 써요)')) return;
+  if (!confirm(regList.length + '개 단원을 시험으로 등록하고 QR 합본 PDF를 만들까요?\n(이미 같은 이름으로 등록된 단원은 새로 만들지 않고 그 시험의 QR을 써요)')) return;
   $('go-btn').disabled = true;
   const msg = t => { $('go-msg').textContent = t; };
   try {
@@ -546,12 +550,12 @@ $('go-btn').addEventListener('click', async () => {
     { let pi = 0; for (const s of chosen) { pi++; msg('문제 쪽을 읽는 중... ' + pi + '/' + chosen.length + ' ' + secTitle(s)); try { await getSec(s); } catch (e) {} } }
     const worker = async () => {
       while (!fail) {
-        const k = next++; if (k >= chosen.length) return;
-        const s = chosen[k], title = secTitle(s);
+        const k = next++; if (k >= regList.length) return;
+        const s = regList[k], title = secTitle(s);
         if (byTitle[title]) { ids[s.order] = byTitle[title]; reused++; continue; }
         const id = genExamId();
         let saved = null;
-        if (toBank) { msg('문제 저장 중... ' + secTitle(s) + ' (' + (made + reused) + '/' + chosen.length + '개 단원 등록됨)'); try { saved = await bankSection(s, title); } catch (e) { fail = new Error(title + ': ' + e.message); return; } }
+        if (toBank) { msg('문제 저장 중... ' + secTitle(s) + ' (' + (made + reused) + '/' + regList.length + '개 단원 등록됨)'); try { saved = await bankSection(s, title); } catch (e) { fail = new Error(title + ': ' + e.message); return; } }
         const res = await callApi('createExam', {
           password: getTeacherPassword(), id: id, title: title, answers: s.answers, filename: title,
           sourceQuestionIds: saved ? saved.map(x => x.id) : undefined, questionTexts: saved ? saved.map(x => x.text) : undefined,
@@ -559,7 +563,7 @@ $('go-btn').addEventListener('click', async () => {
         });
         if (!res.ok) { fail = new Error(title + ': ' + (res.error || '등록 실패')); return; }
         ids[s.order] = id; made++;
-        msg('시험 등록 중... ' + (made + reused) + '/' + chosen.length);
+        msg('시험 등록 중... ' + (made + reused) + '/' + regList.length);
       }
     };
     await Promise.all(Array.from({ length: toBank ? 2 : 3 }, worker));
@@ -568,8 +572,8 @@ $('go-btn').addEventListener('click', async () => {
     msg('교재 PDF에 QR을 찍는 중... (파일이 커서 1~2분 걸릴 수 있어요)');
     const size = parseInt($('qr-size').value, 10), corner = $('qr-corner').value;
     let i = 0;
-    for (const s of chosen) {
-      msg('QR 찍는 중... ' + (++i) + '/' + chosen.length);
+    for (const s of regList) {
+      msg('QR 찍는 중... ' + (++i) + '/' + regList.length);
       await stampQrOnPage(pdf, s.qa - 1, studentLinkFor(ids[s.order]), { size: size, corner: corner, margin: 8, caption: 'QR코드로 답안 입력하세요' });
     }
     // 강사용 합본: 각 단원의 문제 쪽을 「문제 + 정답 동그라미 + 바로 아래 해설」 모양으로 새로 짜 둔다 (다른 시험지의 강사용 해설서와 같은 모양)
@@ -650,7 +654,7 @@ $('go-btn').addEventListener('click', async () => {
           copied.forEach((pg, k) => doc.insertPage(at + k, pg));
           for (let k = 0; k < cnt; k++) doc.removePage(at + n);
           kept.splice(at, cnt, ...copied.map((_, k) => k === 0 ? 1e6 + s.qa - 1 : -1));
-          await stampQrOnPage(doc, at, studentLinkFor(ids[s.order]), { size: size, corner: corner, margin: 8, caption: 'QR코드로 답안 입력하세요' });
+          if (ids[s.order]) await stampQrOnPage(doc, at, studentLinkFor(ids[s.order]), { size: size, corner: corner, margin: 8, caption: 'QR코드로 답안 입력하세요' });
         }
       }
       const white = PDFLib.rgb(1, 1, 1);
