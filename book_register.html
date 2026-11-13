@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611132121">
+<link rel="stylesheet" href="css/style.css?v=202611132126">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -62,7 +62,6 @@
       </div>
       <label class="field-label-spaced"><input type="checkbox" id="to-bank" checked> 문제도 <b>문제은행에 「내신교재」 문제로 저장</b> (오답노트·유사오답이 일반 시험지처럼 돼요. 시간이 더 걸려요)</label>
       <label class="field-label-spaced"><input type="checkbox" id="stu-ver" checked> <b>학생용 합본</b>도 따로 만들기 — 끄면 <b>강사용 전체 합본</b> 한 파일만 만들어요</label>
-      <label class="field-label-spaced" style="margin-left:22px;"><input type="checkbox" id="stu-ans" checked> 학생용에도 <b>교재의 정답·해설 쪽</b>을 그대로 넣기 (끄면 정답·해설 쪽을 뺀 문제편만)</label>
       <label class="field-label-spaced" for="teacher-mode"><b>강사용 합본 모양</b></label>
       <select id="teacher-mode" style="width:100%;">
         <option value="expl" selected>정답 동그라미 + 문제 바로 아래 해설 (다른 시험지 강사용 해설서처럼 · 시간이 더 걸려요)</option>
@@ -78,14 +77,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611132121"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611132121"></script>
-<script src="js/vendor/pdf.min.js?v=202611132121"></script>
-<script src="js/config.js?v=202611132121"></script>
-<script src="js/api.js?v=202611132121"></script>
-<script src="js/common.js?v=202611132121"></script>
-<script src="js/bankcore.js?v=202611132121"></script>
-<script src="js/pdfui.js?v=202611132121"></script>
+<script src="js/vendor/qrcode.min.js?v=202611132126"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611132126"></script>
+<script src="js/vendor/pdf.min.js?v=202611132126"></script>
+<script src="js/config.js?v=202611132126"></script>
+<script src="js/api.js?v=202611132126"></script>
+<script src="js/common.js?v=202611132126"></script>
+<script src="js/bankcore.js?v=202611132126"></script>
+<script src="js/pdfui.js?v=202611132126"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -568,7 +567,7 @@ $('go-btn').addEventListener('click', async () => {
     // 한 가지 버전 만들기: 정답·해설 쪽을 뺄지 정하고 → 원래 쪽 번호를 하얗게 지우고 → (목차가 없던 교재면) 목차 쪽을 표지 뒤에 끼우고 → 새 쪽 번호를 쓴다
     const makeVersion = async (withAns) => {
       const doc = await PDFLib.PDFDocument.load(stampedBytes, { ignoreEncryption: true, updateMetadata: false });
-      const drop = new Set(); if (!withAns && !$('stu-ans').checked) sections.forEach(s => { for (let p = s.aa; p <= s.ab; p++) drop.add(p - 1); });
+      const drop = new Set(); if (false) sections.forEach(s => { for (let p = s.aa; p <= s.ab; p++) drop.add(p - 1); });
       let kept = doc.getPageIndices().filter(i => !drop.has(i));
       for (let i = doc.getPageCount() - 1; i >= 0; i--) if (drop.has(i)) doc.removePage(i);
       if (withAns) {
