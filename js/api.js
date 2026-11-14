@@ -354,7 +354,15 @@ async function findBankDeletion(exams, allExams) {
     const titles = new Set(targets.map(e => String(e.title).trim()));
     const gone = new Set(targets.map(e => String(e.id)));
     const keep = new Set((allExams || []).filter(e => !gone.has(String(e.id))).map(e => String(e.title).trim()));
-    const qs = r.questions.filter(q => { const s = String(q.source || '').trim(); const t = titles.has(s) ? s : (q.kind === '교재' && titles.has(s + '공략') ? s + '공략' : ''); return t && !keep.has(t); });
+    const titleOf = q => { const s = String(q.source || '').trim(); return titles.has(s) ? s : (q.kind === '교재' && titles.has(s + '공략') ? s + '공략' : ''); };
+    const qs = r.questions.filter(q => { const t = titleOf(q); return t && !keep.has(t); });
+    // 같은 제목의 시험지가 하나 남아 있어도, 그 시험지가 쓰지 않는 겹친 문항(여러 번 등록하며 쌓인 것)은 지울 수 있다
+    const stay = (allExams || []).filter(e => !gone.has(String(e.id)) && titles.has(String(e.title).trim()));
+    if (stay.length && stay.length <= 40) {
+      const used = new Set(); let ok = true;
+      for (const e of stay) { try { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: e.id }); if (!d.ok || !(d.sourceQuestionIds || []).length) { ok = false; break; } (d.sourceQuestionIds || []).forEach(id => used.add(id)); } catch (er) { ok = false; break; } }
+      if (ok && used.size) r.questions.forEach(q => { const t = titleOf(q); if (t && keep.has(t) && !used.has(q.id) && !qs.includes(q)) qs.push(q); });
+    }
     return qs.length ? { ids: qs.map(q => q.id) } : null;
   } catch (e) { return null; }
 }
