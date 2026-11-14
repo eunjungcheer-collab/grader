@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151140">
+<link rel="stylesheet" href="css/style.css?v=202611151200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -52,6 +52,7 @@
   <details class="tools-box"><summary>🛠 정리 · 자동 채우기 도구 <span class="hint" style="margin:0;">(필요할 때만 펼치세요)</span></summary>
     <div class="tools-body">
   <div style="margin:8px 0;"><button type="button" class="btn outline" id="dedupe" style="padding:8px 14px;">🧹 중복 문항 정리 (같은 PDF를 여러 번 올린 경우)</button> <span class="hint" id="dedupe-msg"></span></div>
+  <div style="margin:8px 0;"><button type="button" class="btn outline" id="book-tidy" style="padding:8px 14px;">📚 교재 문항 정리 (중복 지우기 + 단원 바로잡기)</button> <span class="hint" id="book-tidy-msg"></span></div>
   <div style="margin:8px 0;"><button type="button" class="btn outline" id="fix-class" style="padding:8px 14px;">🔧 학년·단원 바로잡기 (파일 이름·단원 이름 기준)</button> <span class="hint" id="fix-class-msg"></span>
     <div class="hint" style="margin:2px 0 0;">선택한 문항이 있으면 그것만, 없으면 전체를 점검해요. 파일 이름의 학년(중1…)과 단원 이름(예: 물리변화와 화학변화 → 중3)을 목차와 맞춰 학년을 고치고, 단원 이름을 목차 이름(예: 4단원 물질의 상태 변화)으로 통일해요.</div></div>
   <div style="margin:8px 0;"><button type="button" class="btn outline" id="auto-grade" style="padding:8px 14px;">🤖 학년·단원 자동 채우기 (분류 안 된 문항)</button> <span class="hint" id="auto-grade-msg"></span></div>
@@ -79,11 +80,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611151140"></script>
-<script src="js/api.js?v=202611151140"></script>
-<script src="js/common.js?v=202611151140"></script>
-<script src="js/bankcore.js?v=202611151140"></script>
-<script src="js/pdfui.js?v=202611151140"></script>
+<script src="js/config.js?v=202611151200"></script>
+<script src="js/api.js?v=202611151200"></script>
+<script src="js/common.js?v=202611151200"></script>
+<script src="js/bankcore.js?v=202611151200"></script>
+<script src="js/pdfui.js?v=202611151200"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -515,6 +516,53 @@ $('dedupe').addEventListener('click', async () => {
     for (let i = all.length - 1; i >= 0; i--) if (gone.has(all[i].id)) all.splice(i, 1);
     selected.clear();
     msg.textContent = '✅ 중복 ' + del.length + '개를 지웠어요.';
+    render();
+  } catch (e) { msg.textContent = '오류가 났어요: ' + e.message; }
+});
+$('book-tidy').addEventListener('click', async () => {
+  const msg = $('book-tidy-msg');
+  if (!bookFilter) { msg.textContent = '위쪽 "📚 교재" 칸에서 정리할 교재를 먼저 하나 고르세요.'; return; }
+  const name = bookFilter;
+  msg.textContent = '시험지와 문항을 대조하는 중...';
+  try {
+    const qs = all.filter(x => isBookQ(x) && bookNameOf(x) === name);
+    const lr = await callApi('listExams', { password: getTeacherPassword() });
+    const exams = ((lr && lr.exams) || []).filter(e => e.recipeLabel && String(e.title).indexOf(name) >= 0);
+    if (!exams.length) { msg.textContent = '이 교재로 등록된 시험지를 못 찾았어요. 정리를 멈췄어요.'; return; }
+    const used = new Set(); let k = 0, bad = 0;
+    await Promise.all(Array.from({ length: 4 }, async () => { while (k < exams.length) { const e = exams[k++]; try { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: e.id }); if (d.ok) (d.sourceQuestionIds || []).forEach(id => used.add(id)); else bad++; } catch (er) { bad++; } msg.textContent = '대조 중... ' + k + '/' + exams.length; } }));
+    if (bad) { msg.textContent = '시험지 ' + bad + '개를 읽지 못해서 안전하게 멈췄어요. 잠시 뒤 다시 눌러 주세요.'; return; }
+    if (!used.size) { msg.textContent = '시험지에 연결된 문항이 없어서 멈췄어요 (잘못 지우는 것을 막기 위해).'; return; }
+    const groups = {};
+    qs.forEach(x => { const key = String(x.source || '') + '#' + x.num; (groups[key] = groups[key] || []).push(x); });
+    const dup = [], orphan = [];
+    Object.values(groups).forEach(g => {
+      g.sort((a, b) => (used.has(b.id) ? 1 : 0) - (used.has(a.id) ? 1 : 0) || String(b.createdAt).localeCompare(String(a.createdAt)));
+      if (!used.has(g[0].id)) { g.forEach(x => orphan.push(x.id)); return; }
+      g.slice(1).forEach(x => { if (!used.has(x.id)) dup.push(x.id); });
+    });
+    const keep = qs.length - dup.length - orphan.length;
+    if (!confirm('"' + name + '" 교재: 문제은행 ' + qs.length + '개 / 시험지 ' + exams.length + '개\n\n· 시험지가 쓰는 문항: ' + used.size + '개 (모두 남겨요)\n· 같은 문항이 겹친 중복: ' + dup.length + '개 → 삭제\n· 어느 시험지에도 안 쓰이는 문항: ' + orphan.length + '개 → ' + '삭제\n\n정리하면 ' + keep + '개가 남아요. 되돌릴 수 없어요. 계속할까요?')) { msg.textContent = ''; return; }
+    const del = dup.concat(orphan);
+    busyStart();
+    try {
+      for (let i = 0; i < del.length; i += 80) {
+        const r = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: del.slice(i, i + 80) });
+        if (!r.ok) throw new Error(r.error || '삭제 실패');
+        msg.textContent = '삭제 중... ' + Math.min(i + 80, del.length) + '/' + del.length + ' (창을 닫지 마세요)';
+      }
+    } finally { busyEnd(); }
+    const gone = new Set(del);
+    for (let i = all.length - 1; i >= 0; i--) if (gone.has(all[i].id)) all.splice(i, 1);
+    // 단원 바로잡기: 출처 "교재이름 4-1. ..." 의 번호로 단원을 정한다
+    await ensureToc(); const toc = _tocParsed || [], ups = [];
+    all.filter(x => isBookQ(x) && bookNameOf(x) === name).forEach(x => {
+      const m = String(x.source || '').slice(name.length).trim().match(/^(\d+)(?:-\d+)?\./); if (!m) return;
+      const tu = tocUnitByNo(toc, x.grade, parseInt(m[1], 10));
+      if (tu && tu.unit && tu.unit !== x.unit) ups.push({ id: x.id, unit: tu.unit });
+    });
+    if (ups.length) { await sendClassUpdates(ups); ups.forEach(u => { const q = all.find(z => z.id === u.id); if (q) q.unit = u.unit; }); }
+    msg.textContent = '✅ ' + del.length + '개를 지우고 단원 ' + ups.length + '개를 바로잡았어요.';
     render();
   } catch (e) { msg.textContent = '오류가 났어요: ' + e.message; }
 });
