@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150440">
+<link rel="stylesheet" href="css/style.css?v=202611150500">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,13 +17,13 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150440"></script>
-<script src="js/config.js?v=202611150440"></script>
-<script src="js/api.js?v=202611150440"></script>
-<script src="js/common.js?v=202611150440"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150440"></script>
-<script src="js/bankcore.js?v=202611150440"></script>
-<script src="js/pdfui.js?v=202611150440"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150500"></script>
+<script src="js/config.js?v=202611150500"></script>
+<script src="js/api.js?v=202611150500"></script>
+<script src="js/common.js?v=202611150500"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150500"></script>
+<script src="js/bankcore.js?v=202611150500"></script>
+<script src="js/pdfui.js?v=202611150500"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -81,14 +81,24 @@ async function getImgs(ids) {
   return Promise.all(ids.map(id => _imgCache.get(id)));
 }
 
+// 시험지에 기록된 문항 id가 문제은행에 없으면(문항이 지워졌거나 다시 저장되면서 id가 바뀐 경우), 같은 교재·같은 단원 이름으로 저장된 문항을 번호 순으로 찾아 쓴다. 개수가 안 맞으면 만들지 않는다.
+function resolveBankPicks(exam, all, byId) {
+  const ids = exam.sourceQuestionIds || [], picks = ids.map(id => byId[id]).filter(Boolean);
+  if (picks.length === ids.length) return picks;
+  const rc = exam.composeRecipe || {};
+  if (rc.book && rc.bookTitle && rc.label) {
+    const src = rc.bookTitle + ' ' + rc.label, same = all.filter(q => String(q.source || '').trim() === src.trim()).sort((a, b) => (a.num || 0) - (b.num || 0));
+    if (same.length === ids.length) return same;
+    throw new Error('이 시험지의 문항 ' + (ids.length - picks.length) + '개가 문제은행에 없어요 (문제은행에는 이 단원 문항이 ' + same.length + '개 남아 있고, 필요한 문항은 ' + ids.length + '개예요). 교재 QR 합본 만들기로 이 단원을 다시 저장해야 해요.');
+  }
+  throw new Error('이 시험지에 쓴 문항 ' + (ids.length - picks.length) + '개가 문제은행에서 삭제돼서 같은 시험지를 다시 만들 수 없어요.');
+}
+
 async function makeStudentFromBank(exam, say) {
   const lq = await callApi('listQuestions', { password: getTeacherPassword() });
   if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요');
   const byId = {}; lq.questions.forEach(q => { byId[q.id] = q; });
-  const picks = exam.sourceQuestionIds.map(id => byId[id]).filter(Boolean);
-  const lost = exam.sourceQuestionIds.length - picks.length;
-  if (!picks.length) throw new Error('이 시험지에 쓴 문항이 문제은행에서 모두 삭제돼 있어요.');
-  if (lost) throw new Error('이 시험지에 쓴 문항 ' + lost + '개가 문제은행에서 삭제돼서 같은 시험지를 다시 만들 수 없어요.');
+  const picks = resolveBankPicks(exam, lq.questions, byId);
   _imgCache.clear(); prefetchImages(picks.map(q => q.fileId));
   const slots = buildSlots(picks), B = 5, imgs = [];
   for (let s = 0; s < picks.length; s += B) {
@@ -114,10 +124,7 @@ async function makeTeacherFromBank(exam, say) {
   const lq = await callApi('listQuestions', { password: getTeacherPassword() });
   if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요');
   const byId = {}; lq.questions.forEach(q => { byId[q.id] = q; });
-  const picks = exam.sourceQuestionIds.map(id => byId[id]).filter(Boolean);
-  const lost = exam.sourceQuestionIds.length - picks.length;
-  if (!picks.length) throw new Error('이 시험지에 쓴 문항이 문제은행에서 모두 삭제돼 있어요.');
-  if (lost) throw new Error('이 시험지에 쓴 문항 ' + lost + '개가 문제은행에서 삭제돼서 같은 시험지를 다시 만들 수 없어요.');
+  const picks = resolveBankPicks(exam, lq.questions, byId);
   _imgCache.clear(); prefetchImages(picks.map(q => q.fileId).concat(picks.map(q => q.explFileId)));
   const slots = buildSlots(picks), B = 5, items = [], map = {};
   for (let s = 0; s < picks.length; s += B) {
