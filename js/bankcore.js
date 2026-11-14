@@ -3416,6 +3416,7 @@
     let pi = 0;
     for (const p of pages) {
       if (onProgress) onProgress(++pi, pages.length);
+      if (pi % 12 === 0 && doc.cleanup) { try { await doc.cleanup(); } catch (e) {} }      // 읽은 쪽의 임시 자료를 비워 메모리를 아낀다
       let pd; try { pd = await pageItems(doc, p, true); } catch (e) { continue; }
       const rs = (pd.imgs || []).filter(r => !r[4] && (r[2] - r[0]) < 14 && (r[3] - r[1]) < 14 && (r[2] - r[0]) > 4 && (r[3] - r[1]) > 4);
       // 번호 표지: 「3) [정답]」 한 덩어리이거나, 「3)」 옆에 「정답」 딱지가 따로 있는 두 가지 모양
