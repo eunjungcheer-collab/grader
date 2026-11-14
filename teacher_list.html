@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150920">
+<link rel="stylesheet" href="css/style.css?v=202611150940">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,7 +17,7 @@
   <h1>등록된 시험지</h1>
   <div id="filter-bar" class="card" style="display:none; padding:12px 14px; margin-bottom:10px;">
     <div id="kind-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
-    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;"><select id="book-sel" style="display:none; max-width:100%;"></select><button type="button" class="btn outline" id="book-rename" style="display:none; padding:6px 12px; font-size:13px;">✏️ 교재 이름 바꾸기</button></div>
+    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;"><select id="book-sel" style="display:none; max-width:100%;"></select><button type="button" class="btn outline" id="book-rename" style="display:none; padding:6px 12px; font-size:13px;">✏️ 교재 이름 바꾸기</button><button type="button" class="btn danger" id="book-del" style="display:none; padding:6px 12px; font-size:13px;">🗑 교재 삭제</button></div>
     <div id="grade-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
       <select id="unit-sel" style="flex:1 1 180px; min-width:150px;"><option value="">단원 전체</option></select>
@@ -41,11 +41,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611150920"></script>
-<script src="js/api.js?v=202611150920"></script>
-<script src="js/common.js?v=202611150920"></script>
-<script src="js/bankcore.js?v=202611150920"></script>
-<script src="js/pdfui.js?v=202611150920"></script>
+<script src="js/config.js?v=202611150940"></script>
+<script src="js/api.js?v=202611150940"></script>
+<script src="js/common.js?v=202611150940"></script>
+<script src="js/bankcore.js?v=202611150940"></script>
+<script src="js/pdfui.js?v=202611150940"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -99,6 +99,7 @@ renderHeader();
       sel.value = st.book;
       document.getElementById('book-rename').style.display = names.length ? '' : 'none';
       bookNames = names;
+      document.getElementById('book-del').style.display = names.length ? '' : 'none';
     }
     function drawKinds() {
       drawBooks();
@@ -226,6 +227,33 @@ renderHeader();
       if (bankDel && done === ids.length) { btn.textContent = '문제은행 정리 중...'; try { await bankDel(); } catch (e) { alert('시험지는 지웠지만 문제은행 삭제 중 오류가 났어요: ' + e.message); } }
       btn.textContent = '선택 삭제'; render();
       if (!exams.length) { container.innerHTML = '<div class="card center muted">남은 시험지가 없어요.</div>'; bar.style.display = 'none'; document.getElementById('filter-bar').style.display = 'none'; }
+    });
+    document.getElementById('book-del').addEventListener('click', async () => {
+      let name = st.book;
+      if (!name) {
+        if (!bookNames.length) return;
+        const pick = prompt('삭제할 교재 번호를 입력하세요.\n' + bookNames.map((n, i) => (i + 1) + '. ' + n).join('\n'), '');
+        const k = parseInt(pick, 10); if (!(k >= 1 && k <= bookNames.length)) return;
+        name = bookNames[k - 1];
+      }
+      const list = exams.filter(ex => isBook(ex) && ex.bookTitle === name), ids = list.map(ex => ex.id);
+      if (!ids.length) return;
+      if (!confirm('교재 "' + name + '"의 시험지 ' + ids.length + '개를 모두 삭제합니다.\n(이 교재 합본 QR은 더 이상 열리지 않아요. 제출 기록 ' + list.reduce((a, ex) => a + (ex.submissionCount || 0), 0) + '건)\n계속할까요?')) return;
+      const ch = await askDeleteExams(list, exams);
+      if (!ch) return;
+      const btn = document.getElementById('book-del'); btn.disabled = true; btn.textContent = '삭제 중...';
+      let done = 0;
+      try {
+        for (let i = 0; i < ids.length; i += 15) {
+          const chunk = ids.slice(i, i + 15);
+          const res = await callApi('deleteExams', { password: getTeacherPassword(), ids: chunk, deleteSubmissions: ch.scores });
+          if (!res.ok) throw new Error(res.error || '삭제 실패');
+          chunk.forEach(id => { const k = exams.findIndex(x => String(x.id) === String(id)); if (k >= 0) exams.splice(k, 1); });
+          done += chunk.length; btn.textContent = '삭제 중... ' + done + '/' + ids.length;
+        }
+      } catch (err) { alert('삭제 중 오류 (' + done + '개는 지워졌어요): ' + err.message); }
+      if (ch.bankDel && done === ids.length) { btn.textContent = '문제은행 정리 중...'; try { await ch.bankDel(); } catch (e) { alert('시험지는 지웠지만 문제은행 삭제 중 오류가 났어요: ' + e.message); } }
+      btn.disabled = false; btn.textContent = '🗑 교재 삭제'; st.book = ''; render();
     });
     function bindRows() { container.querySelectorAll('.dup-exam-btn').forEach(b => b.addEventListener('click', async (e) => {
       e.preventDefault();
