@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150700">
+<link rel="stylesheet" href="css/style.css?v=202611150730">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150700"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150700"></script>
-<script src="js/config.js?v=202611150700"></script>
-<script src="js/api.js?v=202611150700"></script>
-<script src="js/common.js?v=202611150700"></script>
-<script src="js/bankcore.js?v=202611150700"></script>
-<script src="js/pdfui.js?v=202611150700"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150730"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150730"></script>
+<script src="js/config.js?v=202611150730"></script>
+<script src="js/api.js?v=202611150730"></script>
+<script src="js/common.js?v=202611150730"></script>
+<script src="js/bankcore.js?v=202611150730"></script>
+<script src="js/pdfui.js?v=202611150730"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -134,6 +134,8 @@ let excludeIds = new Set();   // "겹치지 않게"로 뺄 문항 id들 (유사 
 let regenFrom = null;         // 원본 시험 정보(복습 재구성 때 안내 문구에 씀)
 
 let kindFilter = '일반';          // 문제 종류: '일반'(기본) | '기출' | '' 전체
+let bookFilter = new Set();     // 내신교재 문제를 교재별로 좁힐 때(비어있으면 모든 교재)
+const bookNameOf = q => { const s = String(q.source || ''), m = s.match(/^(.*?)\s+\d{1,2}(?:\s*-\s*\d)?\s*\.\s/); return ((m ? m[1] : s) || '').trim() || '(교재 이름 없음)'; };
 let schoolFilter = new Set();   // 기출문제를 학교·시험별로 좁힐 때(비어있으면 전체 학교)
 let yearFilter = new Set();     // 기출문제를 출제년도별로 좁힐 때(비어있으면 전체 연도)
 const yearName = q => q.year || '(연도 없음)';
@@ -163,6 +165,7 @@ function matchesSearch(q) {
 function passesFilters(q) {
   if (searchTokens.length) return matchesSearch(q);
   if (kindFilter && q.kind !== kindFilter) return false;
+  if (bookFilter.size && q.kind === '교재' && !bookFilter.has(bookNameOf(q))) return false;       // 교재 선택은 내신교재 문제에만 적용
   if (schoolFilter.size && q.kind === '기출' && !schoolFilter.has(schoolName(q))) return false;   // 학교 선택은 기출문제에만 적용
   if (yearFilter.size && q.kind === '기출' && !yearFilter.has(yearName(q))) return false;       // 연도 선택도 기출문제에만 적용
   return true;
@@ -202,7 +205,18 @@ function renderKindChips() {
   $('kind-chips').innerHTML = [['일반', '일반 문제', n.normal], ['기출', '기출문제', n.past]].concat(n.book ? [['교재', '내신교재', n.book]] : []).concat([['', '전체 (일반·기출·내신교재 모두)', n.all]]).map(v =>
     '<label class="kind-chip' + (kindFilter === v[0] ? ' on' : '') + '"><input type="radio" name="kind" value="' + v[0] + '"' + (kindFilter === v[0] ? ' checked' : '') + '> ' + v[1] + ' <span class="muted">(' + v[2] + ')</span></label>').join('') +
     (n.past || n.book ? '' : '<span class="hint" style="margin-left:8px;">기출문제로 저장한 문항이 아직 없어요 (가져올 때 구분을 「기출문제」로 고르세요)</span>');
-  $('kind-chips').querySelectorAll('input').forEach(r => r.addEventListener('change', () => { kindFilter = r.value; renderKindChips(); renderSchoolFilter(); renderYearFilter(); renderUnits(); showAvail(); }));
+  $('kind-chips').querySelectorAll('input').forEach(r => r.addEventListener('change', () => { kindFilter = r.value; renderKindChips(); renderBookFilter(); renderSchoolFilter(); renderYearFilter(); renderUnits(); showAvail(); }));
+}
+function renderBookFilter() {
+  const box = $('book-filter'); if (!box) return;
+  const cnt = {};
+  allQuestions.filter(isBookQ).forEach(q => { const k = bookNameOf(q); cnt[k] = (cnt[k] || 0) + 1; });
+  const names = Object.keys(cnt).sort(naturalCompare);
+  if (!names.length || kindFilter === '일반' || kindFilter === '기출') { box.innerHTML = ''; box.style.display = 'none'; return; }
+  box.style.display = '';
+  box.innerHTML = '<div class="hint" style="margin:6px 0 2px;">📚 내신교재를 교재별로 고르기 (아무것도 안 고르면 모든 교재)</div>' +
+    names.map(n => '<label class="bank-include-label school-chip"><input type="checkbox" class="bkf" data-b="' + escapeHtml(n) + '"' + (bookFilter.has(n) ? ' checked' : '') + '> ' + escapeHtml(n) + ' <span class="muted">(' + cnt[n] + ')</span></label>').join('');
+  box.querySelectorAll('.bkf').forEach(c => c.addEventListener('change', () => { if (c.checked) bookFilter.add(c.dataset.b); else bookFilter.delete(c.dataset.b); renderUnits(); showAvail(); }));
 }
 function renderSchoolFilter() {
   const box = $('school-filter');
@@ -372,6 +386,7 @@ async function loadRegenParams() {
       <div class="card">
         <label class="field-label-spaced">문제 종류</label>
         <div class="kind-chips" id="kind-chips"></div>
+        <div id="book-filter" class="school-filter" style="display:none;"></div>
         <details id="past-filter" style="display:none; margin:6px 0;"><summary class="hint" style="cursor:pointer;">학교·연도로 좁히기 (선택 — 안 고르면 기출문제 전부)</summary>
           <div id="school-filter" class="school-filter"></div>
           <div id="year-filter" class="school-filter"></div>
@@ -439,7 +454,7 @@ async function loadRegenParams() {
       (regenFrom.recipe.schools || []).forEach(x => schoolFilter.add(x));
       (regenFrom.recipe.years || []).forEach(x => yearFilter.add(x));
     }
-    renderKindChips(); renderSchoolFilter(); renderYearFilter(); renderUnits();
+    renderKindChips(); renderBookFilter(); renderSchoolFilter(); renderYearFilter(); renderUnits();
     { let st = null; const inp = $('unit-search'), info = $('search-info');
       inp.addEventListener('input', () => { clearTimeout(st); st = setTimeout(() => {
         searchTokens = inp.value.split(/\s+/).map(_norm).filter(Boolean);

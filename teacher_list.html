@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150700">
+<link rel="stylesheet" href="css/style.css?v=202611150730">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,6 +17,7 @@
   <h1>등록된 시험지</h1>
   <div id="filter-bar" class="card" style="display:none; padding:12px 14px; margin-bottom:10px;">
     <div id="kind-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+    <select id="book-sel" style="display:none; margin-bottom:8px; max-width:100%;"></select>
     <div id="grade-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
       <select id="unit-sel" style="flex:1 1 180px; min-width:150px;"><option value="">단원 전체</option></select>
@@ -40,11 +41,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611150700"></script>
-<script src="js/api.js?v=202611150700"></script>
-<script src="js/common.js?v=202611150700"></script>
-<script src="js/bankcore.js?v=202611150700"></script>
-<script src="js/pdfui.js?v=202611150700"></script>
+<script src="js/config.js?v=202611150730"></script>
+<script src="js/api.js?v=202611150730"></script>
+<script src="js/common.js?v=202611150730"></script>
+<script src="js/bankcore.js?v=202611150730"></script>
+<script src="js/pdfui.js?v=202611150730"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -78,16 +79,27 @@ renderHeader();
     const unitName = (g, n) => { const t = toc.find(x => x.grade === g && x.no === n); return t ? t.unit : (n + '단원'); };
     const unitKey = u => u.grade + '|' + u.no;
     const exams = res.exams.map(ex => Object.assign({ meta: parseMeta(ex.title), ts: Date.parse(ex.createdAt) || 0 }, ex));
-    const st = { kind: '', grade: '', unit: '', sort: 'new', q: '' };
+    const st = { kind: '', grade: '', unit: '', sort: 'new', q: '', book: '' };
+    const isBook = ex => !!ex.bookTitle && !ex.hasRecipe;      // 교재 QR 합본으로 등록한 단원 시험지
     const isBank = ex => !!ex.hasRecipe;      // 문제은행에서 골라 출제한 시험지
     try { const sv = JSON.parse(sessionStorage.getItem('list_filter') || '{}'); if (sv && typeof sv === 'object') Object.assign(st, sv); } catch (e) {}
     const gradeChips = document.getElementById('grade-chips'), unitSel = document.getElementById('unit-sel'), sortSel = document.getElementById('sort-sel'), qInp = document.getElementById('q-inp');
     const GR = ['', '중1', '중2', '중3', '고1', '기타'];
     const kindChips = document.getElementById('kind-chips');
-    const KINDS = [['', '전체'], ['plain', '📄 일반 시험지 (PDF 등록)'], ['bank', '🧩 문제은행 출제']];
-    const kindOk = ex => !st.kind || (st.kind === 'bank' ? isBank(ex) : !isBank(ex));
+    const KINDS = [['', '전체'], ['plain', '📄 일반 시험지 (PDF 등록)'], ['bank', '🧩 문제은행 출제'], ['book', '📚 교재 합본']];
+    const kindOk = ex => (!st.kind || (st.kind === 'bank' ? isBank(ex) : st.kind === 'book' ? isBook(ex) : (!isBank(ex) && !isBook(ex)))) && (!st.book || (isBook(ex) && ex.bookTitle === st.book));
+    function drawBooks() {
+      const sel = document.getElementById('book-sel'), cnt = {};
+      exams.filter(isBook).forEach(ex => { cnt[ex.bookTitle] = (cnt[ex.bookTitle] || 0) + 1; });
+      const names = Object.keys(cnt).sort((a, b) => a.localeCompare(b, 'ko'));
+      sel.style.display = names.length ? '' : 'none';
+      if (st.book && !cnt[st.book]) st.book = '';
+      sel.innerHTML = '<option value="">📚 교재 전체</option>' + names.map(n => '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + ' (' + cnt[n] + ')</option>').join('');
+      sel.value = st.book;
+    }
     function drawKinds() {
-      kindChips.innerHTML = KINDS.map(k => '<button type="button" class="btn ' + (st.kind === k[0] ? '' : 'outline') + '" data-k="' + k[0] + '" style="padding:6px 12px; font-size:13px;">' + k[1] + ' <span style="opacity:.7;">' + exams.filter(ex => !k[0] || (k[0] === 'bank' ? isBank(ex) : !isBank(ex))).length + '</span></button>').join('');
+      drawBooks();
+      kindChips.innerHTML = KINDS.map(k => '<button type="button" class="btn ' + (st.kind === k[0] ? '' : 'outline') + '" data-k="' + k[0] + '" style="padding:6px 12px; font-size:13px;">' + k[1] + ' <span style="opacity:.7;">' + exams.filter(ex => !k[0] || (k[0] === 'bank' ? isBank(ex) : k[0] === 'book' ? isBook(ex) : (!isBank(ex) && !isBook(ex)))).length + '</span></button>').join('');
     }
     const gradeOf = ex => ex.meta.grade || '기타';
     function drawChips() {
@@ -139,7 +151,7 @@ renderHeader();
       <div class="exam-list-item">
         <label style="display:flex; align-items:center; gap:6px; margin:0 0 6px; font-size:13px; cursor:pointer;"><input type="checkbox" class="exsel" data-id="${ex.id}"> 선택</label>
         <a href="teacher_exam.html?id=${ex.id}" style="text-decoration:none; color:inherit; display:block;">
-          <div class="title">${isBank(ex) ? '<span style="font-size:12px; background:#FEF3C7; color:#92400E; border-radius:10px; padding:1px 8px; margin-right:6px;">🧩 문제은행 출제</span>' : ''}${escapeHtml(ex.title)}</div>
+          <div class="title">${isBook(ex) ? '<span style="font-size:12px; background:#DCFCE7; color:#166534; border-radius:10px; padding:1px 8px; margin-right:6px;">📚 ' + escapeHtml(ex.bookTitle) + '</span>' : ''}${isBank(ex) ? '<span style="font-size:12px; background:#FEF3C7; color:#92400E; border-radius:10px; padding:1px 8px; margin-right:6px;">🧩 문제은행 출제</span>' : ''}${escapeHtml(ex.title)}</div>
           <div style="margin:4px 0 2px;">${badges(ex)}</div>
           <div class="meta">${ex.answerCount}문항${ex.subjectiveCount ? ' (주관식 ' + ex.subjectiveCount + ')' : ''} · 제출 ${ex.submissionCount}건 · ${formatDate(ex.createdAt)}</div>
         </a>
@@ -152,6 +164,7 @@ renderHeader();
     }
     kindChips.addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (!b) return; st.kind = b.dataset.k; st.unit = ''; render(); });
     gradeChips.addEventListener('click', e => { const b = e.target.closest('button[data-g]'); if (!b) return; st.grade = b.dataset.g; st.unit = ''; render(); });
+    document.getElementById('book-sel').addEventListener('change', e => { st.book = e.target.value; st.unit = ''; render(); });
     unitSel.addEventListener('change', () => { st.unit = unitSel.value; render(); });
     sortSel.addEventListener('change', () => { st.sort = sortSel.value; render(); });
     qInp.addEventListener('input', () => { st.q = qInp.value; render(); qInp.focus(); });
