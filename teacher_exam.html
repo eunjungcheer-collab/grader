@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150340">
+<link rel="stylesheet" href="css/style.css?v=202611150410">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,13 +17,13 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150340"></script>
-<script src="js/config.js?v=202611150340"></script>
-<script src="js/api.js?v=202611150340"></script>
-<script src="js/common.js?v=202611150340"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150340"></script>
-<script src="js/bankcore.js?v=202611150340"></script>
-<script src="js/pdfui.js?v=202611150340"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150410"></script>
+<script src="js/config.js?v=202611150410"></script>
+<script src="js/api.js?v=202611150410"></script>
+<script src="js/common.js?v=202611150410"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150410"></script>
+<script src="js/bankcore.js?v=202611150410"></script>
+<script src="js/pdfui.js?v=202611150410"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -79,6 +79,35 @@ async function getImgs(ids) {
   const miss = ids.filter(id => !_imgCache.has(id));
   if (miss.length) prefetchImages(miss);
   return Promise.all(ids.map(id => _imgCache.get(id)));
+}
+
+async function makeStudentFromBank(exam, say) {
+  const lq = await callApi('listQuestions', { password: getTeacherPassword() });
+  if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요');
+  const byId = {}; lq.questions.forEach(q => { byId[q.id] = q; });
+  const picks = exam.sourceQuestionIds.map(id => byId[id]).filter(Boolean);
+  const lost = exam.sourceQuestionIds.length - picks.length;
+  if (!picks.length) throw new Error('이 시험지에 쓴 문항이 문제은행에서 모두 삭제돼 있어요.');
+  if (lost) throw new Error('이 시험지에 쓴 문항 ' + lost + '개가 문제은행에서 삭제돼서 같은 시험지를 다시 만들 수 없어요.');
+  _imgCache.clear(); prefetchImages(picks.map(q => q.fileId));
+  const slots = buildSlots(picks), B = 5, imgs = [];
+  for (let s = 0; s < picks.length; s += B) {
+    const slice = picks.slice(s, s + B);
+    say('문항 이미지 불러오는 중... ' + Math.min(s + B, picks.length) + '/' + picks.length);
+    const ims = await getImgs(slice.map(q => q.fileId));
+    for (let k = 0; k < ims.length; k++) {
+      const im = ims[k], q = slice[k];
+      const cleaned = await BankCore.cleanImageBase64(im.base64);
+      const b64 = cleaned ? cleaned.base64 : im.base64;
+      const size = cleaned ? { width: cleaned.width, height: cleaned.height } : pngSize(BankCore.b64ToBytes(im.base64));
+      imgs.push({ base64: b64, width: size.width, height: size.height, naturalW: size.width / BankCore.CROP_SCALE, numRect: (q && q.numRect) || null, answer: q.answer, tag: BankCore.pastTagText(q), num: slots[s + k].label, headRange: BankCore.parseHeadRange(q.textPreview), srcKey: q.source || '', origNum: q.num });
+    }
+  }
+  say('학생용 시험지 만드는 중...');
+  const doc = await BankCore.composeExamPdf(PDFLib, exam.title, imgs, { qrReserve: 62, keepTitle: picks.every(q => q.kind === '기출') });
+  await stampQrOnDoc(doc, studentLinkFor(exam.id), { size: 50, corner: 'top-right', margin: 4 });
+  await BankCore.addPageNumbers(PDFLib, doc);
+  return await doc.save();
 }
 
 async function makeTeacherFromBank(exam, say) {
@@ -145,6 +174,11 @@ async function makeTeacherFromBank(exam, say) {
         <a class="btn primary" id="dl-student" href="${res.pdfUrl}" target="_blank" style="width:100%;${res.pdfUrl ? '' : ' display:none;'}">📄 학생용만 받기${res.explUrl ? ' (QR 찍힌 PDF)' : ' (해설 포함)'}</a>
         <button type="button" class="btn primary" id="dl-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📄📘 학생용 + 강사용 둘 다 받기</button>
         <button type="button" class="btn outline" id="dl-teacher-only" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📘 강사용만 받기 (정답 동그라미·문제 밑 정답·해설)</button>
+        <div id="dl-bank" style="display:none; text-align:left; margin-top:6px;">
+          <div style="font-weight:700; margin:2px 0 8px;">⬇️ 이 단원만 따로 받기 (문제은행에 저장된 문항으로 만들어요)</div>
+          <button type="button" class="btn primary" id="dl-bank-student" style="width:100%;">📄 학생용 문제지 받기 (QR 포함)</button>
+          <button type="button" class="btn outline" id="dl-bank-teacher" style="width:100%; margin-top:8px;">📘 강사용 받기 (정답·해설 포함)</button>
+        </div>
         <p class="hint" id="dl-note" style="margin:6px 0 0;">「둘 다」를 누르면 브라우저가 여러 파일 받기를 물을 수 있어요. 허용해 주세요.</p>
         ${res.explUrl ? '<a class="btn outline" href="' + res.explUrl + '" target="_blank" style="width:100%; margin-top:8px;">📝 해설지 PDF 열기 (예전 방식 — 따로 저장된 해설)</a>' : ''}
         <a class="btn primary" href="alerts.html?exam=${encodeURIComponent(res.id)}#assign" style="display:block;text-align:center;margin:10px 0;">👥 이 시험을 어떤 학생에게 낼까요? (학생 선택·기한 정하기)</a>
@@ -206,6 +240,23 @@ async function makeTeacherFromBank(exam, say) {
         } catch (e) { noteEl.innerHTML = '<span style="color:#C1392B;">강사용 PDF를 만들지 못했어요: ' + escapeHtml(e.message) + '</span>'; }
         btn.disabled = false;
       };
+      if (!res.pdfUrl && canMake) {      // 교재 합본으로 등록돼 PDF가 따로 없는 단원: 문제은행 문항으로 그 자리에서 만들어 준다
+        document.getElementById('dl-bank').style.display = 'block';
+        const bs = document.getElementById('dl-bank-student'), bt = document.getElementById('dl-bank-teacher');
+        const safe = res.title.replace(/[\\/:*?"<>|]/g, '_');
+        bs.addEventListener('click', async () => {
+          bs.disabled = true;
+          try { const bytes = await makeStudentFromBank(res, m => { noteEl.textContent = m; }); saveBlob(new Blob([bytes], { type: 'application/pdf' }), safe + ' 학생용.pdf'); noteEl.textContent = '학생용 문제지를 받았어요.'; }
+          catch (e) { noteEl.innerHTML = '<span style="color:#C1392B;">학생용을 만들지 못했어요: ' + escapeHtml(e.message) + '</span>'; }
+          bs.disabled = false;
+        });
+        bt.addEventListener('click', async () => {
+          bt.disabled = true;
+          try { const tt = await obtainTeacher(); if (tt) { saveBlob(tt.blob, tt.name); noteEl.textContent = '강사용 PDF를 받았어요.'; } else noteEl.textContent = '강사용 PDF를 만들 수 없어요.'; }
+          catch (e) { noteEl.innerHTML = '<span style="color:#C1392B;">강사용을 만들지 못했어요: ' + escapeHtml(e.message) + '</span>'; }
+          bt.disabled = false;
+        });
+      }
       bothBtn.addEventListener('click', () => run(true, bothBtn));
       tOnly.addEventListener('click', () => run(false, tOnly));
     }
