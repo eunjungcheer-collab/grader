@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151200">
+<link rel="stylesheet" href="css/style.css?v=202611151215">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611151200"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611151200"></script>
-<script src="js/vendor/pdf.min.js?v=202611151200"></script>
-<script src="js/config.js?v=202611151200"></script>
-<script src="js/api.js?v=202611151200"></script>
-<script src="js/common.js?v=202611151200"></script>
-<script src="js/bankcore.js?v=202611151200"></script>
-<script src="js/pdfui.js?v=202611151200"></script>
+<script src="js/vendor/qrcode.min.js?v=202611151215"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611151215"></script>
+<script src="js/vendor/pdf.min.js?v=202611151215"></script>
+<script src="js/config.js?v=202611151215"></script>
+<script src="js/api.js?v=202611151215"></script>
+<script src="js/common.js?v=202611151215"></script>
+<script src="js/bankcore.js?v=202611151215"></script>
+<script src="js/pdfui.js?v=202611151215"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -644,7 +644,7 @@ $('go-btn').addEventListener('click', async () => {
     // 교재 이름이 달라도 '같은 단원(이름+태그)이고 정답이 똑같은' 시험이 이미 있으면 새로 만들지 않는다 (Apps Script 새 버전 배포 후 동작)
     const bySig = {}; (ex.exams || []).forEach(e => { if (e.recipeLabel && e.ansSig) bySig[String(e.recipeLabel).trim() + '#' + String(e.ansSig).replace(/\s/g, '')] = e.id; });
     const sigOf = s => (s.name + ' ' + s.tag).trim() + '#' + s.answers.join(',').replace(/\s/g, '');
-    let made = 0, reused = 0, next = 0, fail = null, bankQ = 0;
+    window._bkOld = null; let made = 0, reused = 0, next = 0, fail = null, bankQ = 0;
     const uinfoR = unitInfoFor(sections);
     const ids = {}, bankWarn = [], teacherSkip = [], toLink = []; let linkWarn = '';
     const toBank = $('to-bank').checked;
@@ -779,13 +779,20 @@ $('go-btn').addEventListener('click', async () => {
         const id = genExamId();
         let nums; try { const sc0 = await getSec(s); if (sc0 && sc0.nums && sc0.nums.length === s.answers.length && sc0.nums.some((n, i) => n !== i + 1)) nums = sc0.nums; } catch (e) {}
         let saved = null;
+        if (toBank) {   // 이 단원의 시험지가 아직 없는데 같은 출처의 문항이 문제은행에 있으면, 예전에 등록하다 중단된 찌꺼기라서 먼저 지운다 (그대로 두면 중복이 쌓인다)
+          try {
+            if (!window._bkOld) { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true }); window._bkOld = {}; ((lq && lq.questions) || []).forEach(q => { if (q.kind === '교재' && q.source) (window._bkOld[q.source] = window._bkOld[q.source] || []).push(q.id); }); }
+            const oldIds = window._bkOld[bookName + ' ' + s.name + ' ' + s.tag] || [];
+            if (oldIds.length) { for (let i = 0; i < oldIds.length; i += 80) await callApi('deleteQuestions', { password: getTeacherPassword(), ids: oldIds.slice(i, i + 80) }); window._bkOld[bookName + ' ' + s.name + ' ' + s.tag] = []; }
+          } catch (e) { fail = new Error(title + ': 이전에 저장된 문항을 정리하지 못했어요 (' + e.message + ')'); return; }
+        }
         if (toBank) { msg('문제 저장 중... ' + secTitle(s) + ' (' + (made + reused) + '/' + regList.length + '개 단원 등록됨)'); try { saved = await bankSection(s, title); try { await bookDoc.cleanup(); } catch (e2) {} } catch (e) { fail = new Error(title + ': ' + e.message); return; } }
         const res = await callApi('createExam', {
           password: getTeacherPassword(), id: id, title: title, answers: s.answers, filename: title,
           sourceQuestionIds: saved ? saved.map(x => x.id) : undefined, questionTexts: saved ? saved.map(x => x.text) : undefined,
           composeRecipe: { book: bookId, bookTitle: ($('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '')), unit: uinfoR(s).no, unitName: uinfoR(s).name, tag: s.tag, label: s.name + ' ' + s.tag, order: s.order, nums: nums },
         });
-        if (!res.ok) { fail = new Error(title + ': ' + (res.error || '등록 실패')); return; }
+        if (!res.ok) { if (saved && saved.length) { try { await callApi('deleteQuestions', { password: getTeacherPassword(), ids: saved.map(x => x.id) }); } catch (e3) {} } fail = new Error(title + ': ' + (res.error || '등록 실패')); return; }
         ids[s.order] = id; made++;
         msg('시험 등록 중... ' + (made + reused) + '/' + regList.length);
       }
