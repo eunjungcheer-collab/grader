@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151100">
+<link rel="stylesheet" href="css/style.css?v=202611151140">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611151100"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611151100"></script>
-<script src="js/config.js?v=202611151100"></script>
-<script src="js/api.js?v=202611151100"></script>
-<script src="js/common.js?v=202611151100"></script>
-<script src="js/bankcore.js?v=202611151100"></script>
-<script src="js/pdfui.js?v=202611151100"></script>
+<script src="js/vendor/qrcode.min.js?v=202611151140"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611151140"></script>
+<script src="js/config.js?v=202611151140"></script>
+<script src="js/api.js?v=202611151140"></script>
+<script src="js/common.js?v=202611151140"></script>
+<script src="js/bankcore.js?v=202611151140"></script>
+<script src="js/pdfui.js?v=202611151140"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -225,10 +225,10 @@ function renderBookFilter() {
     if (!del.length) return;
     if (!confirm('교재 ' + names.map(n => '"' + n + '"').join(', ') + '의 문제 ' + del.length + '개를 문제은행에서 삭제합니다.\n(이 문제로 등록된 시험지가 있으면 그 시험지의 PDF 다운로드가 안 될 수 있어요. 되돌릴 수 없어요.)\n계속할까요?')) return;
     const b = $('bk-del'); b.disabled = true; busyStart();
-    let done = 0;
+    let done = 0; b.textContent = '삭제 중... 0/' + del.length + ' (창을 닫지 마세요)';
     try {
-      for (let i = 0; i < del.length; i += 40) {
-        const chunk = del.slice(i, i + 40), r = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: chunk.map(q => q.id) });
+      for (let i = 0; i < del.length; i += 80) {
+        const chunk = del.slice(i, i + 80), r = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: chunk.map(q => q.id) });
         if (!r.ok) throw new Error(r.error || '삭제 실패');
         done += chunk.length; b.textContent = '삭제 중... ' + done + '/' + del.length;
       }

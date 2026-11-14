@@ -1111,15 +1111,17 @@ function actionDeleteQuestions_(p) {
     if (last < 2) return { ok: true, deleted: 0 };
     const data = sheet.getRange(2, 1, last - 1, 8).getValues();
     const want = {}; ids.forEach(function (id) { want[String(id)] = true; });
-    const rowsToDelete = [], gidQ = Utilities.getUuid(), lcQ = sheet.getLastColumn(), fullQ = sheet.getRange(2, 1, last - 1, lcQ).getValues();
+    const rowsToDelete = [], gidQ = Utilities.getUuid(), lcQ = sheet.getLastColumn(), fullQ = sheet.getRange(2, 1, last - 1, lcQ).getValues(), fileIds = [], trashRows = [];
     for (let i = 0; i < data.length; i++) {
       if (!want[String(data[i][0])]) continue;
       rowsToDelete.push(i + 2);
-      try { trashPut_(SpreadsheetApp.getActiveSpreadsheet(), gidQ, 'question', trashQLabel_(fullQ[i]), fullQ[i]); } catch (e) {}
-      const fileId = data[i][6], explId = data[i][7];
-      if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
-      if (explId) { try { DriveApp.getFileById(explId).setTrashed(true); } catch (e) {} }
+      try { trashRows.push.apply(trashRows, trashRows_(gidQ, 'question', trashQLabel_(fullQ[i]), fullQ[i])); } catch (e) {}
+      if (data[i][6]) fileIds.push(data[i][6]);
+      if (data[i][7]) fileIds.push(data[i][7]);
     }
+    // 복구용 기록은 한 번에 쓰고, 드라이브 휴지통 이동은 동시에 처리한다 (하나씩 하면 매우 느리다)
+    if (trashRows.length) { try { const tsh = trashSheet_(SpreadsheetApp.getActiveSpreadsheet()); tsh.getRange(tsh.getLastRow() + 1, 1, trashRows.length, TRASH_HEADERS.length).setValues(trashRows); } catch (e) {} }
+    trashFilesFast_(fileIds);
     // 이어진 행은 한 번에 지운다 (한 줄씩 지우면 문항 수만큼 시트 호출이 일어나 매우 느리다)
     rowsToDelete.sort(function (a, b) { return b - a; });
     for (let k = 0; k < rowsToDelete.length; ) {
@@ -2413,6 +2415,28 @@ const TRASH_DAYS = 30;
 function trashSheet_(ss) { return ensureSheet_(ss, 'Trash', TRASH_HEADERS); }
 function trashQLabel_(v) { return (String(v[3] || '') + (v[16] ? ' ' + v[16] + '번' : '') + ' · ' + String(v[1] || '')).trim(); }
 // 내용을 JSON 으로 만들어 4만 자씩 나눠 저장한다 (한 칸에는 5만 자까지만 들어가요). 숫자처럼 보이는 조각이 숫자로 바뀌지 않게 앞에 J 를 붙인다.
+function trashRows_(gid, type, label, payload) {
+  const t = JSON.stringify(payload), size = 40000, n = Math.max(1, Math.ceil(t.length / size));
+  const itemId = Utilities.getUuid().slice(0, 8), now = new Date().toISOString(), rows = [];
+  for (let i = 0; i < n; i++) rows.push([gid, itemId, type, label, now, i, n, 'J' + t.substr(i * size, size)]);
+  return rows;
+}
+// 드라이브 파일을 휴지통으로: UrlFetchApp.fetchAll로 동시에 처리하고, 실패한 것만 DriveApp으로 하나씩 처리한다
+function trashFilesFast_(ids) {
+  ids = ids.filter(function (x) { return x; });
+  if (!ids.length) return;
+  const failed = [];
+  try {
+    const token = ScriptApp.getOAuthToken();
+    for (let a = 0; a < ids.length; a += 100) {
+      const part = ids.slice(a, a + 100);
+      const reqs = part.map(function (id) { return { url: 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?supportsAllDrives=true&fields=id', method: 'patch', contentType: 'application/json', payload: '{"trashed":true}', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true }; });
+      const resps = UrlFetchApp.fetchAll(reqs);
+      resps.forEach(function (r, k) { if (r.getResponseCode() !== 200 && r.getResponseCode() !== 404) failed.push(part[k]); });
+    }
+  } catch (e) { failed.length = 0; ids.forEach(function (x) { failed.push(x); }); }
+  failed.forEach(function (id) { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {} });
+}
 function trashPut_(ss, gid, type, label, payload) {
   const sh = trashSheet_(ss), t = JSON.stringify(payload), size = 40000, n = Math.max(1, Math.ceil(t.length / size));
   const itemId = Utilities.getUuid().slice(0, 8), now = new Date().toISOString(), rows = [];
