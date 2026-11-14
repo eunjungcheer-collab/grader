@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611142201">
+<link rel="stylesheet" href="css/style.css?v=202611142231">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611142201"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611142201"></script>
-<script src="js/vendor/pdf.min.js?v=202611142201"></script>
-<script src="js/config.js?v=202611142201"></script>
-<script src="js/api.js?v=202611142201"></script>
-<script src="js/common.js?v=202611142201"></script>
-<script src="js/bankcore.js?v=202611142201"></script>
-<script src="js/pdfui.js?v=202611142201"></script>
+<script src="js/vendor/qrcode.min.js?v=202611142231"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611142231"></script>
+<script src="js/vendor/pdf.min.js?v=202611142231"></script>
+<script src="js/config.js?v=202611142231"></script>
+<script src="js/api.js?v=202611142231"></script>
+<script src="js/common.js?v=202611142231"></script>
+<script src="js/bankcore.js?v=202611142231"></script>
+<script src="js/pdfui.js?v=202611142231"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -747,9 +747,9 @@ $('go-btn').addEventListener('click', async () => {
           rr(8, 8, 424, 134, 36); cx2.fill(); cx2.stroke();
           cx2.fillStyle = col; cx2.font = 'bold 84px "Noto Sans CJK KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif'; cx2.textAlign = 'center'; cx2.textBaseline = 'middle';
           cx2.fillText(lab, 220, 80);
-          const pg0 = doc.getPage(0), sz = pg0.getSize(), w = 92, h = w * 150 / 440;
+          const pg0 = doc.getPage(0), sz = pg0.getSize(), w = Math.min(150, sz.width * 0.28), h = w * 150 / 440;
           const bimg = await doc.embedPng(cv.toDataURL('image/png'));
-          pg0.drawImage(bimg, { x: sz.width - w - 16, y: sz.height - h - 16, width: w, height: h });
+          pg0.drawImage(bimg, { x: (sz.width - w) / 2, y: sz.height * 0.155 - h / 2, width: w, height: h });
         } catch (e) { console.warn('cover label', e); }
       }
       const font = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
