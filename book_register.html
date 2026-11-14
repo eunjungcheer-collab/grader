@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611141651">
+<link rel="stylesheet" href="css/style.css?v=202611142031">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611141651"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611141651"></script>
-<script src="js/vendor/pdf.min.js?v=202611141651"></script>
-<script src="js/config.js?v=202611141651"></script>
-<script src="js/api.js?v=202611141651"></script>
-<script src="js/common.js?v=202611141651"></script>
-<script src="js/bankcore.js?v=202611141651"></script>
-<script src="js/pdfui.js?v=202611141651"></script>
+<script src="js/vendor/qrcode.min.js?v=202611142031"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611142031"></script>
+<script src="js/vendor/pdf.min.js?v=202611142031"></script>
+<script src="js/config.js?v=202611142031"></script>
+<script src="js/api.js?v=202611142031"></script>
+<script src="js/common.js?v=202611142031"></script>
+<script src="js/bankcore.js?v=202611142031"></script>
+<script src="js/pdfui.js?v=202611142031"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -122,7 +122,7 @@ async function detectPageNumBoxes(doc, onProgress) {
         if (!edge(it) || !/^[-–—]?\s*\d{1,4}\s*[-–—]?$/.test(it.s)) return;
         let x0 = it.x, x1 = it.x + it.w, dash = /[-–—]/.test(it.s);
         its.forEach(o => { if (o !== it && /^[-–—]$/.test(o.s) && Math.abs(o.y - it.y) < 3 && Math.abs(o.x - it.x) < 28 && Math.abs(o.x + o.w - it.x) < 28) { x0 = Math.min(x0, o.x); x1 = Math.max(x1, o.x + o.w); dash = true; } });
-        boxes.push({ x0: x0, x1: x1, y0: it.y - 2, y1: it.y + it.h, dash: dash });
+        boxes.push({ x0: x0, x1: x1, y0: it.y - 1.5, y1: it.y + Math.max(it.h * 0.78, 6.5), dash: dash });
       });
       if (boxes.length) out[p - 1] = boxes.slice(0, 2);
     } catch (e) {}
@@ -366,10 +366,10 @@ const mergeBtns = (rec, wrap) => {
 // ── 서버(드라이브) 보관: 조각으로 올리고 내려받는다 ──
 const u8ToB64 = u8 => { let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(bin); };
 async function serverUpload(rec, kind, blob, onProg) {
-  const buf = new Uint8Array(await blob.arrayBuffer()), CH = 900000, total = Math.max(1, Math.ceil(buf.length / CH));
+  const CH = 900000, total = Math.max(1, Math.ceil(blob.size / CH));      // 조각마다 파일에서 잘라 읽는다(큰 파일을 통째로 메모리에 올리지 않음)
   for (let i = 0; i < total; i++) {
     let r = null;
-    for (let at = 0; at < 4; at++) { try { r = await callApi('mergeUpload', { password: getTeacherPassword(), id: rec.id, kind: kind, name: rec.name, idx: i, total: total, data: u8ToB64(buf.subarray(i * CH, (i + 1) * CH)) }); break; } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); } }
+    for (let at = 0; at < 4; at++) { try { r = await callApi('mergeUpload', { password: getTeacherPassword(), id: rec.id, kind: kind, name: rec.name, idx: i, total: total, data: u8ToB64(new Uint8Array(await blob.slice(i * CH, (i + 1) * CH).arrayBuffer())) }); break; } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); } }
     if (!r || !r.ok) throw new Error((r && r.error) || '서버 보관 실패');
     if (onProg) onProg(i + 1, total);
   }
@@ -388,6 +388,7 @@ async function serverDownload(fileId, onProg) {
 async function syncToServer(rec) {
   const st = $('sync-msg'); const say = t => { if (st) st.textContent = t; };
   try {
+    if ((rec.teacher ? rec.teacher.size : 0) + (rec.student ? rec.student.size : 0) > 150e6) { say('☁ 파일이 너무 커서(합쳐서 150MB 넘음) 서버 보관은 건너뛰었어요. 이 기기에는 저장돼 있어요.'); return; }
     if (rec.teacher) await serverUpload(rec, 'teacher', rec.teacher, (i, n) => say('☁ 다른 기기에서도 받을 수 있게 서버(드라이브)에 보관하는 중... 강사용 ' + i + '/' + n));
     if (rec.student) await serverUpload(rec, 'student', rec.student, (i, n) => say('☁ 서버(드라이브)에 보관하는 중... 학생용 ' + i + '/' + n));
     say('☁ 서버(드라이브)에도 보관했어요. 다른 기기에서도 이 페이지에서 내려받을 수 있어요.');
@@ -488,6 +489,23 @@ $('go-btn').addEventListener('click', async () => {
         const qi = []; for (let p = s.qa; p <= s.qb; p++) qi.push(p);
         const qdoc = viewDoc(qi);
         scan = await BankCore.scanPdf(qdoc);
+        // 서술형은 (1)(2)(3) 사이에 답 쓰는 빈 칸이 있어서 문제가 중간에서 잘리기 쉽다 → 같은 단의 다음 문제 위(또는 쪽 아래 여백)까지 글자가 있는 곳까지 늘린다
+        for (const q of scan.questions) {
+          try {
+            const pgx = await bookDoc.getPage(qi[q.page - 1]); const H = pgx.getViewport({ scale: 1 }).height;
+            const tc = await pgx.getTextContent(); const r = q.rect;
+            let limit = H - 65;
+            for (const o of scan.questions) if (o !== q && o.page === q.page && o.numRect && o.numRect[1] > r[1] + 5 && o.numRect[0] < r[2] - 20 && o.rect[2] > r[0] + 20) limit = Math.min(limit, o.numRect[1] - 4);
+            let nb = r[3];
+            for (const it of tc.items) {
+              if (!it.str || !it.str.trim()) continue;
+              const h = it.height || Math.abs(it.transform[3]) || 10, x = it.transform[4], base = H - it.transform[5], bot = base + h * 0.25;
+              if (x < r[0] - 5 || x > r[2] - 5 || base - h < r[3] - 2 || bot > limit) continue;
+              if (bot > nb) nb = bot;
+            }
+            if (nb > r[3]) r[3] = Math.min(limit, nb + 3);
+          } catch (e) {}
+        }
       } else {
         scan = await BankCore.scanPdf(doc);
         if (scan.questions.length !== s.answers.length) {
@@ -687,7 +705,7 @@ $('go-btn').addEventListener('click', async () => {
         }
       }
       const white = PDFLib.rgb(1, 1, 1);
-      kept.forEach((orig, j) => { const pgj = doc.getPage(j); (numBoxes[orig] || []).forEach(bx => pgj.drawRectangle({ x: bx.x0 - 3, y: bx.y0 - 1, width: bx.x1 - bx.x0 + 6, height: bx.y1 - bx.y0 + 3, color: white, borderWidth: 0 })); });
+      kept.forEach((orig, j) => { const pgj = doc.getPage(j); (numBoxes[orig] || []).forEach(bx => pgj.drawRectangle({ x: bx.x0 - 2, y: bx.y0, width: bx.x1 - bx.x0 + 4, height: bx.y1 - bx.y0, color: white, borderWidth: 0 })); });
       if (withAns) kept.forEach((orig, j) => { const pgj = doc.getPage(j), H = pgj.getHeight(); (circles[orig] || []).forEach(c => pgj.drawEllipse({ x: c.x, y: H - c.y, xScale: c.rx, yScale: c.ry, borderColor: PDFLib.rgb(0.76, 0.22, 0.17), borderWidth: 1.5 })); });
       const posOf = p => { let i = kept.indexOf(p - 1); if (i < 0) i = kept.indexOf(1e6 + p - 1); return i + 1; };
       let nIns = 0;
