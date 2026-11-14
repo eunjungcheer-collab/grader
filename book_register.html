@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611142331">
+<link rel="stylesheet" href="css/style.css?v=202611142341">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611142331"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611142331"></script>
-<script src="js/vendor/pdf.min.js?v=202611142331"></script>
-<script src="js/config.js?v=202611142331"></script>
-<script src="js/api.js?v=202611142331"></script>
-<script src="js/common.js?v=202611142331"></script>
-<script src="js/bankcore.js?v=202611142331"></script>
-<script src="js/pdfui.js?v=202611142331"></script>
+<script src="js/vendor/qrcode.min.js?v=202611142341"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611142341"></script>
+<script src="js/vendor/pdf.min.js?v=202611142341"></script>
+<script src="js/config.js?v=202611142341"></script>
+<script src="js/api.js?v=202611142341"></script>
+<script src="js/common.js?v=202611142341"></script>
+<script src="js/bankcore.js?v=202611142341"></script>
+<script src="js/pdfui.js?v=202611142341"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -172,15 +172,13 @@ function coverCanvas(bookName, secs, W, H) {
   else if (kind === 3) { helix(W * 0.86, 20, 240, 26, 110); helix(W * 0.12, H * 0.74, H * 0.74 + 150, 18, 80); wave(H * 0.9, 8, 130, 0, W, 3); stars([[W * 0.7, H * 0.06, 2.5], [W * 0.62, H * 0.2, 2], [W * 0.08, H * 0.7, 2.5]]); }
   else if (kind === 4) { grid(W * 0.55, 18, 6, 6, 26); atom(W * 0.14, H * 0.8, 66); stars([[W * 0.5, H * 0.18, 2.5], [W * 0.93, H * 0.34, 2], [W * 0.35, H * 0.72, 2]]); }
   else { grid(W * 0.5, 20, 6, 5, 28); atom(W * 0.86, H * 0.2, 70); }
-  // 학년을 한눈에: 큰 속이 빈 숫자(중1=1, 중2=2, 중3=3, 고1=고1)를 오른쪽에 연하게 깐다
-  { const big = kind === 1 ? '1' : kind === 2 ? '2' : kind === 3 ? '3' : kind === 4 ? '고1' : ''; if (big) { x.globalAlpha = 0.2; x.lineWidth = 3; x.font = '900 ' + (kind === 4 ? 230 : 380) + 'px ' + '"Noto Sans KR","Malgun Gothic",sans-serif'; x.textAlign = 'right'; x.textBaseline = 'alphabetic'; x.strokeText(big, W - 34, 318); x.textAlign = 'left'; } }
   x.restore(); x.globalAlpha = 1;
   const pill = (t, cx, cy) => { x.font = '700 15px ' + FONT; const w = x.measureText(t).width + 36; x.fillStyle = '#fff'; x.strokeStyle = pal.main; x.lineWidth = 1.6; x.beginPath(); x.roundRect(cx, cy, w, 32, 16); x.fill(); x.stroke(); x.fillStyle = pal.main; x.textBaseline = 'middle'; x.fillText(t, cx + 18, cy + 17); };
   const ml = 54; if (pal.grade) pill(pal.grade + ' · ' + typeLabel, ml, 74);
   const subj = (bookName.replace(/내신대비|교재|보충|심화|기출|개념|기본/g, ' ').replace(/\s+/g, ' ').trim() || '과학'), base = /과학/.test(subj) ? subj : subj + ' 과학';
   x.textBaseline = 'alphabetic'; x.fillStyle = '#17203A'; x.font = '900 64px ' + FONT; x.fillText(base, ml, 250);
   x.fillStyle = pal.main; x.font = '800 38px ' + FONT; x.fillText(typeLabel + ' 교재', ml, 312);
-  { const nb = /중\s*1/.test(bookName) ? 1 : /중\s*2/.test(bookName) ? 2 : /중\s*3/.test(bookName) ? 3 : 1; x.fillStyle = pal.main; const sw = (74 - (nb - 1) * 6) / nb; for (let k = 0; k < nb; k++) x.fillRect(ml + k * (sw + 6), 338, sw, 5); }
+  x.fillStyle = pal.main; x.fillRect(ml, 338, 74, 5);
   // CONTENTS
   const units = []; const seen = {};
   secs.forEach(s => { const k = (s.unit || '') + '|' + (s.unitName || ''); if (!seen[k] && (s.unitName || s.unit)) { seen[k] = 1; units.push({ n: s.unit, t: s.unitName || '' }); } });
