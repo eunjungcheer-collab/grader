@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611140431">
+<link rel="stylesheet" href="css/style.css?v=202611141531">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611140431"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611140431"></script>
-<script src="js/vendor/pdf.min.js?v=202611140431"></script>
-<script src="js/config.js?v=202611140431"></script>
-<script src="js/api.js?v=202611140431"></script>
-<script src="js/common.js?v=202611140431"></script>
-<script src="js/bankcore.js?v=202611140431"></script>
-<script src="js/pdfui.js?v=202611140431"></script>
+<script src="js/vendor/qrcode.min.js?v=202611141531"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611141531"></script>
+<script src="js/vendor/pdf.min.js?v=202611141531"></script>
+<script src="js/config.js?v=202611141531"></script>
+<script src="js/api.js?v=202611141531"></script>
+<script src="js/common.js?v=202611141531"></script>
+<script src="js/bankcore.js?v=202611141531"></script>
+<script src="js/pdfui.js?v=202611141531"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -96,7 +96,7 @@ setupPdfJs();
 const $ = id => document.getElementById(id);
 const isEssay = s => /서술|논술/.test(String(s.name || '') + ' ' + String(s.tag || ''));
 
-let bookBytes = null, bookDoc = null, bookFileName = '', sections = [], tocPage = 0, bookId = '';
+let bookFile = null, bookDoc = null, bookFileName = '', sections = [], tocPage = 0, bookId = '';
 
 $('book-file').addEventListener('change', () => {
   const f = $('book-file').files[0];
@@ -214,8 +214,11 @@ $('read-btn').addEventListener('click', async () => {
   $('read-btn').disabled = true;
   try {
     $('read-msg').textContent = '파일을 여는 중... (용량이 크면 잠시 걸려요)';
-    bookBytes = await f.arrayBuffer(); bookFileName = f.name;
-    bookDoc = await pdfjsLib.getDocument({ data: new Uint8Array(bookBytes.slice(0)) }).promise;
+    // 큰 파일을 자바스크립트 메모리에 통째로 복사해 두지 않는다(메모리 부족 방지): 파일을 주소로 열어 필요한 부분만 읽는다
+    bookFile = f; bookFileName = f.name;
+    try { if (window._bookUrl) URL.revokeObjectURL(window._bookUrl); } catch (e) {}
+    window._bookUrl = URL.createObjectURL(f);
+    bookDoc = await pdfjsLib.getDocument({ url: window._bookUrl, disableAutoFetch: true, disableStream: false }).promise;
     $('read-msg').textContent = '목차를 읽는 중...';
     let toc = await BankCore.parseBookToc(bookDoc, 8);
     genToc = false;
@@ -468,7 +471,7 @@ $('go-btn').addEventListener('click', async () => {
     const ids = {}, bankWarn = [], teacherSkip = [];
     const toBank = $('to-bank').checked;
     msg('교재 PDF를 여는 중...');
-    const pdf = await PDFLib.PDFDocument.load(bookBytes.slice(0), { ignoreEncryption: true, updateMetadata: false });
+    const pdf = await PDFLib.PDFDocument.load(new Uint8Array(await bookFile.arrayBuffer()), { ignoreEncryption: true, updateMetadata: false });
     const gradeG = gradeFromText($('book-name').value + ' ' + bookFileName);
     // 단원마다 문제 쪽을 한 번만 읽어 두고 (등록·강사용 해설서가 함께 쓴다), 서술형인 문항은 객관식 정답을 지우고 '-'(서술형)로 바꾼다
     const secCache = {};
