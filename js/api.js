@@ -6,10 +6,12 @@ const _QC_KEY = 'qbank_cache_v1', _QC_TTL = 10 * 60 * 1000;
 let _qcMem = null;
 function _qcGet() {
   const now = Date.now();
+  let dirty = 0; try { dirty = Number(localStorage.getItem('qbank_dirty') || 0); } catch (e) {}      // 다른 창에서 문제은행을 바꿨으면(이름 바꾸기·삭제 등) 이 창에 저장해 둔 목록도 버린다
+  if (_qcMem && _qcMem.t < dirty) _qcMem = null;
   if (_qcMem && now - _qcMem.t < _QC_TTL) return _qcMem.q;
   try {
     const raw = sessionStorage.getItem(_QC_KEY);
-    if (raw) { const o = JSON.parse(raw); if (o && now - o.t < _QC_TTL && Array.isArray(o.q)) { _qcMem = o; return o.q; } }
+    if (raw) { const o = JSON.parse(raw); if (o && now - o.t < _QC_TTL && o.t >= dirty && Array.isArray(o.q)) { _qcMem = o; return o.q; } }
   } catch (e) {}
   return null;
 }
@@ -17,9 +19,9 @@ function _qcSet(q) {
   _qcMem = { t: Date.now(), q: q };
   try { sessionStorage.setItem(_QC_KEY, JSON.stringify(_qcMem)); } catch (e) {}      // 너무 커서 안 들어가면 메모리에만 둔다
 }
-function _qcClear() { _qcMem = null; try { sessionStorage.removeItem(_QC_KEY); } catch (e) {} }
+function _qcClear() { _qcMem = null; try { localStorage.setItem('qbank_dirty', String(Date.now())); } catch (e) {} try { sessionStorage.removeItem(_QC_KEY); } catch (e) {} }
 window.clearQuestionCache = _qcClear;
-const _QC_WRITE_RE = /^(saveQuestions|updateQuestions?|deleteQuestions?)$/;
+const _QC_WRITE_RE = /^(saveQuestions|updateQuestions?|deleteQuestions?|renameBook|linkBook|deleteExams?)$/;      // 문제은행 문항이 바뀔 수 있는 작업 뒤에는 저장해 둔 문항 목록을 버린다
 
 // ── 미리 받아 두기: 홈 화면에서 자주 가는 화면의 목록을 조용히 받아 두면, 그 화면을 열 때 바로 쓴다 (2분 안, 쓰기 작업이 있으면 버림) ──
 const _PF_KEY = 'pf_v1', _PF_TTL = 120000, _PF_OK = /^(listExams|listAssignments|listSubmissions|retryLog|getRosters|listAlerts)$/;
