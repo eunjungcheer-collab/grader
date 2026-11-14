@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150101">
+<link rel="stylesheet" href="css/style.css?v=202611150230">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150101"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150101"></script>
-<script src="js/vendor/pdf.min.js?v=202611150101"></script>
-<script src="js/config.js?v=202611150101"></script>
-<script src="js/api.js?v=202611150101"></script>
-<script src="js/common.js?v=202611150101"></script>
-<script src="js/bankcore.js?v=202611150101"></script>
-<script src="js/pdfui.js?v=202611150101"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150230"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150230"></script>
+<script src="js/vendor/pdf.min.js?v=202611150230"></script>
+<script src="js/config.js?v=202611150230"></script>
+<script src="js/api.js?v=202611150230"></script>
+<script src="js/common.js?v=202611150230"></script>
+<script src="js/bankcore.js?v=202611150230"></script>
+<script src="js/pdfui.js?v=202611150230"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -248,7 +248,8 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
   x.fillStyle = pal.main; x.fillRect(ml, 338, 74, 5);
   // CONTENTS
   const units = []; const seen = {};
-  secs.forEach(s => { const k = (s.unit || '') + '|' + (s.unitName || ''); if (!seen[k] && (s.unitName || s.unit)) { seen[k] = 1; units.push({ n: s.unit, t: s.unitName || '' }); } });
+  const uinfoC = unitInfoFor(secs);
+  secs.forEach(s => { const ui = uinfoC(s), k = ui.no + '|' + ui.name; if (!seen[k] && (ui.name || ui.no)) { seen[k] = 1; units.push({ n: toRoman(ui.no), t: ui.name || '' }); } });
   const list = units.slice(0, 10), rowH = 40, boxH = 64 + list.length * rowH, by = 372;
   x.shadowColor = 'rgba(20,30,60,.14)'; x.shadowBlur = 24; x.shadowOffsetY = 8; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(ml, by, W - ml * 2, boxH, 22); x.fill(); x.shadowColor = 'transparent';
   x.fillStyle = pal.deep; x.font = '800 13px ' + FONT; x.fillText('C O N T E N T S', ml + 28, by + 38);
@@ -258,38 +259,79 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
   { const gl = pal.grade ? (/중/.test(pal.grade) ? pal.grade.replace(/\D/g, '') : '') : ''; const ct = ('SCIENCE ' + gl).trim(); x.font = '800 13px ' + FONT; const cw = x.measureText(ct).width + 34; x.fillStyle = '#1F2A44'; x.beginPath(); x.roundRect(W - ml - cw, H - 78, cw, 34, 10); x.fill(); x.fillStyle = '#fff'; x.textAlign = 'center'; x.fillText(ct, W - ml - cw / 2, H - 56); x.textAlign = 'left'; }
   return cv;
 }
-async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at) {
+// 단원 번호·이름: 소단원 이름 앞의 숫자(예: '4-1.', '4.')로 단원을 정하고, 단원 이름은 같은 단원 소단원들의 공통 제목(최다오답·최상위 등)으로 정한다
+function unitInfoFor(secs) {
+  const cnt = {}, numOf = s => { const m = String(s.name || '').match(/^\s*(\d{1,2})\s*(?:-\s*\d+)?\s*[.．]/); return m ? parseInt(m[1], 10) : (parseInt(s.unit, 10) || 0); };
+  secs.forEach(s => { const n = numOf(s), m = String(s.name || '').match(/^\s*\d{1,2}\s*[.．]\s*(.+?)\s*(?:\(\s*\d+\s*\))?\s*$/); if (n && m && !/-/.test(String(s.name).split(/[.．]/)[0])) { cnt[n] = cnt[n] || {}; cnt[n][m[1]] = (cnt[n][m[1]] || 0) + 1; } });
+  const nameOf = {}; Object.keys(cnt).forEach(n => { nameOf[n] = Object.keys(cnt[n]).sort((a, b) => cnt[n][b] - cnt[n][a])[0]; });
+  return s => { const n = numOf(s); return { no: n || s.unit, name: (n && nameOf[n]) || s.unitName || '' }; };
+}
+const toRoman = v => { const n = parseInt(v, 10); if (!/^\d+$/.test(String(v).trim()) || !n || n > 30) return v; const m = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]; let r = '', k = n; m.forEach(a => { while (k >= a[0]) { r += a[1]; k -= a[0]; } }); return r; };
+function gradeMain(bookName) {
+  if ($('new-cover') && $('new-cover').checked && $('cover-color') && COVER_COLORS[$('cover-color').value]) return COVER_COLORS[$('cover-color').value][0];
+  return /중\s*1/.test(bookName) ? '#E4566D' : /중\s*2/.test(bookName) ? '#2F7BC0' : /중\s*3/.test(bookName) ? '#7A55C2' : /고\s*1|공통|통합/.test(bookName) ? '#139186' : '#0B1F5C';
+}
+async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd) {
+  posEnd = posEnd || ((sec, which) => pos(sec[which]));
   at = at || 0;
   const ref = pdf.getPage(0).getSize(), W = ref.width, H = ref.height;
-  const rows = []; let lastU = null;
+  const main = gradeMain(bookName);
+  // 단원별로 묶는다 (교재 목차와 같은 모양: 단원 띠 + 소단원 줄)
+  const groups = []; let lastU = null; const uinfo = unitInfoFor(secs);
   secs.slice().sort((a, b) => a.order - b.order).forEach(sec => {
-    const ukey = sec.unit + '|' + sec.unitName; if (ukey !== lastU) { lastU = ukey; rows.push({ unit: true, text: sec.unit + '단원 ' + sec.unitName }); }
-    rows.push({ sec: sec });
+    const ui = uinfo(sec), ukey = ui.no + '|' + ui.name;
+    if (ukey !== lastU) { lastU = ukey; groups.push({ unit: ui.no, name: ui.name, secs: [] }); }
+    groups[groups.length - 1].secs.push(sec);
   });
-  const ROW = 21, TOP = 96, perPage = Math.max(10, Math.floor((H - TOP - 40) / ROW));
-  const nIns = Math.max(1, Math.ceil(rows.length / perPage));
+  const ROW = 25, BAN = 30, GAP = 22, TOP = 124, BOTTOM = H - 64, items = [];
+  groups.forEach((gp, gi) => { items.push({ ban: gp, h: BAN + 12, gap: gi ? GAP : 0 }); gp.secs.forEach(sec => items.push({ sec: sec, h: ROW, gap: 0 })); });
+  // 쪽 나누기 (단원 띠가 쪽 맨 아래에 혼자 남지 않게)
+  const pages = []; let cur = [], used = 0;
+  items.forEach((it, k) => {
+    const need = it.h + (cur.length ? it.gap : 0) + (it.ban ? ROW : 0);
+    if (cur.length && TOP + used + need > BOTTOM) { pages.push(cur); cur = []; used = 0; }
+    used += it.h + (cur.length ? it.gap : 0); cur.push(it);
+  });
+  if (cur.length) pages.push(cur);
+  const nIns = Math.max(1, pages.length);
   const shift = p => p + (p > at ? nIns : 0); // 목차가 끼워진 뒤의 실제 쪽 번호
   const links = [];
   const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif', K = 3;
+  const qRight = W - 120, aRight = W - 54, L = 54;
   for (let pi = 0; pi < nIns; pi++) {
     const cv = document.createElement('canvas'); cv.width = Math.round(W * K); cv.height = Math.round(H * K);
     const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.scale(K, K); g.textBaseline = 'middle';
-    g.fillStyle = '#0B1F5C'; g.font = 'bold 22px ' + FONT; g.fillText(bookName + ' 목차' + (nIns > 1 ? ' (' + (pi + 1) + '/' + nIns + ')' : ''), 40, 46);
-    g.fillStyle = '#6B7280'; g.font = '11px ' + FONT; g.fillText('각 단원 첫 쪽의 QR로 답안을 입력해요 · 단원이나 쪽 번호를 누르면 그 쪽으로 가요', 40, 70);
-    g.fillStyle = '#0B1F5C'; g.fillRect(40, 82, W - 80, 1.5);
-    rows.slice(pi * perPage, (pi + 1) * perPage).forEach((r, k) => {
-      const y = TOP + k * ROW + ROW / 2;
-      if (r.unit) { g.fillStyle = '#EEF2FF'; g.fillRect(40, y - ROW / 2 + 1, W - 80, ROW - 2); g.fillStyle = '#0B1F5C'; g.font = 'bold 13px ' + FONT; g.textAlign = 'left'; g.fillText(r.text, 46, y); return; }
-      const sec = r.sec; g.fillStyle = '#111827'; g.font = '12px ' + FONT; g.textAlign = 'left';
-      let t = (sec.tag ? '[' + sec.tag + ' 공략] ' : '') + sec.name; while (g.measureText(t).width > W - 80 - 190 && t.length > 8) t = t.slice(0, -2);
-      g.fillText(t, 56, y);
-      // 쪽 번호는 파란 글씨 (누르면 그 쪽으로 이동)
-      const qStr = '문제 ' + shift(pos(sec.qa)) + '~' + shift(pos(sec.qb)) + '쪽', aStr = withAns && pos(sec.aa) > 0 ? '  정답 ' + shift(pos(sec.aa)) + '~' + shift(pos(sec.ab)) + '쪽' : '';
-      const qW = g.measureText(qStr).width, aW = aStr ? g.measureText(aStr).width : 0, xq = W - 46 - qW - aW, xa = xq + qW;
-      g.fillStyle = '#1D4ED8'; g.fillText(qStr, xq, y); if (aStr) { g.fillStyle = '#047857'; g.fillText(aStr, xa, y); }
-      const yTop = H - (y - ROW / 2), yBot = H - (y + ROW / 2);
-      links.push({ from: at + pi, rect: [40, yBot, aStr ? xa : W - 40, yTop], to: shift(pos(sec.qa)) - 1 });
-      if (aStr) links.push({ from: at + pi, rect: [xa, yBot, W - 40, yTop], to: shift(pos(sec.aa)) - 1 });
+    g.fillStyle = '#1B1B2B'; g.font = '800 30px ' + FONT; g.textAlign = 'left'; g.fillText('목 차', L, 66);
+    const tw = g.measureText('목 차').width;
+    g.fillStyle = '#7A4A55'; g.font = '500 10px ' + FONT; g.fillText('문제편 → 정답편 순서 · 쪽수는 각 쪽 오른쪽 아래 번호 기준' + (nIns > 1 ? ' (' + (pi + 1) + '/' + nIns + ')' : ''), L + tw + 10, 70);
+    g.fillStyle = '#6B6070'; g.font = '700 9.5px ' + FONT; g.textAlign = 'right'; g.fillText('문제', qRight, 112); g.fillText('정답·해설', aRight, 112);
+    let y = TOP;
+    pages[pi].forEach((it, k) => {
+      if (k && it.gap) y += it.gap;
+      if (it.ban) {
+        const gp = it.ban, qs = gp.secs.map(s => pos(s.qa)).concat(gp.secs.map(s => posEnd(s, 'qb'))).filter(n => n > 0), as = gp.secs.filter(s => pos(s.aa) > 0);
+        g.fillStyle = main; g.beginPath(); g.roundRect(L, y, W - L * 2, BAN, 9); g.fill();
+        g.fillStyle = '#fff'; g.font = '800 13.5px ' + FONT; g.textAlign = 'left'; g.fillText(toRoman(gp.unit) + '단원 ' + gp.name, L + 12, y + BAN / 2 + 0.5);
+        g.font = '700 9.5px ' + FONT; g.textAlign = 'right';
+        const rng = '문제 ' + shift(Math.min.apply(null, qs)) + '~' + shift(Math.max.apply(null, qs)) + '쪽' + (as.length ? '  ·  정답 ' + shift(Math.min.apply(null, as.map(s => pos(s.aa)))) + '~' + shift(Math.max.apply(null, as.map(s => posEnd(s, 'ab')))) + '쪽' : '');
+        g.fillText(rng, W - L - 12, y + BAN / 2 + 0.5);
+        links.push({ from: at + pi, rect: [L, H - (y + BAN), W - L, H - y], to: shift(Math.min.apply(null, qs)) - 1 });
+        y += BAN + 12; return;
+      }
+      const sec = it.sec, cy = y + ROW / 2;
+      g.textAlign = 'left'; g.fillStyle = '#6B6070'; g.font = '500 8.5px ' + FONT; g.fillText(sec.tag || '', L + 4, cy);
+      let nm = sec.name; g.fillStyle = '#16161F'; g.font = '600 11.5px ' + FONT; const maxW = qRight - 70 - (L + 70);
+      while (g.measureText(nm).width > maxW && nm.length > 6) nm = nm.slice(0, -2);
+      g.fillText(nm, L + 70, cy);
+      const nameEnd = L + 70 + g.measureText(nm).width + 8, qL = qRight - 52;
+      g.save(); g.strokeStyle = '#A9A3AE'; g.lineWidth = 0.8; g.setLineDash([0.8, 2.2]); g.beginPath(); g.moveTo(nameEnd, cy + 4); g.lineTo(qL - 8, cy + 4); g.stroke(); g.restore();
+      const qStr = shift(pos(sec.qa)) + '~' + shift(posEnd(sec, 'qb')), hasA = pos(sec.aa) > 0, aStr = hasA ? shift(pos(sec.aa)) + '~' + shift(posEnd(sec, 'ab')) : '';
+      g.textAlign = 'right'; g.font = '800 12px ' + FONT; g.fillStyle = '#16161F'; g.fillText(qStr, qRight, cy);
+      if (hasA) { g.fillStyle = '#D6283C'; g.fillText(aStr, aRight, cy); }
+      const yTop = H - y, yBot = H - (y + ROW);
+      links.push({ from: at + pi, rect: [L, yBot, hasA ? qRight + 6 : W - L, yTop], to: shift(pos(sec.qa)) - 1 });
+      if (hasA) links.push({ from: at + pi, rect: [qRight + 6, yBot, W - L + 6, yTop], to: shift(pos(sec.aa)) - 1 });
+      y += ROW;
     });
     const img = await pdf.embedPng(await (await fetch(cv.toDataURL('image/png'))).arrayBuffer().then(b => new Uint8Array(b)));
     const page = pdf.insertPage(at + pi, [W, H]); page.drawImage(img, { x: 0, y: 0, width: W, height: H });
@@ -804,7 +846,14 @@ $('go-btn').addEventListener('click', async () => {
       // 표지가 있으면(첫 단원이 1쪽부터 시작하지 않으면) 목차는 표지 바로 뒤에, 없으면 맨 앞에
       const firstQ = Math.min.apply(null, chosen.map(s => posOf(s.qa)).filter(n => n > 0));
       const tocAt = (isFinite(firstQ) && firstQ > 1) ? 1 : 0;
-      if (useGen) nIns = await insertGeneratedToc(doc, chosen, bookNm, posOf, withAns, tocAt);
+      if (useGen) {
+        const posEnd = (sec, which) => {      // 구간 끝 쪽: 강사용 해설서로 바꿔 끼운 구간은 시작 쪽 + (바꿔 끼운 쪽 수 - 1)
+          const p = sec[which]; let i = kept.indexOf(p - 1); if (i >= 0) return i + 1;
+          const st = sec.qa, i0 = kept.indexOf(1e6 + st - 1); if (i0 < 0) return 0;
+          let e = i0; while (kept[e + 1] === -1) e++; return e + 1;
+        };
+        nIns = await insertGeneratedToc(doc, sections, bookNm, posOf, true, tocAt, posEnd);
+      }
       if (!useGen) {
         // 교재에 원래 있던 목차: 각 줄(단원·문제 쪽)을 누르면 문제 첫 쪽, 정답 쪽 숫자를 누르면 정답 첫 쪽으로
         sections.forEach(s => {
@@ -823,7 +872,7 @@ $('go-btn').addEventListener('click', async () => {
       let coverDone = false;
       if ($('new-cover').checked && isFinite(firstQ) && firstQ > 1) {        // 첫 쪽(표지)을 새 표지로 바꾼다 (쪽 수는 그대로)
         try {
-          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, chosen.slice().sort((a, b) => a.order - b.order), ref.width, ref.height, $('cover-design').value, $('cover-color').value);
+          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, sections.slice().sort((a, b) => a.order - b.order), ref.width, ref.height, $('cover-design').value, $('cover-color').value);
           const png = await doc.embedPng(cvs.toDataURL('image/png')), np = doc.insertPage(0, [ref.width, ref.height]);
           np.drawImage(png, { x: 0, y: 0, width: ref.width, height: ref.height }); doc.removePage(1); coverDone = true;
         } catch (e) { console.warn('cover', e); }
