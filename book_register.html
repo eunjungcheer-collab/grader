@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150021">
+<link rel="stylesheet" href="css/style.css?v=202611150041">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150021"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150021"></script>
-<script src="js/vendor/pdf.min.js?v=202611150021"></script>
-<script src="js/config.js?v=202611150021"></script>
-<script src="js/api.js?v=202611150021"></script>
-<script src="js/common.js?v=202611150021"></script>
-<script src="js/bankcore.js?v=202611150021"></script>
-<script src="js/pdfui.js?v=202611150021"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150041"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150041"></script>
+<script src="js/vendor/pdf.min.js?v=202611150041"></script>
+<script src="js/config.js?v=202611150041"></script>
+<script src="js/api.js?v=202611150041"></script>
+<script src="js/common.js?v=202611150041"></script>
+<script src="js/bankcore.js?v=202611150041"></script>
+<script src="js/pdfui.js?v=202611150041"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -186,8 +186,10 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
   // 색은 학년 고유색 그대로 둔다(교재 종류로 색을 바꾸면 다른 학년과 헷갈림). 종류는 '채운 이름표'로 구분한다.
   const typeChip = !!tm;
   const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
-  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, pal.soft); g.addColorStop(1, '#FFFFFF'); x.fillStyle = g; x.fillRect(0, 0, W, H);
-  x.fillStyle = pal.main; x.globalAlpha = 0.08; x.beginPath(); x.arc(W * 0.92, H * 0.12, 190, 0, 7); x.fill(); x.beginPath(); x.arc(W * 0.05, H * 0.62, 120, 0, 7); x.fill(); x.globalAlpha = 1;
+  const hex2 = h => [1, 3, 5].map(o => parseInt(h.slice(o, o + 2), 16)), mixW = (h, k) => { const c = hex2(h); return 'rgb(' + c.map(v => Math.round(v + (255 - v) * k)).join(',') + ')'; };
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
+  { const hh = H * 0.47, g = x.createLinearGradient(0, 0, 0, hh); g.addColorStop(0, mixW(pal.main, 0.74)); g.addColorStop(1, mixW(pal.main, 0.9)); x.fillStyle = g; x.beginPath(); x.roundRect(0, 0, W, hh, [0, 0, 64, 64]); x.fill();
+    x.save(); x.beginPath(); x.roundRect(0, 0, W, hh, [0, 0, 64, 64]); x.clip(); x.strokeStyle = pal.main; x.globalAlpha = 0.2; x.lineWidth = 1.4; [48, 84, 120, 158].forEach(r => { x.beginPath(); x.arc(W * 0.86, H * 0.12, r, 0, 7); x.stroke(); }); x.restore(); x.globalAlpha = 1; }
   // 배경 무늬: 학년마다 다른 과학 그림 (선만 아주 연하게)
   const kind = /중\s*1/.test(bookName) ? 1 : /중\s*2/.test(bookName) ? 2 : /중\s*3/.test(bookName) ? 3 : /고\s*1|공통|통합/.test(bookName) ? 4 : 0;
   const A = v => Math.min(0.75, v * 2.1), LW = v => v * 1.5;      // 무늬를 눈에 보이게 진하게
@@ -211,9 +213,9 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
   const DSG = design && design !== 'auto' ? design : '';
   if (DSG) {
     if (DSG === 'mol') { molecule(W * 0.64, H * 0.05, 34); flask(W * 0.86, H * 0.2, 90); }
-    else if (DSG === 'atom') { atom(W * 0.78, H * 0.13, 110); atom(W * 0.12, H * 0.8, 62); }
-    else if (DSG === 'dna') { helix(W * 0.86, 20, 240, 26, 110); helix(W * 0.12, H * 0.74, H * 0.74 + 150, 18, 80); }
-    else if (DSG === 'hex') { grid(W * 0.55, 18, 6, 6, 26); atom(W * 0.14, H * 0.8, 66); }
+    else if (DSG === 'atom') { atom(W * 0.78, H * 0.13, 110); atom(W * 0.12, H * 0.775, 56); }
+    else if (DSG === 'dna') { helix(W * 0.86, 20, 240, 26, 110); helix(W * 0.12, H * 0.72, H * 0.72 + 100, 16, 70); }
+    else if (DSG === 'hex') { grid(W * 0.55, 18, 6, 6, 26); atom(W * 0.14, H * 0.775, 56); }
     else if (DSG === 'tubes') { tubes(W * 0.8, H * 0.14, 120); constel([[W * 0.08, H * 0.74], [W * 0.17, H * 0.7], [W * 0.26, H * 0.76], [W * 0.33, H * 0.7]]); }
     else if (DSG === 'circuit') { circuit(W * 0.78, H * 0.13, 110); planet(W * 0.14, H * 0.78, 70); }
     else if (DSG === 'planet') { planet(W * 0.8, H * 0.14, 120); tubes(W * 0.13, H * 0.76, 80); }
@@ -231,27 +233,28 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
     planet(W * 0.14, H * 0.78, 80); stars([[W * 0.5, H * 0.2, 2.5], [W * 0.93, H * 0.36, 2]]);
   } else
   if (kind === 1) { molecule(W * 0.64, H * 0.05, 34); flask(W * 0.86, H * 0.2, 90); wave(H * 0.965, 6, 120, 0, W, 2); stars([[W * 0.55, H * 0.2, 2.5], [W * 0.93, H * 0.08, 2], [W * 0.1, H * 0.78, 2.5]]); }
-  else if (kind === 2) { atom(W * 0.78, H * 0.13, 110); atom(W * 0.12, H * 0.8, 62); wave(H * 0.965, 6, 150, 0, W, 2); stars([[W * 0.5, H * 0.08, 2.5], [W * 0.95, H * 0.3, 2], [W * 0.3, H * 0.74, 2]]); }
-  else if (kind === 3) { helix(W * 0.86, 20, 240, 26, 110); helix(W * 0.12, H * 0.74, H * 0.74 + 150, 18, 80); wave(H * 0.965, 6, 130, 0, W, 2); stars([[W * 0.7, H * 0.06, 2.5], [W * 0.62, H * 0.2, 2], [W * 0.08, H * 0.7, 2.5]]); }
-  else if (kind === 4) { grid(W * 0.55, 18, 6, 6, 26); atom(W * 0.14, H * 0.8, 66); stars([[W * 0.5, H * 0.18, 2.5], [W * 0.93, H * 0.34, 2], [W * 0.35, H * 0.72, 2]]); }
+  else if (kind === 2) { atom(W * 0.78, H * 0.13, 110); atom(W * 0.12, H * 0.775, 56); wave(H * 0.965, 6, 150, 0, W, 2); stars([[W * 0.5, H * 0.08, 2.5], [W * 0.95, H * 0.3, 2], [W * 0.3, H * 0.74, 2]]); }
+  else if (kind === 3) { helix(W * 0.86, 20, 240, 26, 110); helix(W * 0.12, H * 0.72, H * 0.72 + 100, 16, 70); wave(H * 0.965, 6, 130, 0, W, 2); stars([[W * 0.7, H * 0.06, 2.5], [W * 0.62, H * 0.2, 2], [W * 0.08, H * 0.7, 2.5]]); }
+  else if (kind === 4) { grid(W * 0.55, 18, 6, 6, 26); atom(W * 0.14, H * 0.775, 56); stars([[W * 0.5, H * 0.18, 2.5], [W * 0.93, H * 0.34, 2], [W * 0.35, H * 0.72, 2]]); }
   else { grid(W * 0.5, 20, 6, 5, 28); atom(W * 0.86, H * 0.2, 70); }
   x.restore(); x.globalAlpha = 1;
-  const pill = (t, cx, cy) => { x.font = '700 15px ' + FONT; const w = x.measureText(t).width + 36; x.fillStyle = '#fff'; x.strokeStyle = pal.main; x.lineWidth = 1.6; x.beginPath(); x.roundRect(cx, cy, w, 32, 16); x.fill(); x.stroke(); x.fillStyle = pal.main; x.textBaseline = 'middle'; x.fillText(t, cx + 18, cy + 17); };
+  const pill = (t, cx, cy) => { x.font = '700 15px ' + FONT; const w = x.measureText(t).width + 36; x.fillStyle = '#fff'; x.strokeStyle = pal.main; x.lineWidth = 1.6; x.beginPath(); x.roundRect(cx, cy, w, 34, 17); x.fill(); x.fillStyle = pal.main; x.textBaseline = 'middle'; x.fillText(t, cx + 18, cy + 17); };
   const ml = 54; if (pal.grade) pill(pal.grade + ' · ' + typeLabel, ml, 74);
   const subj = (bookName.replace(/내신대비|교재|보충|심화|기출|개념|기본/g, ' ').replace(/\s+/g, ' ').trim() || '과학'), base = /과학/.test(subj) ? subj : subj + ' 과학';
-  x.textBaseline = 'alphabetic'; x.fillStyle = '#17203A'; x.font = '900 64px ' + FONT; x.fillText(base, ml, 250);
+  x.textBaseline = 'alphabetic'; x.fillStyle = pal.main; x.font = '900 72px ' + FONT; x.fillText(base, ml, 250);
   if (typeChip) { x.font = '800 38px ' + FONT; const tw = x.measureText(typeLabel + ' 교재').width; x.fillStyle = pal.main; x.beginPath(); x.roundRect(ml - 14, 278, tw + 28, 50, 12); x.fill(); x.fillStyle = '#fff'; x.fillText(typeLabel + ' 교재', ml, 314); }
-  else { x.fillStyle = pal.main; x.font = '800 38px ' + FONT; x.fillText(typeLabel + ' 교재', ml, 312); }
+  else { x.fillStyle = '#17203A'; x.font = '800 40px ' + FONT; x.fillText(typeLabel + ' 교재', ml, 312); }
   x.fillStyle = pal.main; x.fillRect(ml, 338, 74, 5);
   // CONTENTS
   const units = []; const seen = {};
   secs.forEach(s => { const k = (s.unit || '') + '|' + (s.unitName || ''); if (!seen[k] && (s.unitName || s.unit)) { seen[k] = 1; units.push({ n: s.unit, t: s.unitName || '' }); } });
-  const list = units.slice(0, 10), rowH = 40, boxH = 64 + list.length * rowH, by = 410;
+  const list = units.slice(0, 10), rowH = 40, boxH = 64 + list.length * rowH, by = 372;
   x.shadowColor = 'rgba(20,30,60,.14)'; x.shadowBlur = 24; x.shadowOffsetY = 8; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(ml, by, W - ml * 2, boxH, 22); x.fill(); x.shadowColor = 'transparent';
   x.fillStyle = pal.deep; x.font = '800 13px ' + FONT; x.fillText('C O N T E N T S', ml + 28, by + 38);
   list.forEach((u, i) => { const cy = by + 64 + i * rowH; x.fillStyle = pal.main; x.beginPath(); x.roundRect(ml + 28, cy - 8, 46, 28, 8); x.fill(); x.fillStyle = '#fff'; x.font = '800 16px ' + FONT; x.textAlign = 'center'; x.fillText(String(u.n || i + 1), ml + 51, cy + 12); x.textAlign = 'left'; x.fillStyle = '#17203A'; x.font = '700 18px ' + FONT; x.fillText(u.t, ml + 92, cy + 12); if (i < list.length - 1) { x.fillStyle = '#E8EAF0'; x.fillRect(ml + 92, cy + 26, W - ml * 2 - 120, 1); } });
   x.fillStyle = pal.main; x.font = '800 20px ' + FONT; x.fillText('이은정 과학', ml, H - 62);
   x.fillStyle = '#7B8197'; x.font = '600 10.5px ' + FONT; x.fillText('MIDDLE SCHOOL SCIENCE · EXAM PREP', ml, H - 44);
+  { const gl = pal.grade ? (/중/.test(pal.grade) ? pal.grade.replace(/\D/g, '') : '') : ''; const ct = ('SCIENCE ' + gl).trim(); x.font = '800 13px ' + FONT; const cw = x.measureText(ct).width + 34; x.fillStyle = '#1F2A44'; x.beginPath(); x.roundRect(W - ml - cw, H - 78, cw, 34, 10); x.fill(); x.fillStyle = '#fff'; x.textAlign = 'center'; x.fillText(ct, W - ml - cw / 2, H - 56); x.textAlign = 'left'; }
   return cv;
 }
 async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at) {
