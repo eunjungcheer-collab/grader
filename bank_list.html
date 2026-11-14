@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150950">
+<link rel="stylesheet" href="css/style.css?v=202611151000">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -70,6 +70,7 @@
   </details>
   <div id="diff-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0;"></div>
   <div id="kind-chips2" class="chip-row"></div>
+  <div id="book-chips2" class="chip-row"></div>
   <div id="grade-chips" class="chip-row"></div>
   <div id="unit-chips" class="chip-row"></div>
   <p class="hint">💡 문항 밑의 붉은 점선 칸이 저장된 해설의 맨 윗부분이에요(정답 표시가 보여요). 클릭하면 해설 전체가 펼쳐져요. 정답칸에 숫자를 치면 자동 저장되고 다음 문항으로 넘어가요.</p>
@@ -78,16 +79,17 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611150950"></script>
-<script src="js/api.js?v=202611150950"></script>
-<script src="js/common.js?v=202611150950"></script>
-<script src="js/bankcore.js?v=202611150950"></script>
-<script src="js/pdfui.js?v=202611150950"></script>
+<script src="js/config.js?v=202611151000"></script>
+<script src="js/api.js?v=202611151000"></script>
+<script src="js/common.js?v=202611151000"></script>
+<script src="js/bankcore.js?v=202611151000"></script>
+<script src="js/pdfui.js?v=202611151000"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
 const $ = id => document.getElementById(id);
 const PER_PAGE = 12;
+let bookFilter = '';
 let all = [], unitFilter = '', gradeFilter = '', kindFilter = '', diffFilter = '', page = 1;
 const selected = new Set();
 const dKey = q => q.difficulty || '미정';
@@ -184,7 +186,7 @@ const gradeOf = x => x.grade || '__none__';
 function filtered() {
   const q = $('q').value.trim().toLowerCase();
   const onlyNo = $('only-noans').checked, onlyNoSub = $('only-nosub').checked, onlyNoUnit = $('only-nounit').checked, onlyAuto = $('only-auto').checked;
-  return all.filter(x => (!kindFilter || x.kind === kindFilter) && (!gradeFilter || gradeOf(x) === gradeFilter) && (!unitFilter || unitKey(x) === unitFilter) && (!diffFilter || dKey(x) === diffFilter) &&
+  return all.filter(x => (!kindFilter || x.kind === kindFilter) && (!bookFilter || (isBookQ(x) && bookNameOf(x) === bookFilter)) && (!gradeFilter || gradeOf(x) === gradeFilter) && (!unitFilter || unitKey(x) === unitFilter) && (!diffFilter || dKey(x) === diffFilter) &&
     (!onlyNo || !String(x.answer).trim()) && (!onlyNoSub || !x.sub) && (!onlyNoUnit || !x.unit || x.unit === '(단원 미지정)') && (!onlyAuto || x.auto) &&
     (!q || [x.unit, x.grade, x.school, x.kind, x.textPreview].some(v => String(v || '').toLowerCase().includes(q))));
 }
@@ -198,7 +200,12 @@ function render() {
   $('kind-chips2').innerHTML = '<span class="muted chip-label">구분</span>' +
     chip('', '전체 (' + all.length + ')', !kindFilter, 'data-k=""') + chip('', '일반 문제 (' + (all.length - nPast - nBook) + ')', kindFilter === '일반', 'data-k="일반"') + chip('', '기출문제 (' + nPast + ')', kindFilter === '기출', 'data-k="기출"') + (nBook ? chip('', '내신교재 (' + nBook + ')', kindFilter === '교재', 'data-k="교재"') : '');
   $('kind-chips2').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { kindFilter = b.dataset.k; gradeFilter = ''; unitFilter = ''; page = 1; render(); }));
-  const byKind = all.filter(x => !kindFilter || x.kind === kindFilter);
+  const bc = {}; all.filter(isBookQ).forEach(x => { const k = bookNameOf(x); bc[k] = (bc[k] || 0) + 1; });
+  const bnames = Object.keys(bc).sort(naturalCompare);
+  if (bookFilter && !bc[bookFilter]) bookFilter = '';
+  $('book-chips2').innerHTML = (bnames.length && kindFilter !== '일반' && kindFilter !== '기출') ? '<span class="muted chip-label">📚 교재</span>' + chip('', '전체', !bookFilter, 'data-b=""') + bnames.map(n => chip('', n + ' (' + bc[n] + ')', bookFilter === n, 'data-b="' + escapeHtml(n) + '"')).join('') : '';
+  $('book-chips2').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { bookFilter = b.dataset.b; if (bookFilter) kindFilter = '교재'; gradeFilter = ''; unitFilter = ''; page = 1; render(); }));
+  const byKind = all.filter(x => (!kindFilter || x.kind === kindFilter) && (!bookFilter || (isBookQ(x) && bookNameOf(x) === bookFilter)));
   const gc = {};
   byKind.forEach(x => { gc[gradeOf(x)] = (gc[gradeOf(x)] || 0) + 1; });
   const gradeKeys = Object.keys(gc).sort((a, b) => gradeRank(a === '__none__' ? '' : a) - gradeRank(b === '__none__' ? '' : b));
