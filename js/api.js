@@ -255,6 +255,16 @@ function gradeRank(g) { if (!g) return 99; const i = GRADE_ORDER.indexOf(g); ret
 // 학년이 없는 예전 문항은 단원 글자 그대로(= 예전과 똑같이 동작).
 function unitKey(q) { return q.grade ? q.grade + ' · ' + q.unit : String(q.unit); }
 function isPastExam(q) { return q && q.kind === '기출'; }
+async function renameBookFlow(oldN) {
+  const nn = prompt('"' + oldN + '"의 새 교재 이름을 입력하세요.\n(문제은행 문항과 이 교재로 등록한 시험지 제목이 함께 바뀌어요. 이미 나눠 준 QR은 그대로 동작해요.)', oldN);
+  if (!nn || !nn.trim() || nn.trim() === oldN) return false;
+  try {
+    const r = await callApi('renameBook', { password: getTeacherPassword(), oldName: oldN, newName: nn.trim() });
+    if (!r.ok) throw new Error(r.error || '바꾸지 못했어요');
+    alert('바꿨어요: 문제은행 문항 ' + r.questions + '개, 시험지 ' + r.exams + '개' + (r.questions === 0 ? '\n(문제은행에서 이 이름으로 시작하는 문항을 찾지 못했어요)' : ''));
+    return true;
+  } catch (e) { alert('교재 이름을 바꾸지 못했어요: ' + e.message + '\n(Apps Script를 새 버전으로 배포했는지 확인해 주세요)'); return false; }
+}
 function isBookQ(q) { return q && q.kind === '교재'; }
 // 교재 문제의 교재 이름: 출처 「교재이름 4-1. 단원이름 최다빈출공략」에서 소단원 번호 앞부분
 function bookNameOf(q) { const s = String(q.source || ''), m = s.match(/^(.*?)\s*\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*\.(?!\d)/); return ((m ? m[1] : s) || '').trim() || '(교재 이름 없음)'; }

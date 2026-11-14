@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151000">
+<link rel="stylesheet" href="css/style.css?v=202611151020">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611151000"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611151000"></script>
-<script src="js/config.js?v=202611151000"></script>
-<script src="js/api.js?v=202611151000"></script>
-<script src="js/common.js?v=202611151000"></script>
-<script src="js/bankcore.js?v=202611151000"></script>
-<script src="js/pdfui.js?v=202611151000"></script>
+<script src="js/vendor/qrcode.min.js?v=202611151020"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611151020"></script>
+<script src="js/config.js?v=202611151020"></script>
+<script src="js/api.js?v=202611151020"></script>
+<script src="js/common.js?v=202611151020"></script>
+<script src="js/bankcore.js?v=202611151020"></script>
+<script src="js/pdfui.js?v=202611151020"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -215,10 +215,11 @@ function renderBookFilter() {
   box.style.display = '';
   box.innerHTML = '<div class="hint" style="margin:6px 0 2px;">📚 내신교재를 교재별로 고르기 (아무것도 안 고르면 모든 교재)</div>' +
     names.map(n => '<label class="bank-include-label school-chip"><input type="checkbox" class="bkf" data-b="' + escapeHtml(n) + '"' + (bookFilter.has(n) ? ' checked' : '') + '> ' + escapeHtml(n) + ' <span class="muted">(' + cnt[n] + ')</span></label>').join('');
-  box.querySelectorAll('.bkf').forEach(c => c.addEventListener('change', () => { if (c.checked) bookFilter.add(c.dataset.b); else bookFilter.delete(c.dataset.b); renderUnits(); showAvail(); const d = $('bk-del'); if (d) d.style.display = bookFilter.size ? '' : 'none'; }));
+  box.querySelectorAll('.bkf').forEach(c => c.addEventListener('change', () => { if (c.checked) bookFilter.add(c.dataset.b); else bookFilter.delete(c.dataset.b); renderUnits(); showAvail(); const d = $('bk-del'); if (d) d.style.display = bookFilter.size ? '' : 'none'; const rn = $('bk-ren'); if (rn) rn.style.display = bookFilter.size === 1 ? '' : 'none'; }));
   const dv = document.createElement('div'); dv.style.cssText = 'margin:6px 0;';
-  dv.innerHTML = '<button type="button" class="btn danger" id="bk-del" style="padding:6px 12px; font-size:13px;' + (bookFilter.size ? '' : ' display:none;') + '">🗑 체크한 교재의 문제를 문제은행에서 삭제</button>';
+  dv.innerHTML = '<button type="button" class="btn danger" id="bk-del" style="padding:6px 12px; font-size:13px;' + (bookFilter.size ? '' : ' display:none;') + '">🗑 체크한 교재의 문제를 문제은행에서 삭제</button> <button type="button" class="btn outline" id="bk-ren" style="padding:6px 12px; font-size:13px;' + (bookFilter.size === 1 ? '' : ' display:none;') + '">✏️ 교재 이름 바꾸기</button>';
   box.appendChild(dv);
+  $('bk-ren').addEventListener('click', async () => { if (bookFilter.size !== 1) return; if (await renameBookFlow(Array.from(bookFilter)[0])) location.reload(); });
   $('bk-del').addEventListener('click', async () => {
     const names = Array.from(bookFilter), del = allQuestions.filter(q => isBookQ(q) && bookFilter.has(bookNameOf(q)));
     if (!del.length) return;
