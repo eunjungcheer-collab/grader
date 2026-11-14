@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150750">
+<link rel="stylesheet" href="css/style.css?v=202611150810">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150750"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150750"></script>
-<script src="js/vendor/pdf.min.js?v=202611150750"></script>
-<script src="js/config.js?v=202611150750"></script>
-<script src="js/api.js?v=202611150750"></script>
-<script src="js/common.js?v=202611150750"></script>
-<script src="js/bankcore.js?v=202611150750"></script>
-<script src="js/pdfui.js?v=202611150750"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150810"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150810"></script>
+<script src="js/vendor/pdf.min.js?v=202611150810"></script>
+<script src="js/config.js?v=202611150810"></script>
+<script src="js/api.js?v=202611150810"></script>
+<script src="js/common.js?v=202611150810"></script>
+<script src="js/bankcore.js?v=202611150810"></script>
+<script src="js/pdfui.js?v=202611150810"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -646,7 +646,7 @@ $('go-btn').addEventListener('click', async () => {
     const sigOf = s => (s.name + ' ' + s.tag).trim() + '#' + s.answers.join(',').replace(/\s/g, '');
     let made = 0, reused = 0, next = 0, fail = null, bankQ = 0;
     const uinfoR = unitInfoFor(sections);
-    const ids = {}, bankWarn = [], teacherSkip = [];
+    const ids = {}, bankWarn = [], teacherSkip = [], toLink = []; let linkWarn = '';
     const toBank = $('to-bank').checked;
     msg('교재 PDF를 여는 중...');
     // 메모리 절약: 원본을 pdf-lib로 통째로 여는 건 QR을 찍을 때(맨 끝 단계)에만 한다
@@ -774,8 +774,8 @@ $('go-btn').addEventListener('click', async () => {
       while (!fail) {
         const k = next++; if (k >= regList.length) return;
         const s = regList[k], title = secTitle(s);
-        if (byTitle[title]) { ids[s.order] = byTitle[title]; reused++; continue; }
-        if (bySig[sigOf(s)]) { ids[s.order] = bySig[sigOf(s)]; reused++; continue; }
+        if (byTitle[title]) { ids[s.order] = byTitle[title]; toLink.push(byTitle[title]); reused++; continue; }
+        if (bySig[sigOf(s)]) { ids[s.order] = bySig[sigOf(s)]; toLink.push(bySig[sigOf(s)]); reused++; continue; }
         const id = genExamId();
         let nums; try { const sc0 = await getSec(s); if (sc0 && sc0.nums && sc0.nums.length === s.answers.length && sc0.nums.some((n, i) => n !== i + 1)) nums = sc0.nums; } catch (e) {}
         let saved = null;
@@ -792,6 +792,8 @@ $('go-btn').addEventListener('click', async () => {
     };
     await Promise.all(Array.from({ length: toBank ? 2 : 3 }, worker));
     if (fail) throw fail;
+    // 이미 있던 시험을 쓴 단원은 이 교재 번호도 붙여 둔다 (그래야 이 합본의 「여러 단원 한꺼번에 채점」 QR에서 단원이 보인다)
+    if (toLink.length) { try { const lr = await callApi('linkBook', { password: getTeacherPassword(), book: bookId, ids: toLink }); if (!lr.ok) linkWarn = lr.error || '연결 실패'; } catch (e) { linkWarn = e.message; } }
 
     try { await bookDoc.cleanup(); } catch (e) {}
     msg('교재 PDF에 QR을 찍는 중... (파일이 커서 1~2분 걸릴 수 있어요)');
@@ -967,7 +969,7 @@ $('go-btn').addEventListener('click', async () => {
     renderSaved();
     syncToServer(rec);
     const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
-    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (savedOk ? '합본 PDF는 아래 버튼으로 내려받아요(이 기기에 저장돼 나중에도 받을 수 있어요).' : '합본 PDF는 아래 버튼으로 내려받아요. (이 기기에는 저장하지 못했어요)') + '<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (teacherSkip.length ? '<br><b style="color:#C1392B;">강사용에 정답·해설을 못 붙인 단원(문항 번호와 정답이 안 맞음): ' + teacherSkip.map(escapeHtml).join(' / ') + '</b>' : '') + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
+    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (savedOk ? '합본 PDF는 아래 버튼으로 내려받아요(이 기기에 저장돼 나중에도 받을 수 있어요).' : '합본 PDF는 아래 버튼으로 내려받아요. (이 기기에는 저장하지 못했어요)') + '<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (teacherSkip.length ? '<br><b style="color:#C1392B;">강사용에 정답·해설을 못 붙인 단원(문항 번호와 정답이 안 맞음): ' + teacherSkip.map(escapeHtml).join(' / ') + '</b>' : '') + (linkWarn ? '<br><b style="color:#C1392B;">이미 있던 시험을 이 교재 QR에 연결하지 못했어요(' + escapeHtml(linkWarn) + '). Apps Script를 새 버전으로 다시 배포했는지 확인해 주세요.</b>' : '') + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
   } catch (e) {
     err.innerHTML = '<div class="banner error">' + escapeHtml(e.message) + '</div>';
     $('go-msg').textContent = '';

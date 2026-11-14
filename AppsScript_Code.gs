@@ -128,6 +128,7 @@ function handle_(e) {
       case 'updateQuestions': result = actionUpdateQuestions_(params); break;
       case 'deleteQuestions': result = actionDeleteQuestions_(params); break;
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
+      case 'linkBook': result = actionLinkBook_(params); break;
       case 'deleteExam': result = actionDeleteExam_(params); break;
       case 'deleteExams': result = actionDeleteExams_(params); break;
       case 'getExamPdf': result = actionGetExamPdf_(params); break;
@@ -388,7 +389,8 @@ function actionGetBookPublic_(p) {
   const exams = []; let bookTitle = '';
   for (let i = 1; i < data.length; i++) {
     const rc = safeJson_(data[i][8], null);
-    if (!rc || !rc.book || String(rc.book) !== String(p.book)) continue;
+    if (!rc || !rc.book) continue;
+    if (String(rc.book) !== String(p.book) && (rc.books || []).map(String).indexOf(String(p.book)) < 0) continue;      // 같은 단원 시험을 다른 교재 파일에서 다시 쓴 경우(books)도 그 교재 QR에서 보인다
     bookTitle = rc.bookTitle || bookTitle;
     exams.push({ id: data[i][0], title: data[i][1], label: rc.label || data[i][1], unit: rc.unit || '', unitName: rc.unitName || '', tag: rc.tag || '', order: Number(rc.order) || i, count: examAnswers_(data[i]).length });
   }
@@ -980,6 +982,28 @@ function actionUpdateExamTitle_(p) {
   } finally { lock.releaseLock(); }
   return { ok: true, title: nt, renamedQuestions: n };
 }
+// 이미 있던 단원 시험을 다른 교재 파일(교재 QR 합본)에서 다시 쓸 때, 그 교재 번호를 시험에 덧붙여 둔다. 그래야 새 합본의 「여러 단원 한꺼번에 채점」 QR에서도 이 단원이 보인다. 원래 교재 QR은 그대로 동작한다.
+function actionLinkBook_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const book = String(p.book || '').trim(); if (!book) return { ok: false, error: '교재 번호가 없어요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
+  const ids = (p.ids || []).map(String), lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  let n = 0;
+  try {
+    ids.forEach(function (id) {
+      const found = findExamRow_(exams, id); if (!found) return;
+      const rc = safeJson_(found.row[8], null); if (!rc || !rc.book) return;
+      if (String(rc.book) === book) return;
+      const bs = (rc.books || []).map(String); if (bs.indexOf(book) >= 0) return;
+      bs.push(book); rc.books = bs;
+      exams.getRange(found.rowIndex, 9).setValue(JSON.stringify(rc)); n++;
+    });
+  } finally { lock.releaseLock(); }
+  if (n) bustCache_();
+  return { ok: true, linked: n };
+}
+
 function actionUpdateExamAnswers_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
