@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150001">
+<link rel="stylesheet" href="css/style.css?v=202611150021">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -71,10 +71,13 @@
         <option value="none">동그라미·해설 없이 교재 원본 그대로 + QR (가장 빨라요)</option>
       </select>
       <label class="field-label-spaced"><input type="checkbox" id="new-cover"> <b>표지를 새로 만들기</b> — 체크하면 교재의 첫 쪽(표지)을 학년 색깔의 새 표지로 바꿔요. 체크 안 하면 교재 표지를 그대로 써요</label>
-      <div class="field-label-spaced" id="cover-design-box" style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
-        <div><b>표지 도안</b> — 새 표지를 만들 때 쓸 배경 무늬예요. '자동'은 학년·교재 종류에 맞춰 골라요.<br>
-          <select id="cover-design" style="margin-top:6px"><option value="auto">자동 (학년·종류에 맞춰)</option><option value="mol">분자 · 플라스크</option><option value="atom">원자</option><option value="dna">DNA</option><option value="hex">육각 격자</option><option value="tubes">시험관</option><option value="circuit">전기 회로</option><option value="planet">행성</option><option value="ripple">물결 · 별자리</option><option value="star">별자리</option></select></div>
-        <canvas id="cover-preview" width="150" height="212" style="border:1px solid #d6dbe6;border-radius:8px"></canvas>
+      <div class="field-label-spaced" id="cover-design-box" style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+        <div style="min-width:260px"><b>표지 도안·색</b> — 새 표지를 만들 때 쓰는 배경 무늬와 색이에요. '자동'은 학년·교재 종류에 맞춰 골라요.<br>
+          <div style="margin-top:6px">도안 <select id="cover-design"><option value="auto">자동 (학년·종류에 맞춰)</option><option value="mol">분자 · 플라스크</option><option value="atom">원자</option><option value="dna">DNA</option><option value="hex">육각 격자</option><option value="tubes">시험관</option><option value="circuit">전기 회로</option><option value="planet">행성</option><option value="ripple">물결 · 별자리</option><option value="star">별자리</option></select></div>
+          <div style="margin-top:6px">색 <select id="cover-color"><option value="">자동 (학년색)</option><option value="pink">분홍</option><option value="blue">파랑</option><option value="purple">보라</option><option value="teal">청록</option><option value="orange">주황</option><option value="green">초록</option><option value="navy">남색</option><option value="red">빨강</option></select></div>
+          <div style="margin-top:10px"><button type="button" id="cover-confirm" class="btn" style="padding:7px 14px">✔ 이 표지로 확정</button> <span id="cover-confirm-msg" class="muted" style="margin-left:6px">아직 확정 전이에요 (오른쪽 미리보기를 보고 눌러 주세요)</span></div>
+        </div>
+        <canvas id="cover-preview" width="260" height="368" style="border:1px solid #d6dbe6;border-radius:10px;box-shadow:0 2px 10px rgba(20,30,60,.12)"></canvas>
       </div>
       <label class="field-label-spaced"><input type="checkbox" id="new-toc"> <b>목차를 새로 만들기</b> — 체크하면 교재에 있던 목차 쪽을 지우고 새 목차(눌러서 이동)를 넣어요. 체크 안 하면 교재 목차를 그대로 써요(목차가 없는 교재는 자동으로 만들어요)</label>
       <label class="field-label-spaced"><input type="checkbox" id="multi-qr" checked> 목차 쪽에 「여러 단원 한꺼번에 채점」 QR도 찍기</label>
@@ -86,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150001"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150001"></script>
-<script src="js/vendor/pdf.min.js?v=202611150001"></script>
-<script src="js/config.js?v=202611150001"></script>
-<script src="js/api.js?v=202611150001"></script>
-<script src="js/common.js?v=202611150001"></script>
-<script src="js/bankcore.js?v=202611150001"></script>
-<script src="js/pdfui.js?v=202611150001"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150021"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150021"></script>
+<script src="js/vendor/pdf.min.js?v=202611150021"></script>
+<script src="js/config.js?v=202611150021"></script>
+<script src="js/api.js?v=202611150021"></script>
+<script src="js/common.js?v=202611150021"></script>
+<script src="js/bankcore.js?v=202611150021"></script>
+<script src="js/pdfui.js?v=202611150021"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -145,18 +148,30 @@ function addPageLink(pdf, fromIdx, rect, toIdx) {
 // at = 목차를 끼울 자리(0이면 맨 앞, 1이면 표지 뒤). 끼운 자리 뒤의 쪽 번호만 nIns만큼 밀린다.
 // 학년별 색깔의 새 표지 (한 쪽, 그림으로 만들어 첫 쪽에 올린다)
 
-// 표지 도안 미리보기
+// 표지 도안 미리보기와 최종 확정
+let coverConfirmed = false;
+function setCoverConfirmed(v) {
+  coverConfirmed = v; const m = $('cover-confirm-msg'), b = $('cover-confirm');
+  if (m) m.textContent = v ? '✅ 확정됐어요: ' + $('cover-design').selectedOptions[0].textContent + ' · ' + $('cover-color').selectedOptions[0].textContent : '아직 확정 전이에요 (오른쪽 미리보기를 보고 눌러 주세요)';
+  if (b) b.textContent = v ? '✔ 확정됨 (바꾸면 다시 확정해야 해요)' : '✔ 이 표지로 확정';
+}
 function drawCoverPreview() {
   try {
     const cvp = $('cover-preview'); if (!cvp) return;
     const nm = ($('book-name').value || '').trim() || (typeof bookFileName === 'string' ? bookFileName : '') || '중1 과학';
-    const big = coverCanvas(nm, [{ name: '단원', unit: 'IV', unitName: '단원 이름', order: 0 }, { name: '단원', unit: 'V', unitName: '단원 이름', order: 1 }], 595, 842, $('cover-design').value);
+    const big = coverCanvas(nm, [{ name: '단원', unit: 'IV', unitName: '단원 이름', order: 0 }, { name: '단원', unit: 'V', unitName: '단원 이름', order: 1 }], 595, 842, $('cover-design').value, $('cover-color').value);
     const c = cvp.getContext('2d'); c.clearRect(0, 0, cvp.width, cvp.height); c.drawImage(big, 0, 0, cvp.width, cvp.height);
   } catch (e) {}
 }
-document.addEventListener('DOMContentLoaded', () => { ['cover-design', 'book-name', 'new-cover'].forEach(id => { const e = $(id); if (e) e.addEventListener('input', drawCoverPreview); if (e) e.addEventListener('change', drawCoverPreview); }); drawCoverPreview(); });
+document.addEventListener('DOMContentLoaded', () => {
+  ['cover-design', 'cover-color', 'book-name'].forEach(id => { const e = $(id); if (!e) return; const f = () => { drawCoverPreview(); setCoverConfirmed(false); }; e.addEventListener('input', f); e.addEventListener('change', f); });
+  const nc = $('new-cover'); if (nc) nc.addEventListener('change', drawCoverPreview);
+  const cb = $('cover-confirm'); if (cb) cb.addEventListener('click', () => { drawCoverPreview(); setCoverConfirmed(true); });
+  drawCoverPreview();
+});
 
-function coverCanvas(bookName, secs, W, H, design) {
+const COVER_COLORS = { pink: ['#E4566D', '#FDEBEE', '#B93A50'], blue: ['#2F7BC0', '#E4F0FA', '#1D5A93'], purple: ['#7A55C2', '#EFE9FA', '#59399A'], teal: ['#139186', '#E0F4F1', '#0C6B62'], orange: ['#E8833A', '#FFF1E4', '#B8641F'], green: ['#2E9E5B', '#E3F5EA', '#1F7A44'], navy: ['#0B1F5C', '#E6EAF6', '#08153F'], red: ['#D63A3A', '#FDE8E8', '#A82626'] };
+function coverCanvas(bookName, secs, W, H, design, colorKey) {
   const K = 3, cv = document.createElement('canvas'); cv.width = Math.round(W * K); cv.height = Math.round(H * K);
   const x = cv.getContext('2d'); x.scale(K, K);
   const pal = /중\s*1/.test(bookName) ? { main: '#E4566D', soft: '#FDEBEE', deep: '#B93A50', grade: '중학교 1학년' }
@@ -164,6 +179,7 @@ function coverCanvas(bookName, secs, W, H, design) {
     : /중\s*3/.test(bookName) ? { main: '#7A55C2', soft: '#EFE9FA', deep: '#59399A', grade: '중학교 3학년' }
     : /고\s*1|공통|통합/.test(bookName) ? { main: '#139186', soft: '#E0F4F1', deep: '#0C6B62', grade: '고등학교 1학년' }
     : { main: '#0B1F5C', soft: '#E6EAF6', deep: '#08153F', grade: '' };
+  if (colorKey && COVER_COLORS[colorKey]) { const cc = COVER_COLORS[colorKey]; pal.main = cc[0]; pal.soft = cc[1]; pal.deep = cc[2]; }
   // 교재 종류(파일 이름에서 읽음): 종류마다 이름·색을 달리한다
   const typeMap = [[/보충/, '보충', { '중1': ['#F08A3C', '#FFF1E4', '#C2631F'], '중2': ['#14A3A3', '#E1F5F5', '#0B7A7A'], '중3': ['#C2459B', '#FBE9F4', '#97307A'], '고': ['#D9822B', '#FDF0E0', '#A8631A'] }], [/심화/, '심화', { '중1': ['#8A4FD0', '#F0E8FB', '#6A35AA'], '중2': ['#1F8F5F', '#E2F5EC', '#146C47'], '중3': ['#D6553A', '#FDEAE5', '#A83E27'], '고': ['#3B5BDB', '#E7ECFD', '#2742A8'] }], [/기출/, '기출', {}], [/개념|기본/, '개념', {}]];
   const tm = typeMap.find(m => m[0].test(bookName)), typeLabel = tm ? tm[1] : '내신대비';
@@ -529,6 +545,7 @@ $('go-btn').addEventListener('click', async () => {
   const chosen = sections.filter(s => s.on || isEssay(s));      // 서술형 단원은 체크와 상관없이 강사용에 해설만 붙인다 (시험·QR은 만들지 않음)
   const regList = chosen.filter(s => !isEssay(s));
   if (!regList.length) { alert('등록할 단원을 선택해 주세요.'); return; }
+  if ($('new-cover').checked && !coverConfirmed) { alert('새 표지를 만들도록 체크하셨어요.\n표지 미리보기를 보고 "✔ 이 표지로 확정" 버튼을 먼저 눌러 주세요.'); const bx = $('cover-design-box'); if (bx) bx.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   const bad = regList.filter(s => rowIssue(s));
   if (bad.length) { alert('정답을 확인해야 하는 단원이 있어요:\n' + bad.slice(0, 8).map(s => '· ' + secTitle(s) + ' (' + rowIssue(s) + ')').join('\n') + '\n\n표의 정답 칸에서 고치거나, 그 단원은 선택을 빼 주세요.'); return; }
   if (!confirm(regList.length + '개 단원을 시험으로 등록하고 QR 합본 PDF를 만들까요?\n(이미 같은 이름으로 등록된 단원은 새로 만들지 않고 그 시험의 QR을 써요)')) return;
@@ -802,7 +819,7 @@ $('go-btn').addEventListener('click', async () => {
       let coverDone = false;
       if ($('new-cover').checked && isFinite(firstQ) && firstQ > 1) {        // 첫 쪽(표지)을 새 표지로 바꾼다 (쪽 수는 그대로)
         try {
-          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, chosen.slice().sort((a, b) => a.order - b.order), ref.width, ref.height, $('cover-design').value);
+          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, chosen.slice().sort((a, b) => a.order - b.order), ref.width, ref.height, $('cover-design').value, $('cover-color').value);
           const png = await doc.embedPng(cvs.toDataURL('image/png')), np = doc.insertPage(0, [ref.width, ref.height]);
           np.drawImage(png, { x: 0, y: 0, width: ref.width, height: ref.height }); doc.removePage(1); coverDone = true;
         } catch (e) { console.warn('cover', e); }
