@@ -257,7 +257,7 @@ function unitKey(q) { return q.grade ? q.grade + ' · ' + q.unit : String(q.unit
 function isPastExam(q) { return q && q.kind === '기출'; }
 function isBookQ(q) { return q && q.kind === '교재'; }
 // 교재 문제의 교재 이름: 출처 「교재이름 4-1. 단원이름 최다빈출공략」에서 소단원 번호 앞부분
-function bookNameOf(q) { const s = String(q.source || ''), m = s.match(/^(.*?)\s+\d{1,2}(?:\s*-\s*\d)?\s*\.\s/); return ((m ? m[1] : s) || '').trim() || '(교재 이름 없음)'; }
+function bookNameOf(q) { const s = String(q.source || ''), m = s.match(/^(.*?)\s*\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*\.(?!\d)/); return ((m ? m[1] : s) || '').trim() || '(교재 이름 없음)'; }
 // "1단원" < "2단원" < "10단원", "4-1." < "4-2." 처럼 숫자를 숫자답게 정렬
 function naturalCompare(a, b) { return String(a).localeCompare(String(b), 'ko', { numeric: true }); }
 

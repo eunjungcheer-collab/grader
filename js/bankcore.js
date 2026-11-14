@@ -1497,11 +1497,12 @@
   // 문항 그림에 붙일 꼬리표 글자: 기출문제면 "학교·시험 이름 기출", 아니면 빈 글자
   // 교재 문제 배지: "중1 교재 4-1 최다빈출" (학년 + 교재 + 소단원 번호 + 종류). 출처 이름은 「교재이름 4-1. 단원이름 최다빈출공략」 모양.
   function bookTagText(q) {
-    const src = String(q.source || ''), gm = String(q.grade || '').match(/(중|고)\s*([123])/) || src.match(/(중|고)\s*([123])/);
-    const um = src.match(/(?:^|\s)(\d{1,2}(?:\s*-\s*\d)?)\s*\.\s/), tm = src.match(/(최다빈출|최다오답|최상위|서술형|핵심빈출)/);
+    const src = String(q.source || ''), bm = src.match(/^(.*?)\s*\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*\.(?!\d)/);
+    const book = ((bm ? bm[1] : '') || '').trim();
+    const um = src.match(/(?:^|\s)(\d{1,2}(?:\s*-\s*\d{1,2}){0,2})\s*\.(?!\d)/), tm = src.match(/(최다빈출|최다오답|최상위|서술형|핵심빈출|수준별기본|수준별발전|자료분석유형)/);
     let unit = um ? um[1].replace(/\s/g, '') : '';
     if (unit && !/-/.test(unit)) unit += '단원';
-    return [gm ? gm[1] + gm[2] : '', '교재', unit, tm ? tm[1] : ''].filter(Boolean).join(' ');
+    return [book || '교재', unit, tm ? tm[1] : ''].filter(Boolean).join(' ');
   }
   function pastTagText(q) {
     if (q && q.kind === '교재') return bookTagText(q);
