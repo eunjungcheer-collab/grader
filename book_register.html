@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611142351">
+<link rel="stylesheet" href="css/style.css?v=202611150001">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -71,6 +71,11 @@
         <option value="none">동그라미·해설 없이 교재 원본 그대로 + QR (가장 빨라요)</option>
       </select>
       <label class="field-label-spaced"><input type="checkbox" id="new-cover"> <b>표지를 새로 만들기</b> — 체크하면 교재의 첫 쪽(표지)을 학년 색깔의 새 표지로 바꿔요. 체크 안 하면 교재 표지를 그대로 써요</label>
+      <div class="field-label-spaced" id="cover-design-box" style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+        <div><b>표지 도안</b> — 새 표지를 만들 때 쓸 배경 무늬예요. '자동'은 학년·교재 종류에 맞춰 골라요.<br>
+          <select id="cover-design" style="margin-top:6px"><option value="auto">자동 (학년·종류에 맞춰)</option><option value="mol">분자 · 플라스크</option><option value="atom">원자</option><option value="dna">DNA</option><option value="hex">육각 격자</option><option value="tubes">시험관</option><option value="circuit">전기 회로</option><option value="planet">행성</option><option value="ripple">물결 · 별자리</option><option value="star">별자리</option></select></div>
+        <canvas id="cover-preview" width="150" height="212" style="border:1px solid #d6dbe6;border-radius:8px"></canvas>
+      </div>
       <label class="field-label-spaced"><input type="checkbox" id="new-toc"> <b>목차를 새로 만들기</b> — 체크하면 교재에 있던 목차 쪽을 지우고 새 목차(눌러서 이동)를 넣어요. 체크 안 하면 교재 목차를 그대로 써요(목차가 없는 교재는 자동으로 만들어요)</label>
       <label class="field-label-spaced"><input type="checkbox" id="multi-qr" checked> 목차 쪽에 「여러 단원 한꺼번에 채점」 QR도 찍기</label>
       <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 QR 합본 PDF 만들기</button>
@@ -81,14 +86,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611142351"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611142351"></script>
-<script src="js/vendor/pdf.min.js?v=202611142351"></script>
-<script src="js/config.js?v=202611142351"></script>
-<script src="js/api.js?v=202611142351"></script>
-<script src="js/common.js?v=202611142351"></script>
-<script src="js/bankcore.js?v=202611142351"></script>
-<script src="js/pdfui.js?v=202611142351"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150001"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150001"></script>
+<script src="js/vendor/pdf.min.js?v=202611150001"></script>
+<script src="js/config.js?v=202611150001"></script>
+<script src="js/api.js?v=202611150001"></script>
+<script src="js/common.js?v=202611150001"></script>
+<script src="js/bankcore.js?v=202611150001"></script>
+<script src="js/pdfui.js?v=202611150001"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -139,7 +144,19 @@ function addPageLink(pdf, fromIdx, rect, toIdx) {
 // 목차가 없는 교재: 표지 바로 뒤(표지가 없으면 맨 앞)에 목차 쪽을 새로 만들어 끼운다 (단원 이름 · 문제 쪽 · 정답 쪽). 끼운 쪽 수를 돌려준다.
 // at = 목차를 끼울 자리(0이면 맨 앞, 1이면 표지 뒤). 끼운 자리 뒤의 쪽 번호만 nIns만큼 밀린다.
 // 학년별 색깔의 새 표지 (한 쪽, 그림으로 만들어 첫 쪽에 올린다)
-function coverCanvas(bookName, secs, W, H) {
+
+// 표지 도안 미리보기
+function drawCoverPreview() {
+  try {
+    const cvp = $('cover-preview'); if (!cvp) return;
+    const nm = ($('book-name').value || '').trim() || (typeof bookFileName === 'string' ? bookFileName : '') || '중1 과학';
+    const big = coverCanvas(nm, [{ name: '단원', unit: 'IV', unitName: '단원 이름', order: 0 }, { name: '단원', unit: 'V', unitName: '단원 이름', order: 1 }], 595, 842, $('cover-design').value);
+    const c = cvp.getContext('2d'); c.clearRect(0, 0, cvp.width, cvp.height); c.drawImage(big, 0, 0, cvp.width, cvp.height);
+  } catch (e) {}
+}
+document.addEventListener('DOMContentLoaded', () => { ['cover-design', 'book-name', 'new-cover'].forEach(id => { const e = $(id); if (e) e.addEventListener('input', drawCoverPreview); if (e) e.addEventListener('change', drawCoverPreview); }); drawCoverPreview(); });
+
+function coverCanvas(bookName, secs, W, H, design) {
   const K = 3, cv = document.createElement('canvas'); cv.width = Math.round(W * K); cv.height = Math.round(H * K);
   const x = cv.getContext('2d'); x.scale(K, K);
   const pal = /중\s*1/.test(bookName) ? { main: '#E4566D', soft: '#FDEBEE', deep: '#B93A50', grade: '중학교 1학년' }
@@ -157,20 +174,49 @@ function coverCanvas(bookName, secs, W, H) {
   x.fillStyle = pal.main; x.globalAlpha = 0.08; x.beginPath(); x.arc(W * 0.92, H * 0.12, 190, 0, 7); x.fill(); x.beginPath(); x.arc(W * 0.05, H * 0.62, 120, 0, 7); x.fill(); x.globalAlpha = 1;
   // 배경 무늬: 학년마다 다른 과학 그림 (선만 아주 연하게)
   const kind = /중\s*1/.test(bookName) ? 1 : /중\s*2/.test(bookName) ? 2 : /중\s*3/.test(bookName) ? 3 : /고\s*1|공통|통합/.test(bookName) ? 4 : 0;
+  const A = v => Math.min(0.75, v * 2.1), LW = v => v * 1.5;      // 무늬를 눈에 보이게 진하게
   x.save(); x.strokeStyle = pal.main; x.fillStyle = pal.main; x.lineCap = 'round'; x.lineJoin = 'round';
   const hexP = (cx, cy, r) => { x.beginPath(); for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i + Math.PI / 6; x[i ? 'lineTo' : 'moveTo'](cx + r * Math.cos(a), cy + r * Math.sin(a)); } x.closePath(); x.stroke(); };
   const dot = (cx, cy, r) => { x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); };
   const orbit = (cx, cy, rx, ry, rot) => { x.beginPath(); x.ellipse(cx, cy, rx, ry, rot, 0, 7); x.stroke(); };
-  const atom = (cx, cy, s) => { x.globalAlpha = 0.2; x.lineWidth = 1.4; for (let k = 0; k < 3; k++) orbit(cx, cy, s, s * 0.36, Math.PI / 3 * k); x.globalAlpha = 0.3; dot(cx, cy, s * 0.1); [[0.9, 0.2], [-0.55, 0.65], [-0.3, -0.85]].forEach(e => dot(cx + e[0] * s * 0.95, cy + e[1] * s * 0.34, s * 0.055)); };
-  const molecule = (cx, cy, r) => { x.globalAlpha = 0.2; x.lineWidth = 1.5; const dx = r * Math.sqrt(3); hexP(cx, cy, r); hexP(cx + dx, cy, r); hexP(cx + dx / 2, cy + r * 1.5, r); x.globalAlpha = 0.32; [[cx, cy - r], [cx + dx, cy - r], [cx + dx * 1.5, cy + r * 0.5], [cx - dx / 2, cy + r * 0.5], [cx + dx / 2, cy + r * 2.5]].forEach(q => dot(q[0], q[1], r * 0.14)); };
-  const helix = (cx, y0, y1, amp, wl) => { x.globalAlpha = 0.2; x.lineWidth = 1.6; [0, Math.PI].forEach(ph => { x.beginPath(); for (let y = y0; y <= y1; y += 3) { const xx = cx + amp * Math.sin((y - y0) / wl * 2 * Math.PI + ph); x[y === y0 ? 'moveTo' : 'lineTo'](xx, y); } x.stroke(); }); x.lineWidth = 1; for (let y = y0; y <= y1; y += wl / 6) { const a1 = cx + amp * Math.sin((y - y0) / wl * 2 * Math.PI), a2 = cx - (a1 - cx); x.beginPath(); x.moveTo(a1, y); x.lineTo(a2, y); x.stroke(); } };
-  const wave = (y0, amp, wl, x0, x1, n) => { for (let k = 0; k < n; k++) { x.globalAlpha = 0.2 - k * 0.04; x.lineWidth = 1.5; x.beginPath(); for (let xx = x0; xx <= x1; xx += 3) { const yy = y0 + k * 14 + amp * Math.sin((xx - x0) / wl * 2 * Math.PI + k * 0.6); x[xx === x0 ? 'moveTo' : 'lineTo'](xx, yy); } x.stroke(); } };
-  const flask = (cx, cy, s) => { x.globalAlpha = 0.22; x.lineWidth = 1.6; x.beginPath(); x.moveTo(cx - s * 0.18, cy - s * 0.5); x.lineTo(cx - s * 0.18, cy - s * 0.1); x.lineTo(cx - s * 0.5, cy + s * 0.5); x.quadraticCurveTo(cx - s * 0.55, cy + s * 0.6, cx - s * 0.4, cy + s * 0.6); x.lineTo(cx + s * 0.4, cy + s * 0.6); x.quadraticCurveTo(cx + s * 0.55, cy + s * 0.6, cx + s * 0.5, cy + s * 0.5); x.lineTo(cx + s * 0.18, cy - s * 0.1); x.lineTo(cx + s * 0.18, cy - s * 0.5); x.stroke(); x.beginPath(); x.moveTo(cx - s * 0.26, cy - s * 0.5); x.lineTo(cx + s * 0.26, cy - s * 0.5); x.stroke(); x.beginPath(); x.moveTo(cx - s * 0.34, cy + s * 0.25); x.lineTo(cx + s * 0.34, cy + s * 0.25); x.stroke(); x.globalAlpha = 0.3; dot(cx - s * 0.1, cy + s * 0.4, s * 0.05); dot(cx + s * 0.12, cy + s * 0.33, s * 0.035); dot(cx + s * 0.02, cy + s * 0.5, s * 0.03); };
-  const grid = (x0, y0, cols, rows, r) => { x.globalAlpha = 0.14; x.lineWidth = 1.2; const dx = r * Math.sqrt(3); for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) hexP(x0 + i * dx + (j % 2 ? dx / 2 : 0), y0 + j * r * 1.5, r); };
-  const stars = (pts) => { x.globalAlpha = 0.3; pts.forEach(q => dot(q[0], q[1], q[2])); };
-  if (kind === 1) { molecule(W * 0.64, H * 0.05, 34); flask(W * 0.86, H * 0.2, 90); wave(H * 0.9, 9, 120, 0, W, 3); stars([[W * 0.55, H * 0.2, 2.5], [W * 0.93, H * 0.08, 2], [W * 0.1, H * 0.78, 2.5]]); }
-  else if (kind === 2) { atom(W * 0.78, H * 0.13, 110); atom(W * 0.12, H * 0.8, 62); wave(H * 0.92, 10, 150, 0, W, 3); stars([[W * 0.5, H * 0.08, 2.5], [W * 0.95, H * 0.3, 2], [W * 0.3, H * 0.74, 2]]); }
-  else if (kind === 3) { helix(W * 0.86, 20, 240, 26, 110); helix(W * 0.12, H * 0.74, H * 0.74 + 150, 18, 80); wave(H * 0.9, 8, 130, 0, W, 3); stars([[W * 0.7, H * 0.06, 2.5], [W * 0.62, H * 0.2, 2], [W * 0.08, H * 0.7, 2.5]]); }
+  const atom = (cx, cy, s) => { x.globalAlpha = A(0.2); x.lineWidth = LW(1.4); for (let k = 0; k < 3; k++) orbit(cx, cy, s, s * 0.36, Math.PI / 3 * k); x.globalAlpha = A(0.3); dot(cx, cy, s * 0.1); [[0.9, 0.2], [-0.55, 0.65], [-0.3, -0.85]].forEach(e => dot(cx + e[0] * s * 0.95, cy + e[1] * s * 0.34, s * 0.055)); };
+  const molecule = (cx, cy, r) => { x.globalAlpha = A(0.2); x.lineWidth = LW(1.5); const dx = r * Math.sqrt(3); hexP(cx, cy, r); hexP(cx + dx, cy, r); hexP(cx + dx / 2, cy + r * 1.5, r); x.globalAlpha = A(0.32); [[cx, cy - r], [cx + dx, cy - r], [cx + dx * 1.5, cy + r * 0.5], [cx - dx / 2, cy + r * 0.5], [cx + dx / 2, cy + r * 2.5]].forEach(q => dot(q[0], q[1], r * 0.14)); };
+  const helix = (cx, y0, y1, amp, wl) => { x.globalAlpha = A(0.2); x.lineWidth = LW(1.6); [0, Math.PI].forEach(ph => { x.beginPath(); for (let y = y0; y <= y1; y += 3) { const xx = cx + amp * Math.sin((y - y0) / wl * 2 * Math.PI + ph); x[y === y0 ? 'moveTo' : 'lineTo'](xx, y); } x.stroke(); }); x.lineWidth = LW(1); for (let y = y0; y <= y1; y += wl / 6) { const a1 = cx + amp * Math.sin((y - y0) / wl * 2 * Math.PI), a2 = cx - (a1 - cx); x.beginPath(); x.moveTo(a1, y); x.lineTo(a2, y); x.stroke(); } };
+  const wave = (y0, amp, wl, x0, x1, n) => { for (let k = 0; k < n; k++) { x.globalAlpha = A(0.2 - k * 0.04); x.lineWidth = LW(1.5); x.beginPath(); for (let xx = x0; xx <= x1; xx += 3) { const yy = y0 + k * 14 + amp * Math.sin((xx - x0) / wl * 2 * Math.PI + k * 0.6); x[xx === x0 ? 'moveTo' : 'lineTo'](xx, yy); } x.stroke(); } };
+  const flask = (cx, cy, s) => { x.globalAlpha = A(0.22); x.lineWidth = LW(1.6); x.beginPath(); x.moveTo(cx - s * 0.18, cy - s * 0.5); x.lineTo(cx - s * 0.18, cy - s * 0.1); x.lineTo(cx - s * 0.5, cy + s * 0.5); x.quadraticCurveTo(cx - s * 0.55, cy + s * 0.6, cx - s * 0.4, cy + s * 0.6); x.lineTo(cx + s * 0.4, cy + s * 0.6); x.quadraticCurveTo(cx + s * 0.55, cy + s * 0.6, cx + s * 0.5, cy + s * 0.5); x.lineTo(cx + s * 0.18, cy - s * 0.1); x.lineTo(cx + s * 0.18, cy - s * 0.5); x.stroke(); x.beginPath(); x.moveTo(cx - s * 0.26, cy - s * 0.5); x.lineTo(cx + s * 0.26, cy - s * 0.5); x.stroke(); x.beginPath(); x.moveTo(cx - s * 0.34, cy + s * 0.25); x.lineTo(cx + s * 0.34, cy + s * 0.25); x.stroke(); x.globalAlpha = A(0.3); dot(cx - s * 0.1, cy + s * 0.4, s * 0.05); dot(cx + s * 0.12, cy + s * 0.33, s * 0.035); dot(cx + s * 0.02, cy + s * 0.5, s * 0.03); };
+  const grid = (x0, y0, cols, rows, r) => { x.globalAlpha = A(0.14); x.lineWidth = LW(1.2); const dx = r * Math.sqrt(3); for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) hexP(x0 + i * dx + (j % 2 ? dx / 2 : 0), y0 + j * r * 1.5, r); };
+  const stars = (pts) => { x.globalAlpha = A(0.3); pts.forEach(q => dot(q[0], q[1], q[2])); };
+  const tubes = (cx, cy, s) => { x.lineWidth = LW(1.6); [[-1, 1.0, 0.55], [0, 1.25, 0.4], [1, 0.9, 0.7]].forEach(q => { const tx = cx + q[0] * s * 0.42, top = cy - s * 0.5, bot = cy + s * q[1] * 0.5; x.globalAlpha = A(0.22); x.beginPath(); x.moveTo(tx - s * 0.13, top); x.lineTo(tx - s * 0.13, bot - s * 0.13); x.arc(tx, bot - s * 0.13, s * 0.13, Math.PI, 0, true); x.lineTo(tx + s * 0.13, top); x.stroke(); x.beginPath(); x.moveTo(tx - s * 0.17, top); x.lineTo(tx + s * 0.17, top); x.stroke(); x.globalAlpha = A(0.14); x.fillRect(tx - s * 0.11, bot - s * q[2] * 0.4, s * 0.22, s * q[2] * 0.4 - s * 0.01); }); x.globalAlpha = A(0.25); x.beginPath(); x.moveTo(cx - s * 0.75, cy + s * 0.78); x.lineTo(cx + s * 0.75, cy + s * 0.78); x.stroke(); };
+  const circuit = (cx, cy, s) => { x.globalAlpha = A(0.22); x.lineWidth = LW(1.6); x.strokeRect(cx - s * 0.6, cy - s * 0.4, s * 1.2, s * 0.8); x.fillStyle = '#fff'; x.fillRect(cx - s * 0.16, cy - s * 0.46, s * 0.32, s * 0.12); x.beginPath(); x.arc(cx, cy + s * 0.4, s * 0.2, 0, 7); x.fillStyle = pal.main; x.globalAlpha = A(0.08); x.fill(); x.globalAlpha = A(0.25); x.stroke(); x.beginPath(); x.moveTo(cx - s * 0.1, cy + s * 0.5); x.lineTo(cx, cy + s * 0.3); x.lineTo(cx + s * 0.1, cy + s * 0.5); x.stroke(); x.fillStyle = pal.main; x.globalAlpha = A(0.32); dot(cx - s * 0.6, cy - s * 0.4, 4); dot(cx + s * 0.6, cy - s * 0.4, 4); dot(cx - s * 0.6, cy + s * 0.4, 4); dot(cx + s * 0.6, cy + s * 0.4, 4); x.globalAlpha = A(0.18); for (let k = 1; k <= 3; k++) { x.beginPath(); x.arc(cx + s * 0.95, cy - s * 0.15, s * 0.14 * k, -Math.PI / 2.2, Math.PI / 2.2); x.stroke(); } };
+  const planet = (cx, cy, s) => { x.globalAlpha = A(0.2); x.lineWidth = LW(1.6); x.beginPath(); x.arc(cx, cy, s * 0.42, 0, 7); x.stroke(); x.globalAlpha = A(0.1); x.fill(); x.globalAlpha = A(0.24); x.lineWidth = LW(1.6); orbit(cx, cy, s * 0.85, s * 0.2, -0.35); x.globalAlpha = A(0.14); x.lineWidth = LW(1); orbit(cx, cy, s * 0.95, s * 0.25, -0.35); x.globalAlpha = A(0.3); dot(cx + s * 0.78, cy - s * 0.38, s * 0.04); };
+  const constel = (pts) => { x.globalAlpha = A(0.2); x.lineWidth = LW(1.2); x.beginPath(); pts.forEach((q, i) => x[i ? 'lineTo' : 'moveTo'](q[0], q[1])); x.stroke(); x.globalAlpha = A(0.34); pts.forEach(q => dot(q[0], q[1], 3.2)); };
+  const ripples = (cx, cy, r0, n, gap) => { x.lineWidth = LW(1.4); for (let k = 0; k < n; k++) { x.globalAlpha = A(0.2 - k * 0.025); x.beginPath(); x.arc(cx, cy, r0 + k * gap, 0, 7); x.stroke(); } };
+  const tk = typeLabel === '보충' ? 1 : typeLabel === '심화' ? 2 : 0;
+  const DSG = design && design !== 'auto' ? design : '';
+  if (DSG) {
+    if (DSG === 'mol') { molecule(W * 0.64, H * 0.05, 34); flask(W * 0.86, H * 0.2, 90); }
+    else if (DSG === 'atom') { atom(W * 0.78, H * 0.13, 110); atom(W * 0.12, H * 0.8, 62); }
+    else if (DSG === 'dna') { helix(W * 0.86, 20, 240, 26, 110); helix(W * 0.12, H * 0.74, H * 0.74 + 150, 18, 80); }
+    else if (DSG === 'hex') { grid(W * 0.55, 18, 6, 6, 26); atom(W * 0.14, H * 0.8, 66); }
+    else if (DSG === 'tubes') { tubes(W * 0.8, H * 0.14, 120); constel([[W * 0.08, H * 0.74], [W * 0.17, H * 0.7], [W * 0.26, H * 0.76], [W * 0.33, H * 0.7]]); }
+    else if (DSG === 'circuit') { circuit(W * 0.78, H * 0.13, 110); planet(W * 0.14, H * 0.78, 70); }
+    else if (DSG === 'planet') { planet(W * 0.8, H * 0.14, 120); tubes(W * 0.13, H * 0.76, 80); }
+    else if (DSG === 'ripple') { ripples(W * 0.84, H * 0.14, 24, 6, 20); constel([[W * 0.56, H * 0.06], [W * 0.64, H * 0.1], [W * 0.7, H * 0.05], [W * 0.78, H * 0.09]]); planet(W * 0.14, H * 0.78, 80); }
+    else if (DSG === 'star') { constel([[W * 0.5, H * 0.07], [W * 0.62, H * 0.12], [W * 0.7, H * 0.06], [W * 0.82, H * 0.11], [W * 0.9, H * 0.19]]); constel([[W * 0.07, H * 0.72], [W * 0.18, H * 0.76], [W * 0.27, H * 0.7]]); ripples(W * 0.9, H * 0.19, 10, 3, 14); }
+    wave(H * 0.965, 6, 110, 0, W, 2); stars([[W * 0.5, H * 0.2, 2.5], [W * 0.95, H * 0.34, 2], [W * 0.3, H * 0.74, 2]]);
+  } else if (tk === 1) {
+    if (kind === 2) { circuit(W * 0.78, H * 0.13, 110); planet(W * 0.14, H * 0.78, 70); }
+    else if (kind === 3) { planet(W * 0.8, H * 0.14, 120); tubes(W * 0.13, H * 0.76, 80); }
+    else if (kind === 4) { tubes(W * 0.8, H * 0.13, 120); grid(W * 0.05, H * 0.7, 3, 3, 24); }
+    else { tubes(W * 0.8, H * 0.14, 120); constel([[W * 0.08, H * 0.74], [W * 0.17, H * 0.7], [W * 0.26, H * 0.76], [W * 0.33, H * 0.7]]); }
+    wave(H * 0.965, 6, 90, 0, W, 2); stars([[W * 0.5, H * 0.07, 2.5], [W * 0.95, H * 0.34, 2]]);
+  } else if (tk === 2) {
+    ripples(W * 0.84, H * 0.14, 24, 6, 20); constel([[W * 0.56, H * 0.06], [W * 0.64, H * 0.1], [W * 0.7, H * 0.05], [W * 0.78, H * 0.09]]);
+    planet(W * 0.14, H * 0.78, 80); stars([[W * 0.5, H * 0.2, 2.5], [W * 0.93, H * 0.36, 2]]);
+  } else
+  if (kind === 1) { molecule(W * 0.64, H * 0.05, 34); flask(W * 0.86, H * 0.2, 90); wave(H * 0.965, 6, 120, 0, W, 2); stars([[W * 0.55, H * 0.2, 2.5], [W * 0.93, H * 0.08, 2], [W * 0.1, H * 0.78, 2.5]]); }
+  else if (kind === 2) { atom(W * 0.78, H * 0.13, 110); atom(W * 0.12, H * 0.8, 62); wave(H * 0.965, 6, 150, 0, W, 2); stars([[W * 0.5, H * 0.08, 2.5], [W * 0.95, H * 0.3, 2], [W * 0.3, H * 0.74, 2]]); }
+  else if (kind === 3) { helix(W * 0.86, 20, 240, 26, 110); helix(W * 0.12, H * 0.74, H * 0.74 + 150, 18, 80); wave(H * 0.965, 6, 130, 0, W, 2); stars([[W * 0.7, H * 0.06, 2.5], [W * 0.62, H * 0.2, 2], [W * 0.08, H * 0.7, 2.5]]); }
   else if (kind === 4) { grid(W * 0.55, 18, 6, 6, 26); atom(W * 0.14, H * 0.8, 66); stars([[W * 0.5, H * 0.18, 2.5], [W * 0.93, H * 0.34, 2], [W * 0.35, H * 0.72, 2]]); }
   else { grid(W * 0.5, 20, 6, 5, 28); atom(W * 0.86, H * 0.2, 70); }
   x.restore(); x.globalAlpha = 1;
@@ -756,7 +802,7 @@ $('go-btn').addEventListener('click', async () => {
       let coverDone = false;
       if ($('new-cover').checked && isFinite(firstQ) && firstQ > 1) {        // 첫 쪽(표지)을 새 표지로 바꾼다 (쪽 수는 그대로)
         try {
-          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, chosen.slice().sort((a, b) => a.order - b.order), ref.width, ref.height);
+          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, chosen.slice().sort((a, b) => a.order - b.order), ref.width, ref.height, $('cover-design').value);
           const png = await doc.embedPng(cvs.toDataURL('image/png')), np = doc.insertPage(0, [ref.width, ref.height]);
           np.drawImage(png, { x: 0, y: 0, width: ref.width, height: ref.height }); doc.removePage(1); coverDone = true;
         } catch (e) { console.warn('cover', e); }
