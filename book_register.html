@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150610">
+<link rel="stylesheet" href="css/style.css?v=202611150700">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150610"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150610"></script>
-<script src="js/vendor/pdf.min.js?v=202611150610"></script>
-<script src="js/config.js?v=202611150610"></script>
-<script src="js/api.js?v=202611150610"></script>
-<script src="js/common.js?v=202611150610"></script>
-<script src="js/bankcore.js?v=202611150610"></script>
-<script src="js/pdfui.js?v=202611150610"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150700"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150700"></script>
+<script src="js/vendor/pdf.min.js?v=202611150700"></script>
+<script src="js/config.js?v=202611150700"></script>
+<script src="js/api.js?v=202611150700"></script>
+<script src="js/common.js?v=202611150700"></script>
+<script src="js/bankcore.js?v=202611150700"></script>
+<script src="js/pdfui.js?v=202611150700"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -419,8 +419,9 @@ $('read-btn').addEventListener('click', async () => {
           if (best.length >= 3) {
             const lo = best[0], hi = best[best.length - 1], base = lo > 3 ? lo - 1 : 0, N = hi - base;
             const inRange = s.rows.filter(r => r.n >= lo && r.n <= hi).length;
+            if (N > 0 && inRange >= N * 0.5) s.qRange = [lo, hi];       // 이 범위 밖 번호(그림 속 숫자 등)는 문제로 보지 않는다
             if (N > 0 && inRange >= N * 0.5 && N !== s.answers.length) {
-              s.base = base; s.answers = new Array(N).fill('?'); s.peek = {};
+              s.qRange = [lo, hi]; s.base = base; s.answers = new Array(N).fill('?'); s.peek = {};
               s.rows.forEach(r => { const k = r.n - base; if (k >= 1 && k <= N) { s.answers[k - 1] = r.d; if (r.rect) s.peek[k] = { p: r.p, rect: r.rect }; } });
             }
           }
@@ -644,6 +645,7 @@ $('go-btn').addEventListener('click', async () => {
     const bySig = {}; (ex.exams || []).forEach(e => { if (e.recipeLabel && e.ansSig) bySig[String(e.recipeLabel).trim() + '#' + String(e.ansSig).replace(/\s/g, '')] = e.id; });
     const sigOf = s => (s.name + ' ' + s.tag).trim() + '#' + s.answers.join(',').replace(/\s/g, '');
     let made = 0, reused = 0, next = 0, fail = null, bankQ = 0;
+    const uinfoR = unitInfoFor(sections);
     const ids = {}, bankWarn = [], teacherSkip = [];
     const toBank = $('to-bank').checked;
     msg('교재 PDF를 여는 중...');
@@ -691,6 +693,10 @@ $('go-btn').addEventListener('click', async () => {
             if (sq.questions.length > scan.questions.length) scan = sq;
           } catch (e) {}
         }
+      }
+      if (s.qRange && scan && scan.questions) {      // 문제 쪽에서 엉뚱하게 읽힌 번호(예: 1, 2)를 걸러 낸다
+        const kept0 = scan.questions.filter(q => q.num >= s.qRange[0] && q.num <= s.qRange[1]);
+        if (kept0.length >= Math.ceil(scan.questions.length * 0.5)) scan.questions = kept0;
       }
       unbase(scan, s);
       try { await BankCore.extendCutQuestions(doc, scan.questions); } catch (e) {}
@@ -777,7 +783,7 @@ $('go-btn').addEventListener('click', async () => {
         const res = await callApi('createExam', {
           password: getTeacherPassword(), id: id, title: title, answers: s.answers, filename: title,
           sourceQuestionIds: saved ? saved.map(x => x.id) : undefined, questionTexts: saved ? saved.map(x => x.text) : undefined,
-          composeRecipe: { book: bookId, bookTitle: ($('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '')), unit: s.unit, unitName: s.unitName, tag: s.tag, label: s.name + ' ' + s.tag, order: s.order, nums: nums },
+          composeRecipe: { book: bookId, bookTitle: ($('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '')), unit: uinfoR(s).no, unitName: uinfoR(s).name, tag: s.tag, label: s.name + ' ' + s.tag, order: s.order, nums: nums },
         });
         if (!res.ok) { fail = new Error(title + ': ' + (res.error || '등록 실패')); return; }
         ids[s.order] = id; made++;
