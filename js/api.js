@@ -267,6 +267,11 @@ async function renameBookFlow(oldN) {
     return true;
   } catch (e) { alert('교재 이름을 바꾸지 못했어요: ' + e.message + '\n(Apps Script를 새 버전으로 배포했는지 확인해 주세요)'); return false; }
 }
+// 오래 걸리는 삭제·변경 중에 창을 닫거나 이동하면 중간에 멈추므로, 그동안 나가려 하면 브라우저가 한 번 물어보게 한다
+let _busyN = 0;
+function _busyGuard(e) { e.preventDefault(); e.returnValue = ''; return ''; }
+function busyStart() { if (!_busyN++) window.addEventListener('beforeunload', _busyGuard); }
+function busyEnd() { if (_busyN > 0 && !--_busyN) window.removeEventListener('beforeunload', _busyGuard); }
 function isBookQ(q) { return q && q.kind === '교재'; }
 // 교재 문제의 교재 이름: 출처 「교재이름 4-1. 단원이름 최다빈출공략」에서 소단원 번호 앞부분
 function bookNameOf(q) { const s = String(q.source || ''), m = s.match(/^(.*?)\s*\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*\.(?!\d)/); return ((m ? m[1] : s) || '').trim() || '(교재 이름 없음)'; }

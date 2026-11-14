@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151040">
+<link rel="stylesheet" href="css/style.css?v=202611151100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -79,11 +79,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611151040"></script>
-<script src="js/api.js?v=202611151040"></script>
-<script src="js/common.js?v=202611151040"></script>
-<script src="js/bankcore.js?v=202611151040"></script>
-<script src="js/pdfui.js?v=202611151040"></script>
+<script src="js/config.js?v=202611151100"></script>
+<script src="js/api.js?v=202611151100"></script>
+<script src="js/common.js?v=202611151100"></script>
+<script src="js/bankcore.js?v=202611151100"></script>
+<script src="js/pdfui.js?v=202611151100"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -435,7 +435,7 @@ $('bulk-delete-btn').addEventListener('click', async () => {
   if (!ids.length) return;
   if (!confirm(ids.length + '개 문항을 한꺼번에 삭제할까요? 되돌릴 수 없어요.' + (ids.length > 50 ? '\n\n(' + ids.length + '개는 많아요. 정말 맞는지 한 번 더 확인하세요.)' : ''))) return;
   $('bulk-delete-btn').disabled = true;
-  $('bulk-delete-btn').textContent = '삭제 중...';
+  $('bulk-delete-btn').textContent = '삭제 중...'; busyStart();
   try {
     let done = 0;
     try {
@@ -448,7 +448,7 @@ $('bulk-delete-btn').addEventListener('click', async () => {
       }
     } finally { render(); }
   } catch (e) { alert('삭제 중 오류: ' + e.message); }
-  $('bulk-delete-btn').textContent = '선택 삭제';
+  busyEnd(); $('bulk-delete-btn').textContent = '선택 삭제'; $('bulk-delete-btn').disabled = false;
 });
 
 

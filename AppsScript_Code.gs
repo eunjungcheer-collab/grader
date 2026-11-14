@@ -1120,7 +1120,12 @@ function actionDeleteQuestions_(p) {
       if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
       if (explId) { try { DriveApp.getFileById(explId).setTrashed(true); } catch (e) {} }
     }
-    rowsToDelete.sort(function (a, b) { return b - a; }).forEach(function (r) { sheet.deleteRow(r); });
+    // 이어진 행은 한 번에 지운다 (한 줄씩 지우면 문항 수만큼 시트 호출이 일어나 매우 느리다)
+    rowsToDelete.sort(function (a, b) { return b - a; });
+    for (let k = 0; k < rowsToDelete.length; ) {
+      let m = k; while (m + 1 < rowsToDelete.length && rowsToDelete[m + 1] === rowsToDelete[m] - 1) m++;
+      sheet.deleteRows(rowsToDelete[m], m - k + 1); k = m + 1;
+    }
     return { ok: true, deleted: rowsToDelete.length };
   } finally {
     lock.releaseLock();

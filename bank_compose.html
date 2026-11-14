@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151040">
+<link rel="stylesheet" href="css/style.css?v=202611151100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611151040"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611151040"></script>
-<script src="js/config.js?v=202611151040"></script>
-<script src="js/api.js?v=202611151040"></script>
-<script src="js/common.js?v=202611151040"></script>
-<script src="js/bankcore.js?v=202611151040"></script>
-<script src="js/pdfui.js?v=202611151040"></script>
+<script src="js/vendor/qrcode.min.js?v=202611151100"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611151100"></script>
+<script src="js/config.js?v=202611151100"></script>
+<script src="js/api.js?v=202611151100"></script>
+<script src="js/common.js?v=202611151100"></script>
+<script src="js/bankcore.js?v=202611151100"></script>
+<script src="js/pdfui.js?v=202611151100"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -224,7 +224,7 @@ function renderBookFilter() {
     const names = Array.from(bookFilter), del = allQuestions.filter(q => isBookQ(q) && bookFilter.has(bookNameOf(q)));
     if (!del.length) return;
     if (!confirm('교재 ' + names.map(n => '"' + n + '"').join(', ') + '의 문제 ' + del.length + '개를 문제은행에서 삭제합니다.\n(이 문제로 등록된 시험지가 있으면 그 시험지의 PDF 다운로드가 안 될 수 있어요. 되돌릴 수 없어요.)\n계속할까요?')) return;
-    const b = $('bk-del'); b.disabled = true;
+    const b = $('bk-del'); b.disabled = true; busyStart();
     let done = 0;
     try {
       for (let i = 0; i < del.length; i += 40) {
@@ -233,6 +233,7 @@ function renderBookFilter() {
         done += chunk.length; b.textContent = '삭제 중... ' + done + '/' + del.length;
       }
     } catch (e) { alert('삭제 중 오류 (' + done + '개는 지워졌어요): ' + e.message); }
+    busyEnd();
     const gone = new Set(del.slice(0, done).map(q => q.id));
     for (let i = allQuestions.length - 1; i >= 0; i--) if (gone.has(allQuestions[i].id)) allQuestions.splice(i, 1);
     bookFilter.clear(); renderKindChips(); renderBookFilter(); renderUnits(); showAvail();
