@@ -226,6 +226,13 @@ function parseNumSet(text, max) {
   });
   return out;
 }
+// 교재 번호(예: 51번)로 적은 「안 푸는 문항」을 이 시험의 위치(1부터)로 바꾼다. nums가 없으면 그냥 1~count
+function parseNumSetLabeled(text, nums, count) {
+  if (!nums || !nums.length) return parseNumSet(text, count);
+  const mx = Math.max.apply(null, nums), want = parseNumSet(text, mx), out = new Set();
+  nums.forEach(function (n, i) { if (want.has(Number(n))) out.add(i + 1); });
+  return out;
+}
 // 화면에 보여줄 모양: "35" → "3, 5", "1/2" → "1 또는 2", "-" → "주관식"
 function fmtAnswer(a) {
   const n = normAnswer(a);

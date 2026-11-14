@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150310">
+<link rel="stylesheet" href="css/style.css?v=202611150340">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,9 +41,9 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611150310"></script>
-<script src="js/api.js?v=202611150310"></script>
-<script src="js/common.js?v=202611150310"></script>
+<script src="js/config.js?v=202611150340"></script>
+<script src="js/api.js?v=202611150340"></script>
+<script src="js/common.js?v=202611150340"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -51,6 +51,9 @@ const examId = new URLSearchParams(location.search).get('id');
 function escapeHtml(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 let answerCount = 0;
 let subjective = [];   // 주관식 문항 번호(1부터)
+let nums = null;       // 교재 번호(시험지에 찍힌 번호). 없으면 1부터
+const dn = i => (nums && nums[i] != null ? nums[i] : i + 1);
+const dnOf = k => dn(k - 1);
 let multi = [];        // 정답이 2개 이상인(복수 선택) 문항 번호(1부터)
 const isMulti = i => multi.indexOf(i + 1) >= 0;
 const isSub = i => subjective.indexOf(i + 1) >= 0;
@@ -84,11 +87,12 @@ async function loadExam() {
     answerCount = res.answerCount;
     subjective = res.subjective || [];
     multi = res.multi || [];
+    nums = (res.nums && res.nums.length === answerCount) ? res.nums : null;
     studentAnswers = new Array(answerCount).fill('');
 
     area.innerHTML = `
       <h1>${escapeHtml(res.title)}</h1>
-      <p class="muted">이름과 정답을 입력하고 제출하면 바로 채점돼요.${multi.length ? '<br><b>복수 선택(' + multi.join(', ') + '번)은 정답을 모두 골라야 해요.</b> 번호를 여러 개 눌러서 선택하고, 다시 누르면 취소돼요.' : ''}${subjective.length ? '<br><b>주관식(' + subjective.join(', ') + '번)은 회색으로 표시돼요.</b> 여기서 입력하지 않고 선생님이 따로 채점해요.' : ''}</p>
+      <p class="muted">이름과 정답을 입력하고 제출하면 바로 채점돼요.${multi.length ? '<br><b>복수 선택(' + multi.map(dnOf).join(', ') + '번)은 정답을 모두 골라야 해요.</b> 번호를 여러 개 눌러서 선택하고, 다시 누르면 취소돼요.' : ''}${subjective.length ? '<br><b>주관식(' + subjective.join(', ') + '번)은 회색으로 표시돼요.</b> 여기서 입력하지 않고 선생님이 따로 채점해요.' : ''}</p>
       ${res.book ? '<a class="btn outline" href="student_multi.html?book=' + encodeURIComponent(res.book) + '" style="width:100%; margin-bottom:10px;">📚 같은 교재의 다른 단원도 함께 채점하기</a>' : ''}
       <div class="sx-prog" id="sx-prog"><div class="row"><span id="sx-ptxt">답 입력 0 / 0</span><span id="sx-pleft" style="color:var(--muted);font-weight:600;"></span></div><div class="bar"><i id="sx-pbar"></i></div></div>
       <form id="answer-form" class="card">
@@ -107,13 +111,13 @@ async function loadExam() {
       const row = document.createElement('div');
       if (isSub(i)) {
         row.className = 'qrow is-sub';
-        row.innerHTML = `<span class="qnum">${i + 1}</span><span class="sub-note">주관식 · 입력하지 않아요 (선생님이 채점)</span>`;
+        row.innerHTML = `<span class="qnum">${dn(i)}</span><span class="sub-note">주관식 · 입력하지 않아요 (선생님이 채점)</span>`;
         grid.appendChild(row);
         continue;
       }
       row.className = 'qrow';
       row.innerHTML = `
-        <span class="qnum">${i + 1}</span>
+        <span class="qnum">${dn(i)}</span>
         <div class="ans-btns">
           ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="ans-btn" data-q="${i}" data-v="${n}">${n}</button>`).join('')}
         </div>${isMulti(i) ? '<span class="multi-note">복수 선택</span>' : ''}`;
@@ -182,7 +186,7 @@ async function loadExam() {
 // 안 푸는 문항: 그 번호의 답 버튼을 회색으로 막고, 이미 눌러 둔 답은 지운다
 let skipSet = new Set();
 function applySkip() {
-  skipSet = parseNumSet(document.getElementById('skip-input').value, answerCount);
+  skipSet = parseNumSetLabeled(document.getElementById('skip-input').value, nums, answerCount);
   const grid = document.getElementById('answer-grid');
   grid.querySelectorAll('.qrow').forEach((row, i) => {
     const off = skipSet.has(i + 1) && !isSub(i);
@@ -202,7 +206,7 @@ async function submitAnswers(e) {
     const rows = document.querySelectorAll('#answer-grid .qrow');
     studentAnswers.forEach((a, i) => { if (!isSub(i) && !skipAll[i] && !a) rows[i].classList.add('miss'); });
     rows[miss].scrollIntoView({ behavior: 'smooth', block: 'center' });
-    alert(miss + 1 + '번에 답을 선택해주세요. (빨갛게 표시된 문항이 아직 비어 있어요. 풀지 않는 문항은 위 「안 푸는 문항」에 번호를 적어 주세요)'); return;
+    alert(dn(miss) + '번에 답을 선택해주세요. (빨갛게 표시된 문항이 아직 비어 있어요. 풀지 않는 문항은 위 「안 푸는 문항」에 번호를 적어 주세요)'); return;
   }
   if (skipAll.every((x, i) => x || isSub(i))) { alert('풀 문항이 하나도 없어요. 「안 푸는 문항」을 확인해 주세요.'); return; }
 
@@ -224,10 +228,10 @@ async function submitAnswers(e) {
       <p class="muted" style="text-align:center;margin:0;">${escapeHtml(name)}님 · ${sc100 === null ? '' : sc100 === 100 ? '만점이에요! 🎉' : wrongN ? '틀린 문제 ' + wrongN + '개를 복습해 봐요 💪' : ''}</p>
       <div class="sx-ring" style="background:conic-gradient(${ringCol} ${pct * 3.6}deg, #E5E1D6 0);"><div style="width:122px;height:122px;border-radius:50%;background:#F7F5EF;display:flex;align-items:center;justify-content:center;">${sc100 === null ? '<span style="font-size:15px;">객관식 없음</span>' : sc100 + '<span>점</span>'}</div></div>
       <p class="hint" style="text-align:center;">${res.total ? '객관식 ' + res.total + '문항 중 ' + res.score + '개 정답 · 100점 만점 환산' : ''}</p>
-      ${(res.subjective && res.subjective.length) ? '<p class="hint" style="text-align:center;">주관식 ' + res.subjective.length + '문항(' + res.subjective.join(', ') + '번)은 점수에 합산하지 않아요. 선생님이 따로 채점해요.</p>' : ''}
+      ${(res.subjective && res.subjective.length) ? '<p class="hint" style="text-align:center;">주관식 ' + res.subjective.length + '문항(' + res.subjective.map(dnOf).join(', ') + '번)은 점수에 합산하지 않아요. 선생님이 따로 채점해요.</p>' : ''}
       <h2>문항별 결과</h2>
       <div class="sx-chips">
-        ${res.results.map((rs, i) => rs === 'ok' ? '<div class="sx-chip ok">' + (i + 1) + '번<small>⭕ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : rs === 'x' ? '<div class="sx-chip x">' + (i + 1) + '번<small>❌ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : '<div class="sx-chip na">' + (i + 1) + '번<small>' + (rs === 'subj' ? '주관식' : '안 품') + '</small></div>').join('')}
+        ${res.results.map((rs, i) => rs === 'ok' ? '<div class="sx-chip ok">' + dn(i) + '번<small>⭕ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : rs === 'x' ? '<div class="sx-chip x">' + dn(i) + '번<small>❌ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : '<div class="sx-chip na">' + dn(i) + '번<small>' + (rs === 'subj' ? '주관식' : '안 품') + '</small></div>').join('')}
       </div>
       ${wrongN ? '<div id="retry-card" class="card" style="margin:14px 0;"><h2 style="margin:0 0 4px;">❌ 틀린 문제 다시 입력하기</h2><p class="hint" style="margin:0 0 10px;">틀린 ' + wrongN + '문항만 다시 답을 골라 「다시 채점」을 누르세요. 정답은 알려 주지 않고 맞았는지만 알려 줘요. 이 연습은 점수에 들어가지 않아요.</p><div id="retry-grid"></div><div id="retry-msg" class="hint" style="margin:8px 0 0;font-weight:700;"></div><button type="button" id="retry-btn" class="btn primary" style="width:100%;margin-top:8px;">다시 채점</button></div>' : ''}
       <p class="hint">❌ 표시한 문항은 다시 풀어 보세요. ${FROM_APP ? '「오답 복습」에서 틀린 문제만 모아서 다시 풀 수 있어요.' : ''}</p>

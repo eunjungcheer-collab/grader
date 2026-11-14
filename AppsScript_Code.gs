@@ -379,7 +379,7 @@ function actionGetExamPublic_(p) {
   if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
   const answers = examAnswers_(found.row);
   const rc = safeJson_(found.row[8], null);
-  return { ok: true, title: found.row[1], answerCount: answers.length, subjective: subjectiveNumbers_(answers), multi: multiNumbers_(answers), book: (rc && rc.book) ? String(rc.book) : '' };
+  return { ok: true, title: found.row[1], answerCount: answers.length, subjective: subjectiveNumbers_(answers), multi: multiNumbers_(answers), book: (rc && rc.book) ? String(rc.book) : '', nums: (rc && rc.nums && rc.nums.length === answers.length) ? rc.nums : undefined };
 }
 
 // 교재 한 권(여러 단원 시험)의 단원 목록: 학생이 한 화면에서 여러 단원을 골라 한꺼번에 채점할 수 있게 한다. 정답은 내려주지 않는다.
