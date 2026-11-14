@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150041">
+<link rel="stylesheet" href="css/style.css?v=202611150101">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150041"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150041"></script>
-<script src="js/vendor/pdf.min.js?v=202611150041"></script>
-<script src="js/config.js?v=202611150041"></script>
-<script src="js/api.js?v=202611150041"></script>
-<script src="js/common.js?v=202611150041"></script>
-<script src="js/bankcore.js?v=202611150041"></script>
-<script src="js/pdfui.js?v=202611150041"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150101"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150101"></script>
+<script src="js/vendor/pdf.min.js?v=202611150101"></script>
+<script src="js/config.js?v=202611150101"></script>
+<script src="js/api.js?v=202611150101"></script>
+<script src="js/common.js?v=202611150101"></script>
+<script src="js/bankcore.js?v=202611150101"></script>
+<script src="js/pdfui.js?v=202611150101"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -194,6 +194,7 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
   const kind = /중\s*1/.test(bookName) ? 1 : /중\s*2/.test(bookName) ? 2 : /중\s*3/.test(bookName) ? 3 : /고\s*1|공통|통합/.test(bookName) ? 4 : 0;
   const A = v => Math.min(0.75, v * 2.1), LW = v => v * 1.5;      // 무늬를 눈에 보이게 진하게
   x.save(); x.strokeStyle = pal.main; x.fillStyle = pal.main; x.lineCap = 'round'; x.lineJoin = 'round';
+  x.beginPath(); x.rect(0, 0, W, H * 0.45); x.clip();      // 무늬는 위쪽 색 블록 안에만 (아래 빈 곳에 작은 그림·물결은 넣지 않는다)
   const hexP = (cx, cy, r) => { x.beginPath(); for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i + Math.PI / 6; x[i ? 'lineTo' : 'moveTo'](cx + r * Math.cos(a), cy + r * Math.sin(a)); } x.closePath(); x.stroke(); };
   const dot = (cx, cy, r) => { x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); };
   const orbit = (cx, cy, rx, ry, rot) => { x.beginPath(); x.ellipse(cx, cy, rx, ry, rot, 0, 7); x.stroke(); };
