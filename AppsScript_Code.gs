@@ -129,6 +129,7 @@ function handle_(e) {
       case 'deleteQuestions': result = actionDeleteQuestions_(params); break;
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
+      case 'renameBook': result = actionRenameBook_(params); break;
       case 'deleteExam': result = actionDeleteExam_(params); break;
       case 'deleteExams': result = actionDeleteExams_(params); break;
       case 'getExamPdf': result = actionGetExamPdf_(params); break;
@@ -1002,6 +1003,43 @@ function actionLinkBook_(p) {
   } finally { lock.releaseLock(); }
   if (n) bustCache_();
   return { ok: true, linked: n };
+}
+
+// 교재 이름 바꾸기: 그 교재로 등록한 시험지 제목·교재 이름, 문제은행 교재 문항의 출처 이름 앞부분을 새 이름으로 바꾼다. QR(시험 번호·교재 번호)은 그대로라 이미 나눠 준 교재도 계속 동작한다.
+function actionRenameBook_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const oldN = String(p.oldName || '').trim(), newN = String(p.newName || '').trim();
+  if (!oldN || !newN) return { ok: false, error: '교재 이름이 비어 있어요.' };
+  if (oldN === newN) return { ok: true, exams: 0, questions: 0 };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  let ne = 0, nq = 0;
+  try {
+    const es = ss.getSheetByName(SHEET_EXAMS), el = es.getLastRow();
+    if (el >= 2) {
+      const titles = es.getRange(2, 2, el - 1, 1).getValues(), recs = es.getRange(2, 9, el - 1, 1).getValues();
+      for (let i = 0; i < recs.length; i++) {
+        const rc = recs[i][0] ? safeJson_(recs[i][0], null) : null;
+        if (!rc || !rc.book || String(rc.bookTitle || '').trim() !== oldN) continue;
+        const t = String(titles[i][0]);
+        if (t.indexOf(oldN) === 0) titles[i][0] = newN + t.slice(oldN.length);
+        rc.bookTitle = newN; recs[i][0] = JSON.stringify(rc); ne++;
+      }
+      if (ne) { es.getRange(2, 2, el - 1, 1).setValues(titles); es.getRange(2, 9, el - 1, 1).setValues(recs); }
+    }
+    const qs = questionsSheet_(), ql = qs.getLastRow();
+    if (ql >= 2) {
+      const src = qs.getRange(2, 4, ql - 1, 1).getValues(), kind = qs.getRange(2, 14, ql - 1, 1).getValues();
+      for (let i = 0; i < src.length; i++) {
+        if (normKind_(kind[i][0]) !== '교재') continue;
+        const s = String(src[i][0]);
+        if (s === oldN || s.indexOf(oldN + ' ') === 0) { src[i][0] = newN + s.slice(oldN.length); nq++; }
+      }
+      if (nq) qs.getRange(2, 4, ql - 1, 1).setValues(src);
+    }
+  } finally { lock.releaseLock(); }
+  if (ne || nq) bustCache_();
+  return { ok: true, exams: ne, questions: nq };
 }
 
 function actionUpdateExamAnswers_(p) {
