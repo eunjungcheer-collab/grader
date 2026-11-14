@@ -1,4 +1,4 @@
-window.APP_BUILD = '202611142251';
+window.APP_BUILD = '202611142311';
 // ── 새 버전 자동 적용: 켤 때마다 build.txt(캐시 없이)와 비교해 다르면 저장본을 비우고 한 번 새로고침 ──
 (function () {
   try {

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611142251">
+<link rel="stylesheet" href="css/style.css?v=202611142311">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611142251"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611142251"></script>
-<script src="js/vendor/pdf.min.js?v=202611142251"></script>
-<script src="js/config.js?v=202611142251"></script>
-<script src="js/api.js?v=202611142251"></script>
-<script src="js/common.js?v=202611142251"></script>
-<script src="js/bankcore.js?v=202611142251"></script>
-<script src="js/pdfui.js?v=202611142251"></script>
+<script src="js/vendor/qrcode.min.js?v=202611142311"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611142311"></script>
+<script src="js/vendor/pdf.min.js?v=202611142311"></script>
+<script src="js/config.js?v=202611142311"></script>
+<script src="js/api.js?v=202611142311"></script>
+<script src="js/common.js?v=202611142311"></script>
+<script src="js/bankcore.js?v=202611142311"></script>
+<script src="js/pdfui.js?v=202611142311"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -147,6 +147,10 @@ function coverCanvas(bookName, secs, W, H) {
     : /중\s*3/.test(bookName) ? { main: '#7A55C2', soft: '#EFE9FA', deep: '#59399A', grade: '중학교 3학년' }
     : /고\s*1|공통|통합/.test(bookName) ? { main: '#139186', soft: '#E0F4F1', deep: '#0C6B62', grade: '고등학교 1학년' }
     : { main: '#0B1F5C', soft: '#E6EAF6', deep: '#08153F', grade: '' };
+  // 교재 종류(파일 이름에서 읽음): 종류마다 이름·색을 달리한다
+  const typeMap = [[/보충/, '보충', { '중1': ['#F08A3C', '#FFF1E4', '#C2631F'], '중2': ['#14A3A3', '#E1F5F5', '#0B7A7A'], '중3': ['#C2459B', '#FBE9F4', '#97307A'], '고': ['#D9822B', '#FDF0E0', '#A8631A'] }], [/심화/, '심화', { '중1': ['#8A4FD0', '#F0E8FB', '#6A35AA'], '중2': ['#1F8F5F', '#E2F5EC', '#146C47'], '중3': ['#D6553A', '#FDEAE5', '#A83E27'], '고': ['#3B5BDB', '#E7ECFD', '#2742A8'] }], [/기출/, '기출', {}], [/개념|기본/, '개념', {}]];
+  const tm = typeMap.find(m => m[0].test(bookName)), typeLabel = tm ? tm[1] : '내신대비';
+  if (tm && tm[2]) { const gk = /중\s*1/.test(bookName) ? '중1' : /중\s*2/.test(bookName) ? '중2' : /중\s*3/.test(bookName) ? '중3' : /고\s*1|공통|통합/.test(bookName) ? '고' : ''; const c3 = tm[2][gk]; if (c3) { pal.main = c3[0]; pal.soft = c3[1]; pal.deep = c3[2]; } }
   const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
   const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, pal.soft); g.addColorStop(1, '#FFFFFF'); x.fillStyle = g; x.fillRect(0, 0, W, H);
   x.fillStyle = pal.main; x.globalAlpha = 0.08; x.beginPath(); x.arc(W * 0.92, H * 0.12, 190, 0, 7); x.fill(); x.beginPath(); x.arc(W * 0.05, H * 0.62, 120, 0, 7); x.fill(); x.globalAlpha = 1;
@@ -170,10 +174,10 @@ function coverCanvas(bookName, secs, W, H) {
   else { grid(W * 0.5, 20, 6, 5, 28); atom(W * 0.86, H * 0.2, 70); }
   x.restore(); x.globalAlpha = 1;
   const pill = (t, cx, cy) => { x.font = '700 15px ' + FONT; const w = x.measureText(t).width + 36; x.fillStyle = '#fff'; x.strokeStyle = pal.main; x.lineWidth = 1.6; x.beginPath(); x.roundRect(cx, cy, w, 32, 16); x.fill(); x.stroke(); x.fillStyle = pal.main; x.textBaseline = 'middle'; x.fillText(t, cx + 18, cy + 17); };
-  const ml = 54; if (pal.grade) pill(pal.grade + ' · 내신대비', ml, 74);
-  const subj = (bookName.replace(/\s+/g, ' ').trim() || '과학'), base = /과학/.test(subj) ? subj : subj + ' 과학';
+  const ml = 54; if (pal.grade) pill(pal.grade + ' · ' + typeLabel, ml, 74);
+  const subj = (bookName.replace(/내신대비|교재|보충|심화|기출|개념|기본/g, ' ').replace(/\s+/g, ' ').trim() || '과학'), base = /과학/.test(subj) ? subj : subj + ' 과학';
   x.textBaseline = 'alphabetic'; x.fillStyle = '#17203A'; x.font = '900 64px ' + FONT; x.fillText(base, ml, 250);
-  x.fillStyle = pal.main; x.font = '800 38px ' + FONT; x.fillText('내신대비 교재', ml, 312);
+  x.fillStyle = pal.main; x.font = '800 38px ' + FONT; x.fillText(typeLabel + ' 교재', ml, 312);
   x.fillStyle = pal.main; x.fillRect(ml, 338, 74, 5);
   // CONTENTS
   const units = []; const seen = {};
