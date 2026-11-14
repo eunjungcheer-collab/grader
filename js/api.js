@@ -256,6 +256,8 @@ function gradeRank(g) { if (!g) return 99; const i = GRADE_ORDER.indexOf(g); ret
 function unitKey(q) { return q.grade ? q.grade + ' · ' + q.unit : String(q.unit); }
 function isPastExam(q) { return q && q.kind === '기출'; }
 function isBookQ(q) { return q && q.kind === '교재'; }
+// 교재 문제의 교재 이름: 출처 「교재이름 4-1. 단원이름 최다빈출공략」에서 소단원 번호 앞부분
+function bookNameOf(q) { const s = String(q.source || ''), m = s.match(/^(.*?)\s+\d{1,2}(?:\s*-\s*\d)?\s*\.\s/); return ((m ? m[1] : s) || '').trim() || '(교재 이름 없음)'; }
 // "1단원" < "2단원" < "10단원", "4-1." < "4-2." 처럼 숫자를 숫자답게 정렬
 function naturalCompare(a, b) { return String(a).localeCompare(String(b), 'ko', { numeric: true }); }
 
@@ -315,7 +317,7 @@ function guessMeta(fileName) {
 // 문항 옆에 붙일 분류 꼬리표(학년 / 기출 / 학교) HTML
 function classTagsHtml(q) {
   return (q.grade ? '<span class="tag-grade">' + escapeHtml(q.grade) + '</span>' : '') +
-    (isPastExam(q) ? '<span class="tag-past">기출</span>' : '') + (isBookQ(q) ? '<span class="tag-book">내신교재</span>' : '') +
+    (isPastExam(q) ? '<span class="tag-past">기출</span>' : '') + (isBookQ(q) ? '<span class="tag-book">📚 ' + escapeHtml(bookNameOf(q)) + '</span>' : '') +
     (isPastExam(q) && q.year ? '<span class="tag-school">' + escapeHtml(q.year) + '</span>' : '') +
     (isPastExam(q) && q.school ? '<span class="tag-school">' + escapeHtml(q.school) + '</span>' : '');
 }

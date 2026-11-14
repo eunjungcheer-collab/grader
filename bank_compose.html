@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150730">
+<link rel="stylesheet" href="css/style.css?v=202611150750">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,13 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150730"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150730"></script>
-<script src="js/config.js?v=202611150730"></script>
-<script src="js/api.js?v=202611150730"></script>
-<script src="js/common.js?v=202611150730"></script>
-<script src="js/bankcore.js?v=202611150730"></script>
-<script src="js/pdfui.js?v=202611150730"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150750"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150750"></script>
+<script src="js/config.js?v=202611150750"></script>
+<script src="js/api.js?v=202611150750"></script>
+<script src="js/common.js?v=202611150750"></script>
+<script src="js/bankcore.js?v=202611150750"></script>
+<script src="js/pdfui.js?v=202611150750"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -135,7 +135,6 @@ let regenFrom = null;         // 원본 시험 정보(복습 재구성 때 안�
 
 let kindFilter = '일반';          // 문제 종류: '일반'(기본) | '기출' | '' 전체
 let bookFilter = new Set();     // 내신교재 문제를 교재별로 좁힐 때(비어있으면 모든 교재)
-const bookNameOf = q => { const s = String(q.source || ''), m = s.match(/^(.*?)\s+\d{1,2}(?:\s*-\s*\d)?\s*\.\s/); return ((m ? m[1] : s) || '').trim() || '(교재 이름 없음)'; };
 let schoolFilter = new Set();   // 기출문제를 학교·시험별로 좁힐 때(비어있으면 전체 학교)
 let yearFilter = new Set();     // 기출문제를 출제년도별로 좁힐 때(비어있으면 전체 연도)
 const yearName = q => q.year || '(연도 없음)';
@@ -196,7 +195,7 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 // ───────── 문제 종류(일반/기출)·학교 필터, 학년별 단원 목록 ─────────
 function tagsHtml(q) {
   return (q.grade ? '<span class="tag-grade">' + escapeHtml(q.grade) + '</span>' : '') +
-    (isPastExam(q) ? '<span class="tag-past">기출</span>' : '') + (isBookQ(q) ? '<span class="tag-book">내신교재</span>' : '') + escapeHtml(q.unit) +
+    (isPastExam(q) ? '<span class="tag-past">기출</span>' : '') + (isBookQ(q) ? '<span class="tag-book">📚 ' + escapeHtml(bookNameOf(q)) + '</span>' : '') + escapeHtml(q.unit) +
     (isPastExam(q) && q.year ? ' <span class="tag-school">' + escapeHtml(q.year) + '</span>' : '') +
     (isPastExam(q) && q.school ? ' <span class="tag-school">' + escapeHtml(q.school) + '</span>' : '');
 }
