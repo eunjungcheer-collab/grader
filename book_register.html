@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611150240">
+<link rel="stylesheet" href="css/style.css?v=202611150310">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611150240"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611150240"></script>
-<script src="js/vendor/pdf.min.js?v=202611150240"></script>
-<script src="js/config.js?v=202611150240"></script>
-<script src="js/api.js?v=202611150240"></script>
-<script src="js/common.js?v=202611150240"></script>
-<script src="js/bankcore.js?v=202611150240"></script>
-<script src="js/pdfui.js?v=202611150240"></script>
+<script src="js/vendor/qrcode.min.js?v=202611150310"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611150310"></script>
+<script src="js/vendor/pdf.min.js?v=202611150310"></script>
+<script src="js/config.js?v=202611150310"></script>
+<script src="js/api.js?v=202611150310"></script>
+<script src="js/common.js?v=202611150310"></script>
+<script src="js/bankcore.js?v=202611150310"></script>
+<script src="js/pdfui.js?v=202611150310"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -602,6 +602,9 @@ $('go-btn').addEventListener('click', async () => {
     const ex = await callApi('listExams', { password: getTeacherPassword() });
     if (!ex.ok) throw new Error(ex.error || '시험 목록을 불러오지 못했어요');
     const byTitle = {}; (ex.exams || []).forEach(e => { byTitle[String(e.title).trim()] = e.id; });
+    // 교재 이름이 달라도 '같은 단원(이름+태그)이고 정답이 똑같은' 시험이 이미 있으면 새로 만들지 않는다 (Apps Script 새 버전 배포 후 동작)
+    const bySig = {}; (ex.exams || []).forEach(e => { if (e.recipeLabel && e.ansSig) bySig[String(e.recipeLabel).trim() + '#' + String(e.ansSig).replace(/\s/g, '')] = e.id; });
+    const sigOf = s => (s.name + ' ' + s.tag).trim() + '#' + s.answers.join(',').replace(/\s/g, '');
     let made = 0, reused = 0, next = 0, fail = null, bankQ = 0;
     const ids = {}, bankWarn = [], teacherSkip = [];
     const toBank = $('to-bank').checked;
@@ -727,6 +730,7 @@ $('go-btn').addEventListener('click', async () => {
         const k = next++; if (k >= regList.length) return;
         const s = regList[k], title = secTitle(s);
         if (byTitle[title]) { ids[s.order] = byTitle[title]; reused++; continue; }
+        if (bySig[sigOf(s)]) { ids[s.order] = bySig[sigOf(s)]; reused++; continue; }
         const id = genExamId();
         let saved = null;
         if (toBank) { msg('문제 저장 중... ' + secTitle(s) + ' (' + (made + reused) + '/' + regList.length + '개 단원 등록됨)'); try { saved = await bankSection(s, title); try { await bookDoc.cleanup(); } catch (e2) {} } catch (e) { fail = new Error(title + ': ' + e.message); return; } }

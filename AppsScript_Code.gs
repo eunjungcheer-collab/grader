@@ -363,6 +363,8 @@ function listExamsBuild_() {
       createdAt: row[3], pdfUrl: row[5],
       hasRecipe: !!row[8] && !(rc && rc.book),
       bookTitle: (rc && rc.bookTitle) || '',
+      recipeLabel: (rc && rc.book && rc.label) || '',      // 교재 합본 등록 시 단원 이름+태그 (교재 이름이 달라도 같은 단원을 알아보려고)
+      ansSig: String(row[2] || ''),
       submissionCount: countByExam[String(row[0])] || 0,
     });
   }
