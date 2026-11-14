@@ -368,9 +368,9 @@ async function findBankDeletion(exams, allExams) {
 }
 // 시험지를 지울 때 묻는 것을 한 번에 묻는다: 제출 기록도 지울지, 문제은행의 문제도 지울지 (각각 체크로 고른다)
 // 돌려주는 값: 취소면 null, 아니면 { scores: 제출 기록도 삭제?, bankDel: 문제은행 정리 함수 또는 null }
-async function askDeleteExams(exams, allExams) {
+async function askDeleteExams(exams, allExams, opt) {
   const list = (exams || []).filter(Boolean);
-  const fb = await findBankDeletion(list, allExams);
+  const fb = (opt && opt.noBank) ? null : await findBankDeletion(list, allExams);
   const subs = list.reduce((t, e) => t + (Number(e.submissionCount) || 0), 0), hasSubInfo = list.some(e => e.submissionCount !== undefined);
   return new Promise(resolve => {
     const ov = document.createElement('div');

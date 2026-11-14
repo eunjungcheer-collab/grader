@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151245">
+<link rel="stylesheet" href="css/style.css?v=202611151300">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,11 +41,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611151245"></script>
-<script src="js/api.js?v=202611151245"></script>
-<script src="js/common.js?v=202611151245"></script>
-<script src="js/bankcore.js?v=202611151245"></script>
-<script src="js/pdfui.js?v=202611151245"></script>
+<script src="js/config.js?v=202611151300"></script>
+<script src="js/api.js?v=202611151300"></script>
+<script src="js/common.js?v=202611151300"></script>
+<script src="js/bankcore.js?v=202611151300"></script>
+<script src="js/pdfui.js?v=202611151300"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -238,8 +238,8 @@ renderHeader();
       }
       const list = exams.filter(ex => isBook(ex) && ex.bookTitle === name), ids = list.map(ex => ex.id);
       if (!ids.length) return;
-      if (!confirm('교재 "' + name + '"의 시험지 ' + ids.length + '개를 모두 삭제합니다.\n(이 교재 합본 QR은 더 이상 열리지 않아요. 제출 기록 ' + list.reduce((a, ex) => a + (ex.submissionCount || 0), 0) + '건)\n계속할까요?')) return;
-      const ch = await askDeleteExams(list, exams);
+      if (!confirm('교재 "' + name + '"의 시험지 ' + ids.length + '개를 모두 삭제합니다.\n(이 교재 합본 QR은 더 이상 열리지 않아요. 제출 기록 ' + list.reduce((a, ex) => a + (ex.submissionCount || 0), 0) + '건)\n그리고 문제은행에 있는 이 교재의 문항도 모두 함께 삭제해요.\n계속할까요?')) return;
+      const ch = await askDeleteExams(list, exams, { noBank: true });
       if (!ch) return;
       const btn = document.getElementById('book-del'); btn.disabled = true; btn.textContent = '삭제 중...'; busyStart();
       let done = 0;
@@ -252,7 +252,14 @@ renderHeader();
           done += chunk.length; btn.textContent = '삭제 중... ' + done + '/' + ids.length;
         }
       } catch (err) { alert('삭제 중 오류 (' + done + '개는 지워졌어요): ' + err.message); }
-      if (ch.bankDel && done === ids.length) { btn.textContent = '문제은행 정리 중...'; try { await ch.bankDel(); } catch (e) { alert('시험지는 지웠지만 문제은행 삭제 중 오류가 났어요: ' + e.message); } }
+      if (done === ids.length) {      // 이 교재 이름의 문제은행 문항을 (겹친 것까지) 모두 지운다
+        btn.textContent = '문제은행 정리 중...';
+        try {
+          const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true });
+          const qids = ((lq && lq.questions) || []).filter(q => isBookQ(q) && bookNameOf(q) === name).map(q => q.id);
+          for (let i = 0; i < qids.length; i += 80) { const d = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: qids.slice(i, i + 80) }); if (!d.ok) throw new Error(d.error || '문제은행 삭제 실패'); btn.textContent = '문제은행 삭제 중... ' + Math.min(i + 80, qids.length) + '/' + qids.length; }
+        } catch (e) { alert('시험지는 지웠지만 문제은행 삭제 중 오류가 났어요: ' + e.message + '\n문제은행 관리의 "이 교재 문항 모두 삭제"로 마저 지워 주세요.'); }
+      }
       busyEnd(); btn.disabled = false; btn.textContent = '🗑 교재 삭제'; st.book = ''; render();
     });
     function bindRows() { container.querySelectorAll('.dup-exam-btn').forEach(b => b.addEventListener('click', async (e) => {
