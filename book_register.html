@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611142341">
+<link rel="stylesheet" href="css/style.css?v=202611142351">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,14 +81,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611142341"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611142341"></script>
-<script src="js/vendor/pdf.min.js?v=202611142341"></script>
-<script src="js/config.js?v=202611142341"></script>
-<script src="js/api.js?v=202611142341"></script>
-<script src="js/common.js?v=202611142341"></script>
-<script src="js/bankcore.js?v=202611142341"></script>
-<script src="js/pdfui.js?v=202611142341"></script>
+<script src="js/vendor/qrcode.min.js?v=202611142351"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611142351"></script>
+<script src="js/vendor/pdf.min.js?v=202611142351"></script>
+<script src="js/config.js?v=202611142351"></script>
+<script src="js/api.js?v=202611142351"></script>
+<script src="js/common.js?v=202611142351"></script>
+<script src="js/bankcore.js?v=202611142351"></script>
+<script src="js/pdfui.js?v=202611142351"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -150,7 +150,8 @@ function coverCanvas(bookName, secs, W, H) {
   // 교재 종류(파일 이름에서 읽음): 종류마다 이름·색을 달리한다
   const typeMap = [[/보충/, '보충', { '중1': ['#F08A3C', '#FFF1E4', '#C2631F'], '중2': ['#14A3A3', '#E1F5F5', '#0B7A7A'], '중3': ['#C2459B', '#FBE9F4', '#97307A'], '고': ['#D9822B', '#FDF0E0', '#A8631A'] }], [/심화/, '심화', { '중1': ['#8A4FD0', '#F0E8FB', '#6A35AA'], '중2': ['#1F8F5F', '#E2F5EC', '#146C47'], '중3': ['#D6553A', '#FDEAE5', '#A83E27'], '고': ['#3B5BDB', '#E7ECFD', '#2742A8'] }], [/기출/, '기출', {}], [/개념|기본/, '개념', {}]];
   const tm = typeMap.find(m => m[0].test(bookName)), typeLabel = tm ? tm[1] : '내신대비';
-  if (tm && tm[2]) { const gk = /중\s*1/.test(bookName) ? '중1' : /중\s*2/.test(bookName) ? '중2' : /중\s*3/.test(bookName) ? '중3' : /고\s*1|공통|통합/.test(bookName) ? '고' : ''; const c3 = tm[2][gk]; if (c3) { pal.main = c3[0]; pal.soft = c3[1]; pal.deep = c3[2]; } }
+  // 색은 학년 고유색 그대로 둔다(교재 종류로 색을 바꾸면 다른 학년과 헷갈림). 종류는 '채운 이름표'로 구분한다.
+  const typeChip = !!tm;
   const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
   const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, pal.soft); g.addColorStop(1, '#FFFFFF'); x.fillStyle = g; x.fillRect(0, 0, W, H);
   x.fillStyle = pal.main; x.globalAlpha = 0.08; x.beginPath(); x.arc(W * 0.92, H * 0.12, 190, 0, 7); x.fill(); x.beginPath(); x.arc(W * 0.05, H * 0.62, 120, 0, 7); x.fill(); x.globalAlpha = 1;
@@ -177,7 +178,8 @@ function coverCanvas(bookName, secs, W, H) {
   const ml = 54; if (pal.grade) pill(pal.grade + ' · ' + typeLabel, ml, 74);
   const subj = (bookName.replace(/내신대비|교재|보충|심화|기출|개념|기본/g, ' ').replace(/\s+/g, ' ').trim() || '과학'), base = /과학/.test(subj) ? subj : subj + ' 과학';
   x.textBaseline = 'alphabetic'; x.fillStyle = '#17203A'; x.font = '900 64px ' + FONT; x.fillText(base, ml, 250);
-  x.fillStyle = pal.main; x.font = '800 38px ' + FONT; x.fillText(typeLabel + ' 교재', ml, 312);
+  if (typeChip) { x.font = '800 38px ' + FONT; const tw = x.measureText(typeLabel + ' 교재').width; x.fillStyle = pal.main; x.beginPath(); x.roundRect(ml - 14, 278, tw + 28, 50, 12); x.fill(); x.fillStyle = '#fff'; x.fillText(typeLabel + ' 교재', ml, 314); }
+  else { x.fillStyle = pal.main; x.font = '800 38px ' + FONT; x.fillText(typeLabel + ' 교재', ml, 312); }
   x.fillStyle = pal.main; x.fillRect(ml, 338, 74, 5);
   // CONTENTS
   const units = []; const seen = {};
