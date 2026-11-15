@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611160300">
+<link rel="stylesheet" href="css/style.css?v=202611160310">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -45,7 +45,7 @@
     <label>교재 PDF (문제편 + 정답편이 한 파일, 목차에 쪽수가 있는 교재)</label>
     <input type="file" id="book-file" accept="application/pdf">
     <label class="field-label-spaced">교재 이름 <span class="muted" style="font-weight:400;">(시험 이름·문제은행 배지·교재별 선택에 쓰여요. 예: 중2 내신대비교재 / 중1 핵심문제 교재)</span></label>
-    <input type="text" id="book-name" placeholder="예: 중2 내신대비교재">
+    <input type="text" id="book-name" placeholder="PDF 파일 이름이 자동으로 들어가요 — 원하면 고치세요">
     <button type="button" class="btn primary" id="read-btn" style="width:100%; margin-top:14px;" disabled>1단계 · 목차와 정답 읽기</button>
     <p class="hint" id="read-msg" style="margin:8px 0 0;"></p>
   </div>
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611160300"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611160300"></script>
-<script src="js/vendor/pdf.min.js?v=202611160300"></script>
-<script src="js/config.js?v=202611160300"></script>
-<script src="js/api.js?v=202611160300"></script>
-<script src="js/common.js?v=202611160300"></script>
-<script src="js/bankcore.js?v=202611160300"></script>
-<script src="js/pdfui.js?v=202611160300"></script>
+<script src="js/vendor/qrcode.min.js?v=202611160310"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611160310"></script>
+<script src="js/vendor/pdf.min.js?v=202611160310"></script>
+<script src="js/config.js?v=202611160310"></script>
+<script src="js/api.js?v=202611160310"></script>
+<script src="js/common.js?v=202611160310"></script>
+<script src="js/bankcore.js?v=202611160310"></script>
+<script src="js/pdfui.js?v=202611160310"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -109,7 +109,7 @@ let bookFile = null, bookDoc = null, bookFileName = '', sections = [], tocPage =
 $('book-file').addEventListener('change', () => {
   const f = $('book-file').files[0];
   $('read-btn').disabled = !f;
-  if (f && !$('book-name').value) { const m = f.name.match(/중\s*[123]|초\s*[3-6]|고\s*[123]/); if (m) $('book-name').value = m[0].replace(/\s+/g, ''); else if (/(공통|통합)\s*과학/.test(f.name)) $('book-name').value = '고1'; }
+  if (f) { const nameEl = $('book-name'), stem = f.name.replace(/\.pdf$/i, '').trim(); if (!nameEl.value.trim() || nameEl.value === nameEl.dataset.auto) { nameEl.value = stem; nameEl.dataset.auto = stem; nameEl.dispatchEvent(new Event('input')); } }   // 교재 이름은 PDF 파일 이름으로 시작하고, 직접 고치면 그 이름을 쓴다
 });
 
 function hash36(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
