@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151300">
+<link rel="stylesheet" href="css/style.css?v=202611151320">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611151300"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611151300"></script>
-<script src="js/vendor/pdf.min.js?v=202611151300"></script>
-<script src="js/config.js?v=202611151300"></script>
-<script src="js/api.js?v=202611151300"></script>
-<script src="js/common.js?v=202611151300"></script>
-<script src="js/bankcore.js?v=202611151300"></script>
-<script src="js/pdfui.js?v=202611151300"></script>
+<script src="js/vendor/qrcode.min.js?v=202611151320"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611151320"></script>
+<script src="js/vendor/pdf.min.js?v=202611151320"></script>
+<script src="js/config.js?v=202611151320"></script>
+<script src="js/api.js?v=202611151320"></script>
+<script src="js/common.js?v=202611151320"></script>
+<script src="js/bankcore.js?v=202611151320"></script>
+<script src="js/pdfui.js?v=202611151320"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -648,6 +648,25 @@ $('go-btn').addEventListener('click', async () => {
     const uinfoR = unitInfoFor(sections);
     const ids = {}, bankWarn = [], teacherSkip = [], toLink = []; let linkWarn = '';
     const toBank = $('to-bank').checked;
+    // 사전 점검: 새로 만들 단원인데 문제은행에 같은 단원이 '다른 교재 이름'으로 이미 있으면 중복이 쌓이기 전에 알려 준다
+    if (toBank) {
+      try {
+        msg('문제은행에 같은 단원이 있는지 확인하는 중...');
+        const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true });
+        window._bkOld = {}; const qs = (lq && lq.questions) || [];
+        qs.forEach(q => { if (q.kind === '교재' && q.source) (window._bkOld[q.source] = window._bkOld[q.source] || []).push(q.id); });
+        const bn = $('book-name').value.trim(), dupInfo = {};
+        sections.forEach(s => {
+          if (byTitle[secTitle(s)] || bySig[sigOf(s)]) return;       // 이미 있는 시험지를 쓰는 단원은 문제를 새로 저장하지 않는다
+          const tail = ' ' + s.name + ' ' + s.tag;
+          Object.keys(window._bkOld).forEach(src => {
+            if (src.length > tail.length && src.endsWith(tail) && src.slice(0, src.length - tail.length) !== bn) { const o = src.slice(0, src.length - tail.length); (dupInfo[o] = dupInfo[o] || { secs: 0, qn: 0 }); dupInfo[o].secs++; dupInfo[o].qn += window._bkOld[src].length; }
+          });
+        });
+        const names = Object.keys(dupInfo);
+        if (names.length && !confirm('문제은행에 같은 단원의 문제가 다른 교재 이름으로 이미 들어 있어요. 이대로 등록하면 문제가 중복으로 쌓일 수 있어요.\n\n' + names.map(n => '· "' + n + '" — ' + dupInfo[n].secs + '개 단원, 문항 ' + dupInfo[n].qn + '개').join('\n') + '\n\n같은 책이라면 [취소]를 누르고 교재 이름을 위 이름과 똑같이 바꿔 다시 등록하세요.\n정말 다른 책이면 [확인]을 눌러 계속하세요.')) throw new Error('등록을 취소했어요 (교재 이름을 확인해 주세요).');
+      } catch (e) { if (/취소했어요/.test(e.message)) throw e; window._bkOld = null; }
+    }
     msg('교재 PDF를 여는 중...');
     // 메모리 절약: 원본을 pdf-lib로 통째로 여는 건 QR을 찍을 때(맨 끝 단계)에만 한다
     let pdf = null;
