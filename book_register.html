@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151720">
+<link rel="stylesheet" href="css/style.css?v=202611160030">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -62,7 +62,7 @@
         <select id="qr-size" style="width:auto;"><option value="40">작게 (40)</option><option value="46" selected>보통 (46)</option><option value="56">크게 (56)</option></select>
         <select id="qr-corner" style="width:auto;"><option value="top-right" selected>맨 위 오른쪽</option><option value="top-left">맨 위 왼쪽</option></select>
       </div>
-      <label class="field-label-spaced"><input type="checkbox" id="to-bank" checked> 문제도 <b>문제은행에 「내신교재」 문제로 저장</b> (오답노트·유사오답이 일반 시험지처럼 돼요. 시간이 더 걸려요)</label>
+      <label class="field-label-spaced"><input type="checkbox" id="to-bank" checked autocomplete="off"> 문제도 <b>문제은행에 「내신교재」 문제로 저장</b> (오답노트·유사오답이 일반 시험지처럼 돼요. 시간이 더 걸려요)</label>
       <label class="field-label-spaced"><input type="checkbox" id="stu-ver" checked> <b>학생용 합본</b>도 따로 만들기 — 끄면 <b>강사용 전체 합본</b> 한 파일만 만들어요</label>
       <label class="field-label-spaced" for="teacher-mode"><b>강사용 합본 모양</b></label>
       <select id="teacher-mode" style="width:100%;">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611151720"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611151720"></script>
-<script src="js/vendor/pdf.min.js?v=202611151720"></script>
-<script src="js/config.js?v=202611151720"></script>
-<script src="js/api.js?v=202611151720"></script>
-<script src="js/common.js?v=202611151720"></script>
-<script src="js/bankcore.js?v=202611151720"></script>
-<script src="js/pdfui.js?v=202611151720"></script>
+<script src="js/vendor/qrcode.min.js?v=202611160030"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611160030"></script>
+<script src="js/vendor/pdf.min.js?v=202611160030"></script>
+<script src="js/config.js?v=202611160030"></script>
+<script src="js/api.js?v=202611160030"></script>
+<script src="js/common.js?v=202611160030"></script>
+<script src="js/bankcore.js?v=202611160030"></script>
+<script src="js/pdfui.js?v=202611160030"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -648,6 +648,7 @@ $('go-btn').addEventListener('click', async () => {
     const uinfoR = unitInfoFor(sections);
     const ids = {}, bankWarn = [], teacherSkip = [], toLink = []; let linkWarn = '';
     const toBank = $('to-bank').checked;
+    if (!toBank && !confirm('「문제은행에 저장」이 꺼져 있어요.\n이대로 등록하면 시험지만 만들어지고 문제은행·문제 조합에는 이 교재 문제가 나타나지 않아요.\n\n[확인] 시험지만 등록   /   [취소] 돌아가서 체크하기')) throw new Error('등록을 취소했어요 (문제은행 저장 체크를 확인해 주세요).');
     // 사전 점검 1: 같은 제목의 시험지가 이미 있는데 정답이 다르면, 기존 시험지가 그대로 쓰여 예전 정답이 남는다 → 알려 준다
     {
       const sigByTitle = {}; (ex.exams || []).forEach(e => { if (e.ansSig) sigByTitle[String(e.title).trim()] = String(e.ansSig).replace(/\s/g, ''); });
@@ -1030,6 +1031,7 @@ $('go-btn').addEventListener('click', async () => {
   }
   $('go-btn').disabled = false;
 });
+(function () { const f = () => { const c = document.getElementById('to-bank'); if (c) c.checked = true; }; f(); window.addEventListener('pageshow', f); })();
 </script>
 </body>
 </html>
