@@ -267,6 +267,20 @@ async function renameBookFlow(oldN) {
     return true;
   } catch (e) { alert('교재 이름을 바꾸지 못했어요: ' + e.message + '\n(Apps Script를 새 버전으로 배포했는지 확인해 주세요)'); return false; }
 }
+// 교재 문항을 문제은행에서 지운 뒤, 그 교재로 등록된 시험지도 같이 지울지 묻는다 (시험지는 QR·제출 기록이 걸려 있어서 자동으로 지우지는 않는다)
+async function offerDeleteBookExams(names) {
+  try {
+    const set = new Set(names), le = await callApi('listExams', { password: getTeacherPassword() });
+    const exs = ((le && le.exams) || []).filter(e => e.recipeLabel && set.has(String(e.bookTitle || '').trim()));
+    if (!exs.length) return 0;
+    const subs = exs.reduce((a, e) => a + (e.submissionCount || 0), 0);
+    if (!confirm('문제은행에서 지운 교재로 등록된 시험지가 ' + exs.length + '개 남아 있어요 (학생 제출 ' + subs + '건).\n\n이 시험지도 함께 삭제할까요?\n· [확인] 시험지도 삭제 (QR은 더 이상 안 열려요. 제출 기록은 남아요)\n· [취소] 시험지는 남겨 둠')) return 0;
+    busyStart(); let n = 0;
+    try { for (let i = 0; i < exs.length; i += 40) { const r = await callApi('deleteExams', { password: getTeacherPassword(), ids: exs.slice(i, i + 40).map(e => e.id), deleteSubmissions: false }); if (!r.ok) throw new Error(r.error || '시험지 삭제 실패'); n += Math.min(40, exs.length - i); } }
+    finally { busyEnd(); }
+    alert('시험지 ' + n + '개를 삭제했어요.'); return n;
+  } catch (e) { alert('시험지 삭제 중 오류가 났어요: ' + e.message); return 0; }
+}
 // 오래 걸리는 삭제·변경 중에 창을 닫거나 이동하면 중간에 멈추므로, 그동안 나가려 하면 브라우저가 한 번 물어보게 한다
 let _busyN = 0;
 function _busyGuard(e) { e.preventDefault(); e.returnValue = ''; return ''; }
