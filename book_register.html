@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151400">
+<link rel="stylesheet" href="css/style.css?v=202611151720">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611151400"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611151400"></script>
-<script src="js/vendor/pdf.min.js?v=202611151400"></script>
-<script src="js/config.js?v=202611151400"></script>
-<script src="js/api.js?v=202611151400"></script>
-<script src="js/common.js?v=202611151400"></script>
-<script src="js/bankcore.js?v=202611151400"></script>
-<script src="js/pdfui.js?v=202611151400"></script>
+<script src="js/vendor/qrcode.min.js?v=202611151720"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611151720"></script>
+<script src="js/vendor/pdf.min.js?v=202611151720"></script>
+<script src="js/config.js?v=202611151720"></script>
+<script src="js/api.js?v=202611151720"></script>
+<script src="js/common.js?v=202611151720"></script>
+<script src="js/bankcore.js?v=202611151720"></script>
+<script src="js/pdfui.js?v=202611151720"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -801,12 +801,27 @@ $('go-btn').addEventListener('click', async () => {
       return items.map(x => ({ id: x.id, text: x.textPreview }));
     };
     { let pi = 0; for (const s of chosen) { pi++; msg('문제 쪽을 읽는 중... ' + pi + '/' + chosen.length + ' ' + secTitle(s)); try { await getSec(s); } catch (e) {} try { await bookDoc.cleanup(); } catch (e) {} } }
+    // 이미 있던 시험지를 쓰는 단원인데 문제은행에 그 단원 문제가 없으면(문제은행만 지운 경우 등) 다시 저장하고 시험지에 연결한다
+    const repairWarn = [];
+    const repairBank = async (s, title, examId) => {
+      if (!toBank) return;
+      try {
+        if (!window._bkOld) { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true }); window._bkOld = {}; ((lq && lq.questions) || []).forEach(q => { if (q.kind === '교재' && q.source) (window._bkOld[q.source] = window._bkOld[q.source] || []).push(q.id); }); }
+        const tail = ' ' + s.name + ' ' + s.tag;
+        if (Object.keys(window._bkOld).some(src => src.endsWith(tail) && window._bkOld[src].length)) return;
+        msg('문제은행에 다시 저장 중... ' + title);
+        const saved = await bankSection(s, title); try { await bookDoc.cleanup(); } catch (e2) {}
+        if (!saved || !saved.length) return;
+        window._bkOld[bookName + tail] = saved.map(x => x.id);
+        try { const r = await callApi('setExamSources', { password: getTeacherPassword(), id: examId, sourceQuestionIds: saved.map(x => x.id), questionTexts: saved.map(x => x.text) }); if (!r.ok) repairWarn.push(title); } catch (e) { repairWarn.push(title); }
+      } catch (e) { repairWarn.push(title + ' (' + e.message + ')'); }
+    };
     const worker = async () => {
       while (!fail) {
         const k = next++; if (k >= regList.length) return;
         const s = regList[k], title = secTitle(s);
-        if (byTitle[title]) { ids[s.order] = byTitle[title]; toLink.push(byTitle[title]); reused++; continue; }
-        if (bySig[sigOf(s)]) { ids[s.order] = bySig[sigOf(s)]; toLink.push(bySig[sigOf(s)]); reused++; continue; }
+        if (byTitle[title]) { ids[s.order] = byTitle[title]; toLink.push(byTitle[title]); reused++; await repairBank(s, title, byTitle[title]); continue; }
+        if (bySig[sigOf(s)]) { ids[s.order] = bySig[sigOf(s)]; toLink.push(bySig[sigOf(s)]); reused++; await repairBank(s, title, bySig[sigOf(s)]); continue; }
         const id = genExamId();
         let nums; try { const sc0 = await getSec(s); if (sc0 && sc0.nums && sc0.nums.length === s.answers.length && sc0.nums.some((n, i) => n !== i + 1)) nums = sc0.nums; } catch (e) {}
         let saved = null;
@@ -831,6 +846,7 @@ $('go-btn').addEventListener('click', async () => {
     await Promise.all(Array.from({ length: toBank ? 2 : 3 }, worker));
     if (fail) throw fail;
     // 이미 있던 시험을 쓴 단원은 이 교재 번호도 붙여 둔다 (그래야 이 합본의 「여러 단원 한꺼번에 채점」 QR에서 단원이 보인다)
+    if (repairWarn.length) linkWarn = (linkWarn ? linkWarn + ' / ' : '') + '문제은행 재저장 후 시험지 연결을 못 한 단원 ' + repairWarn.length + '개 (앱스크립트를 새 버전으로 배포해야 연결돼요)';
     if (toLink.length) { try { const lr = await callApi('linkBook', { password: getTeacherPassword(), book: bookId, ids: toLink }); if (!lr.ok) linkWarn = lr.error || '연결 실패'; } catch (e) { linkWarn = e.message; } }
 
     try { await bookDoc.cleanup(); } catch (e) {}

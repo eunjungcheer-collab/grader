@@ -129,6 +129,7 @@ function handle_(e) {
       case 'deleteQuestions': result = actionDeleteQuestions_(params); break;
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
+      case 'setExamSources': result = actionSetExamSources_(params); break;
       case 'renameBook': result = actionRenameBook_(params); break;
       case 'deleteExam': result = actionDeleteExam_(params); break;
       case 'deleteExams': result = actionDeleteExams_(params); break;
@@ -960,6 +961,17 @@ function actionDeleteSubmission_(p) {
 
 // 이미 등록한 시험의 정답을 고친다. 문항 수는 그대로여야 하고, 이미 제출된 학생 기록도 새 정답으로 다시 채점한다.
 // 시험지 이름 바꾸기: 시험 시트의 이름과, 문제은행 문항의 「출처」(시험지 이름과 맞춰 찾기 때문에)를 함께 바꾼다
+// 시험지가 쓰는 문제은행 문항 연결을 다시 맞춘다 (문제은행 문항을 지웠다가 다시 저장했을 때)
+function actionSetExamSources_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ids = (p.sourceQuestionIds || []).map(String), texts = p.questionTexts || [];
+  if (!ids.length) return { ok: false, error: '연결할 문항이 없어요.' };
+  const exams = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_EXAMS), found = findExamRow_(exams, p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try { exams.getRange(found.rowIndex, 8).setValue(JSON.stringify(ids)); if (texts.length) exams.getRange(found.rowIndex, 10).setValue(JSON.stringify(texts)); } finally { lock.releaseLock(); }
+  return { ok: true, n: ids.length };
+}
 function actionUpdateExamTitle_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const nt = cleanText_(p.title, 120); if (!nt) return { ok: false, error: '새 이름을 입력해 주세요.' };
