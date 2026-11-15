@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611151320">
+<link rel="stylesheet" href="css/style.css?v=202611151400">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -52,6 +52,7 @@
   <details class="tools-box"><summary>🛠 정리 · 자동 채우기 도구 <span class="hint" style="margin:0;">(필요할 때만 펼치세요)</span></summary>
     <div class="tools-body">
   <div style="margin:8px 0;"><button type="button" class="btn outline" id="dedupe" style="padding:8px 14px;">🧹 중복 문항 정리 (같은 PDF를 여러 번 올린 경우)</button> <span class="hint" id="dedupe-msg"></span></div>
+  <div style="margin:8px 0;"><button type="button" class="btn outline" id="health-btn" style="padding:8px 14px;">🩺 문제은행 건강검진 (교재별 점검)</button> <span class="hint" id="health-msg"></span><div id="health-out" style="margin-top:8px; font-size:13px;"></div></div>
   <div style="margin:8px 0;"><button type="button" class="btn outline" id="book-tidy" style="padding:8px 14px;">📚 교재 문항 정리 (중복 지우기 + 단원 바로잡기)</button> <span class="hint" id="book-tidy-msg"></span></div>
   <div style="margin:8px 0;"><button type="button" class="btn outline" id="fix-class" style="padding:8px 14px;">🔧 학년·단원 바로잡기 (파일 이름·단원 이름 기준)</button> <span class="hint" id="fix-class-msg"></span>
     <div class="hint" style="margin:2px 0 0;">선택한 문항이 있으면 그것만, 없으면 전체를 점검해요. 파일 이름의 학년(중1…)과 단원 이름(예: 물리변화와 화학변화 → 중3)을 목차와 맞춰 학년을 고치고, 단원 이름을 목차 이름(예: 4단원 물질의 상태 변화)으로 통일해요.</div></div>
@@ -80,11 +81,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611151320"></script>
-<script src="js/api.js?v=202611151320"></script>
-<script src="js/common.js?v=202611151320"></script>
-<script src="js/bankcore.js?v=202611151320"></script>
-<script src="js/pdfui.js?v=202611151320"></script>
+<script src="js/config.js?v=202611151400"></script>
+<script src="js/api.js?v=202611151400"></script>
+<script src="js/common.js?v=202611151400"></script>
+<script src="js/bankcore.js?v=202611151400"></script>
+<script src="js/pdfui.js?v=202611151400"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -536,6 +537,32 @@ $('dedupe').addEventListener('click', async () => {
     selected.clear();
     msg.textContent = '✅ 중복 ' + del.length + '개를 지웠어요.';
     render();
+  } catch (e) { msg.textContent = '오류가 났어요: ' + e.message; }
+});
+$('health-btn').addEventListener('click', async () => {
+  const msg = $('health-msg'), out = $('health-out'); msg.textContent = '점검 중...'; out.innerHTML = '';
+  try {
+    const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true });
+    const le = await callApi('listExams', { password: getTeacherPassword() });
+    const qs = ((lq && lq.questions) || []).filter(isBookQ), exams = ((le && le.ok && le.exams) || []);
+    const by = {};
+    qs.forEach(q => { const n = bookNameOf(q) || '(이름 없음)'; (by[n] = by[n] || []).push(q); });
+    const names = Object.keys(by).sort();
+    if (!names.length) { out.textContent = '교재 문항이 없어요.'; msg.textContent = ''; return; }
+    let html = '<table style="border-collapse:collapse; width:100%;"><tr style="background:#F3F4F6;"><th style="text-align:left;padding:4px 6px;">교재</th><th>문제은행</th><th>시험지</th><th>시험지 문항 합</th><th>겹친 문항</th><th>단원 미지정</th><th>단원 수</th></tr>';
+    let bad = 0;
+    names.forEach(n => {
+      const g = by[n], ex = exams.filter(e => e.bookTitle === n && !e.hasRecipe), exTotal = ex.reduce((a, e) => a + (e.answerCount || 0), 0);
+      const cnt = {}; g.forEach(q => { const k = String(q.source || '') + '#' + q.num; cnt[k] = (cnt[k] || 0) + 1; });
+      const dup = Object.values(cnt).reduce((a, c) => a + (c > 1 ? c - 1 : 0), 0);
+      const nounit = g.filter(q => !q.unit).length, units = new Set(g.map(q => q.unit).filter(Boolean)).size;
+      const probs = []; if (dup) probs.push('겹침'); if (ex.length && g.length > exTotal) probs.push('시험지보다 많음'); if (ex.length && g.length < exTotal - 0) probs.push('시험지보다 적음'); if (!ex.length) probs.push('시험지 없음'); if (nounit) probs.push('단원 미지정'); if (g.length > 100 && units <= 1) probs.push('단원이 1개뿐');
+      if (probs.length) bad++;
+      const red = 'color:#b91c1c;font-weight:700;';
+      html += '<tr style="border-top:1px solid #E5E7EB;"><td style="padding:4px 6px;">' + escapeHtml(n) + (probs.length ? '<br><span style="' + red + 'font-size:12px;">⚠ ' + probs.join(' · ') + '</span>' : '<br><span style="color:#047857;font-size:12px;">✔ 정상</span>') + '</td><td style="text-align:center;">' + g.length + '</td><td style="text-align:center;">' + ex.length + '</td><td style="text-align:center;">' + exTotal + '</td><td style="text-align:center;' + (dup ? red : '') + '">' + dup + '</td><td style="text-align:center;' + (nounit ? red : '') + '">' + nounit + '</td><td style="text-align:center;">' + units + '</td></tr>';
+    });
+    out.innerHTML = html + '</table><div class="hint" style="margin-top:4px;">· 시험지 문항 합에는 서술형이 포함돼요. 문제은행이 더 많으면 중복이나 오래된 찌꺼기가 있다는 뜻이에요. 겹침·찌꺼기는 아래 "교재 문항 정리"로 지울 수 있어요.</div>';
+    msg.textContent = bad ? '⚠ 확인이 필요한 교재 ' + bad + '개' : '✅ 모든 교재가 정상이에요';
   } catch (e) { msg.textContent = '오류가 났어요: ' + e.message; }
 });
 $('book-tidy').addEventListener('click', async () => {

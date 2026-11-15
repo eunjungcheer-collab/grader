@@ -1892,7 +1892,7 @@
     const W = 595.28, H = 841.89, marginX = 30, marginBottom = 36, gap = 12, colGap = 14;
     const areaW = W - marginX * 2, colW = (areaW - colGap) / 2;
     const colX = [marginX, marginX + colW + colGap];
-    const hdr = headerPngEx(title + ' (강사용)', Math.round(areaW), '※ 강사용: 정답(빨간 동그라미)과 해설이 각 문제 바로 아래에 있습니다. 학생에게 나눠주지 마세요.', opts.keepTitle), headH = hdr.h;
+    const hdr = headerPngEx(title + ' (강사용)', Math.round(areaW - (opts.qrReserve || 0)), '※ 강사용: 정답(빨간 동그라미)과 해설이 각 문제 바로 아래에 있습니다. 학생에게 나눠주지 마세요.', opts.keepTitle), headH = hdr.h;
     const marginTop = 74 + 12 + (headH - 48), maxH = H - marginTop - marginBottom;
     const headImg = await doc.embedPng(b64ToBytes(hdr.b64));
     const RED = rgb(0.85, 0.1, 0.1);
