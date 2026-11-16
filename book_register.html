@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611160520">
+<link rel="stylesheet" href="css/style.css?v=202611161240">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611160520"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611160520"></script>
-<script src="js/vendor/pdf.min.js?v=202611160520"></script>
-<script src="js/config.js?v=202611160520"></script>
-<script src="js/api.js?v=202611160520"></script>
-<script src="js/common.js?v=202611160520"></script>
-<script src="js/bankcore.js?v=202611160520"></script>
-<script src="js/pdfui.js?v=202611160520"></script>
+<script src="js/vendor/qrcode.min.js?v=202611161240"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611161240"></script>
+<script src="js/vendor/pdf.min.js?v=202611161240"></script>
+<script src="js/config.js?v=202611161240"></script>
+<script src="js/api.js?v=202611161240"></script>
+<script src="js/common.js?v=202611161240"></script>
+<script src="js/bankcore.js?v=202611161240"></script>
+<script src="js/pdfui.js?v=202611161240"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -648,6 +648,12 @@ $('go-btn').addEventListener('click', async () => {
     const uinfoR = unitInfoFor(sections);
     const ids = {}, bankWarn = [], teacherSkip = [], toLink = []; let linkWarn = '';
     const toBank = $('to-bank').checked;
+    // 문제은행의 교재 문항을 출처별로 모아 둔다 (id 목록, 번호별 id·미리보기)
+    const loadBk = async () => {
+      const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true });
+      window._bkOld = {}; window._bkNum = {};
+      ((lq && lq.questions) || []).forEach(q => { if (q.kind !== '교재' || !q.source) return; (window._bkOld[q.source] = window._bkOld[q.source] || []).push(q.id); const n = Number(q.num) || 0; if (n) { const m = (window._bkNum[q.source] = window._bkNum[q.source] || {}); if (!m[n] || String(q.createdAt || '') > String(m[n].at || '')) m[n] = { id: q.id, text: q.textPreview || '', at: q.createdAt || '' }; } });
+    };
     if (!toBank && !confirm('「문제은행에 저장」이 꺼져 있어요.\n이대로 등록하면 시험지만 만들어지고 문제은행·문제 조합에는 이 교재 문제가 나타나지 않아요.\n\n[확인] 시험지만 등록   /   [취소] 돌아가서 체크하기')) throw new Error('등록을 취소했어요 (문제은행 저장 체크를 확인해 주세요).');
     // 사전 점검 1: 같은 제목의 시험지가 이미 있는데 정답이 다르면, 기존 시험지가 그대로 쓰여 예전 정답이 남는다 → 알려 준다
     {
@@ -660,9 +666,7 @@ $('go-btn').addEventListener('click', async () => {
     if (toBank) {
       try {
         msg('문제은행에 같은 단원이 있는지 확인하는 중...');
-        const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true });
-        window._bkOld = {}; const qs = (lq && lq.questions) || [];
-        qs.forEach(q => { if (q.kind === '교재' && q.source) (window._bkOld[q.source] = window._bkOld[q.source] || []).push(q.id); });
+        await loadBk();
         const bn = $('book-name').value.trim(), dupInfo = {};
         sections.forEach(s => {
           if (byTitle[secTitle(s)] || bySig[sigOf(s)]) return;       // 이미 있는 시험지를 쓰는 단원은 문제를 새로 저장하지 않는다
@@ -770,13 +774,14 @@ $('go-btn').addEventListener('click', async () => {
     const toc = toBank ? await ensureToc() : [];
     const bookName = $('book-name').value.trim() || bookFileName.replace(/\.pdf$/i, '');
     // 한 단원의 문제를 잘라 문제은행에 저장하고 문항 id 목록(번호 순서)을 돌려준다. 문항 수가 정답 수와 다르면 null.
-    const bankSection = async (s, title) => {
+    const bankSection = async (s, title, only) => {
       const sc = await getSec(s), doc = sc.doc, scan = sc.scan, qs = scan.questions;
       if (!sc.ok) { bankWarn.push(title + ' (문항 ' + qs.length + '개 ≠ 정답 ' + s.answers.length + '개)'); return null; }
       const ui = uinfoR(s), tu = tocUnitByNo(toc, gradeG, ui.no);     // 단원은 소단원 이름 번호(4-1 → 4)로 정한다 (s.unit은 전부 같은 값일 수 있다)
       const unit = tu ? tu.unit : (ui.no + '. ' + (ui.name || s.unitName)), grade = gradeG === '고1' ? '고1' : (tu ? tu.grade : gradeG);
       const items = [];
       for (const q of qs) {
+        if (only && !only.has(q.num)) continue;
         const canvas = await BankCore.renderQuestion(doc, q, BankCore.CROP_SCALE, true);
         const ex = scan.explanations && scan.explanations[q.num];
         let explCanvas = null;
@@ -796,22 +801,26 @@ $('go-btn').addEventListener('click', async () => {
       }));
       if (ferr) throw ferr;
       bankQ += items.length;
-      return items.map(x => ({ id: x.id, text: x.textPreview }));
+      return items.map(x => ({ id: x.id, text: x.textPreview, num: x.num }));
     };
     { let pi = 0; for (const s of chosen) { pi++; msg('문제 쪽을 읽는 중... ' + pi + '/' + chosen.length + ' ' + secTitle(s)); try { await getSec(s); } catch (e) {} try { await bookDoc.cleanup(); } catch (e) {} } }
     // 이미 있던 시험지를 쓰는 단원인데 문제은행에 그 단원 문제가 없으면(문제은행만 지운 경우 등) 다시 저장하고 시험지에 연결한다
-    const repairWarn = [];
+    const repairWarn = []; let refilled = 0;
     const repairBank = async (s, title, examId) => {
       if (!toBank) return;
       try {
-        if (!window._bkOld) { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true }); window._bkOld = {}; ((lq && lq.questions) || []).forEach(q => { if (q.kind === '교재' && q.source) (window._bkOld[q.source] = window._bkOld[q.source] || []).push(q.id); }); }
-        const tail = ' ' + s.name + ' ' + s.tag;
-        if (Object.keys(window._bkOld).some(src => src.endsWith(tail) && window._bkOld[src].length)) return;
-        msg('문제은행에 다시 저장 중... ' + title);
-        const saved = await bankSection(s, title); try { await bookDoc.cleanup(); } catch (e2) {}
+        if (!window._bkOld) await loadBk();
+        const tail = ' ' + s.name + ' ' + s.tag, src = bookName + tail, byNum = window._bkNum[src] || {}, have = Object.keys(byNum).length, need = s.answers.length;
+        if (!have && Object.keys(window._bkOld).some(k => k.endsWith(tail) && window._bkOld[k].length)) return;   // 다른 교재 이름으로 이미 저장돼 있으면 건드리지 않는다
+        if (have >= need) return;
+        const missing = new Set(); for (let n = 1; n <= need; n++) if (!byNum[n]) missing.add(n);
+        msg((have ? '모자란 문제 ' + missing.size + '개를 다시 저장 중... ' : '문제은행에 다시 저장 중... ') + title);
+        const saved = await bankSection(s, title, missing); try { await bookDoc.cleanup(); } catch (e2) {}
         if (!saved || !saved.length) return;
-        window._bkOld[bookName + tail] = saved.map(x => x.id);
-        try { const r = await callApi('setExamSources', { password: getTeacherPassword(), id: examId, sourceQuestionIds: saved.map(x => x.id), questionTexts: saved.map(x => x.text) }); if (!r.ok) repairWarn.push(title); } catch (e) { repairWarn.push(title); }
+        const all = Object.assign({}, byNum); saved.forEach(x => { all[x.num] = { id: x.id, text: x.text }; });
+        window._bkNum[src] = all; window._bkOld[src] = Object.keys(all).map(n => all[n].id); refilled += saved.length;
+        const idsAll = []; for (let n = 1; n <= need; n++) { if (!all[n]) { idsAll.length = 0; break; } idsAll.push(all[n]); }
+        if (idsAll.length === need) { try { const r = await callApi('setExamSources', { password: getTeacherPassword(), id: examId, sourceQuestionIds: idsAll.map(x => x.id), questionTexts: idsAll.map(x => x.text) }); if (!r.ok) repairWarn.push(title); } catch (e) { repairWarn.push(title); } }
       } catch (e) { repairWarn.push(title + ' (' + e.message + ')'); }
     };
     const worker = async () => {
@@ -825,7 +834,7 @@ $('go-btn').addEventListener('click', async () => {
         let saved = null;
         if (toBank) {   // 이 단원의 시험지가 아직 없는데 같은 출처의 문항이 문제은행에 있으면, 예전에 등록하다 중단된 찌꺼기라서 먼저 지운다 (그대로 두면 중복이 쌓인다)
           try {
-            if (!window._bkOld) { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: true }); window._bkOld = {}; ((lq && lq.questions) || []).forEach(q => { if (q.kind === '교재' && q.source) (window._bkOld[q.source] = window._bkOld[q.source] || []).push(q.id); }); }
+            if (!window._bkOld) await loadBk();
             const oldIds = window._bkOld[bookName + ' ' + s.name + ' ' + s.tag] || [];
             if (oldIds.length) { for (let i = 0; i < oldIds.length; i += 80) await callApi('deleteQuestions', { password: getTeacherPassword(), ids: oldIds.slice(i, i + 80) }); window._bkOld[bookName + ' ' + s.name + ' ' + s.tag] = []; }
           } catch (e) { fail = new Error(title + ': 이전에 저장된 문항을 정리하지 못했어요 (' + e.message + ')'); return; }
@@ -843,6 +852,10 @@ $('go-btn').addEventListener('click', async () => {
     };
     await Promise.all(Array.from({ length: toBank ? 2 : 3 }, worker));
     if (fail) throw fail;
+    if (toBank) {   // 등록이 끝난 뒤 문제은행을 다시 읽어, 단원마다 문항이 다 들어갔는지 확인하고 모자라면 그 번호만 다시 저장한다
+      window._bkOld = null;
+      for (const s of chosen) { if (ids[s.order]) await repairBank(s, secTitle(s), ids[s.order]); }
+    }
     // 이미 있던 시험을 쓴 단원은 이 교재 번호도 붙여 둔다 (그래야 이 합본의 「여러 단원 한꺼번에 채점」 QR에서 단원이 보인다)
     if (repairWarn.length) linkWarn = (linkWarn ? linkWarn + ' / ' : '') + '문제은행 재저장 후 시험지 연결을 못 한 단원 ' + repairWarn.length + '개 (앱스크립트를 새 버전으로 배포해야 연결돼요)';
     if (toLink.length) { try { const lr = await callApi('linkBook', { password: getTeacherPassword(), book: bookId, ids: toLink }); if (!lr.ok) linkWarn = lr.error || '연결 실패'; } catch (e) { linkWarn = e.message; } }
@@ -1021,7 +1034,7 @@ $('go-btn').addEventListener('click', async () => {
     renderSaved();
     syncToServer(rec);
     const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
-    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (savedOk ? '합본 PDF는 아래 버튼으로 내려받아요(이 기기에 저장돼 나중에도 받을 수 있어요).' : '합본 PDF는 아래 버튼으로 내려받아요. (이 기기에는 저장하지 못했어요)') + '<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (teacherSkip.length ? '<br><b style="color:#C1392B;">강사용에 정답·해설을 못 붙인 단원(문항 번호와 정답이 안 맞음): ' + teacherSkip.map(escapeHtml).join(' / ') + '</b>' : '') + (linkWarn ? '<br><b style="color:#C1392B;">이미 있던 시험을 이 교재 QR에 연결하지 못했어요(' + escapeHtml(linkWarn) + '). Apps Script를 새 버전으로 다시 배포했는지 확인해 주세요.</b>' : '') + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
+    $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (refilled ? ' · 빠졌던 문제 ' + refilled + '개 다시 채움' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (savedOk ? '합본 PDF는 아래 버튼으로 내려받아요(이 기기에 저장돼 나중에도 받을 수 있어요).' : '합본 PDF는 아래 버튼으로 내려받아요. (이 기기에는 저장하지 못했어요)') + '<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (teacherSkip.length ? '<br><b style="color:#C1392B;">강사용에 정답·해설을 못 붙인 단원(문항 번호와 정답이 안 맞음): ' + teacherSkip.map(escapeHtml).join(' / ') + '</b>' : '') + (linkWarn ? '<br><b style="color:#C1392B;">이미 있던 시험을 이 교재 QR에 연결하지 못했어요(' + escapeHtml(linkWarn) + '). Apps Script를 새 버전으로 다시 배포했는지 확인해 주세요.</b>' : '') + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
   } catch (e) {
     err.innerHTML = '<div class="banner error">' + escapeHtml(e.message) + '</div>';
     $('go-msg').textContent = '';
