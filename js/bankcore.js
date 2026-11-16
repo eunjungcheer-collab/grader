@@ -3430,13 +3430,23 @@
       let pd; try { pd = await pageItems(doc, p, true); } catch (e) { continue; }
       const rs = (pd.imgs || []).filter(r => !r[4] && (r[2] - r[0]) < 14 && (r[3] - r[1]) < 14 && (r[2] - r[0]) > 4 && (r[3] - r[1]) > 4);
       // 번호 표지: 「3) [정답]」 한 덩어리이거나, 「3)」 옆에 「정답」 딱지가 따로 있는 두 가지 모양
-      const labs = [];
+      let labs = [];
       pd.items.forEach(l => {
-        let m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[정답\]\s*([①-⑨](?:[①-⑨,，、·\s]*[①-⑨])*)?/);
-        if (m) { labs.push({ n: parseInt(m[1], 10), right: l.x + l.w, top: l.top, bottom: l.bottom, inline: m[2] || '' }); return; }
+        let m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[\s*(?:정답)?\s*\]\s*([①-⑨](?:[①-⑨,，、·\s]*[①-⑨])*)?/);      // 글자 층에 한글이 빠진 쪽(「1) [ ]」)도 번호표로 본다
+        if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, right: l.x + l.w, top: l.top, bottom: l.bottom, inline: m[2] || '' }); return; }
+        m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[\s*$/);      // 글자 층이 깨져 「1) [」「정답(깨짐)」「]」로 쪼개진 쪽
+        if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, right: l.x + l.w + 21, top: l.top, bottom: l.bottom }); return; }
         m = String(l.str).match(/^\s*(\d{1,3})\)\s*$/);
-        if (m) { const t = pd.items.find(q => String(q.str).trim() === '정답' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14); if (t) labs.push({ n: parseInt(m[1], 10), right: t.x + t.w, top: l.top, bottom: l.bottom }); }
+        if (m) { const t = pd.items.find(q => /^\[?\s*(?:정답)?\s*\]?$/.test(String(q.str).trim()) && String(q.str).trim() !== '' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14); if (t) labs.push({ n: parseInt(m[1], 10), x: l.x, right: t.x + t.w, top: l.top, bottom: l.bottom }); }
       });
+      // 어떤 교재는 보이지 않는 사본 글자·숫자 그림 층이 몇 pt 어긋나게 겹쳐 있다(번호도 하나씩 밀려 있다) → 같은 자리에 겹친 번호표 중 순서가 맞는 것만 진짜로 보고,
+      // 숫자 그림은 가장 가까운 번호표(가짜 포함)에 붙여서 가짜 번호표에 붙은 그림은 버린다
+      const allLabs = labs.slice(), ghost = new Set();
+      { const halfW = (pd.W || 600) / 2;     // 같은 줄(단) 안에서 번호는 아래로 갈수록 커져야 한다 → 순서가 거꾸로 가는(이미 나온 번호 이하인) 번호표는 가짜 사본 층의 것
+        [0, 1].forEach(col => { let prev = 0; labs.filter(q => (q.x < halfW ? 0 : 1) === col).sort((a, b) => a.top - b.top).forEach(q => { if (q.n > prev) prev = q.n; else ghost.add(q); }); }); }
+      if (ghost.size) labs = labs.filter(q => !ghost.has(q));
+      const imgOwner = new Map();
+      rs.forEach(r => { let best = null, bd = 1e9; allLabs.forEach(q => { if (r[0] > q.right - 3 && r[0] - q.right < 16) { const d = Math.abs((r[1] + r[3]) / 2 - (q.top + q.bottom) / 2); if (d < 8 && d < bd) { bd = d; best = q; } } }); if (best) imgOwner.set(r, best); });
       const rowStart = rows.length;
       for (const l of labs) {
         const n = l.n;
@@ -3451,7 +3461,7 @@
           run += t; endX = q.x + q.w;
         }
         if (/[①-⑨]/.test(run)) { rows.push({ p: p, n: n, d: run.split('').filter(ch => /[①-⑨]/.test(ch)).map(ch => String(ch.charCodeAt(0) - 0x2460 + 1)).join(''), conf: 1, text: true }); continue; }
-        const r = rs.filter(q => q[0] > l.right - 3 && q[0] - l.right < 16 && Math.abs((q[1] + q[3]) / 2 - (l.top + l.bottom) / 2) < 8).sort((u, v) => u[0] - v[0])[0];
+        const r = rs.filter(q => imgOwner.get(q) === l).sort((u, v) => u[0] - v[0])[0];
         if (!r) { rows.push({ p: p, n: n, d: '-', conf: 1 }); continue; }
         const c = await renderRect(doc, p, [r[0] - 0.5, r[1] - 0.5, r[2] + 0.5, r[3] + 0.5], 12, false);
         const ic = createCanvas(c.width, c.height), ix = ic.getContext('2d'); ix.fillStyle = '#fff'; ix.fillRect(0, 0, c.width, c.height);
