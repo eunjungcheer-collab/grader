@@ -274,7 +274,7 @@
       else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject || fn === OPS.paintImageXObjectRepeat) {
         const xs = [], ys = [];
         [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(function (pt) { xs.push(ctm[0] * pt[0] + ctm[2] * pt[1] + ctm[4]); ys.push(ctm[1] * pt[0] + ctm[3] * pt[1] + ctm[5]); });
-        rects.push([Math.min.apply(null, xs), Math.min.apply(null, ys), Math.max.apply(null, xs), Math.max.apply(null, ys)]);
+        rects.push([Math.min.apply(null, xs), Math.min.apply(null, ys), Math.max.apply(null, xs), Math.max.apply(null, ys), 0, (fn === OPS.paintImageXObject && a && typeof a[0] === 'string' && a[0].indexOf('g_') === 0) ? a[0] : '']);      // [5] = 그림 이름 (같은 이름 = 같은 그림)
       }
     }
     return rects;
@@ -3421,6 +3421,29 @@
     }
     return out;
   }
+  // 주어진 자리(pt)를 그려서 동그라미 테두리(○ 속에 숫자)를 모두 찾는다(왼쪽부터). 있으면 [{ canvas: 동그라미만 자른 그림, w, h(pt) }, …], 없으면 null
+  async function _findRing(doc, p, win) {
+    const S = 12, wc = await renderRect(doc, p, win, S, false), WW = wc.width, HH = wc.height; if (WW < 10 || HH < 10) return null;
+    const dd = wc.getContext('2d').getImageData(0, 0, WW, HH).data, dark = new Uint8Array(WW * HH);
+    for (let i = 0; i < WW * HH; i++) dark[i] = (dd[i * 4 + 3] > 100 && dd[i * 4] < 130 && dd[i * 4 + 1] < 130 && dd[i * 4 + 2] < 130) ? 1 : 0;
+    const seen = new Uint8Array(WW * HH), picks = [];
+    for (let y0 = 0; y0 < HH; y0++) for (let x0 = 0; x0 < WW; x0++) {
+      const q0 = y0 * WW + x0; if (!dark[q0] || seen[q0]) continue;
+      let bx0 = x0, bx1 = x0, by0 = y0, by1 = y0; const st = [q0]; seen[q0] = 1;
+      while (st.length) { const q = st.pop(), qx = q % WW, qy = (q - qx) / WW; if (qx < bx0) bx0 = qx; if (qx > bx1) bx1 = qx; if (qy < by0) by0 = qy; if (qy > by1) by1 = qy;
+        for (let k = 0; k < 8; k++) { const nx = qx + (k % 3) - 1, ny = qy + Math.floor(k / 3) - 1; if (k === 4 || nx < 0 || ny < 0 || nx >= WW || ny >= HH) continue; const nq = ny * WW + nx; if (dark[nq] && !seen[nq]) { seen[nq] = 1; st.push(nq); } } }
+      const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1;
+      if (bw < 6.5 * S || bw > 16 * S || bh < 6.5 * S || bh > 16 * S || bw / bh < 0.8 || bw / bh > 1.25) continue;
+      // 진짜 동그라미인지: 둘레 위의 점들이 거의 다 먹물이어야 한다 (한글 글자·도형은 안 맞는다)
+      const cx0 = (bx0 + bx1) / 2, cy0 = (by0 + by1) / 2, rad = (bw + bh) / 4 - 4; let on = 0, tot = 0;
+      for (let a = 0; a < 360; a += 10) { const px = Math.round(cx0 + rad * Math.cos(a * Math.PI / 180)), py = Math.round(cy0 + rad * Math.sin(a * Math.PI / 180)); tot++; let hit = false; for (let dy = -3; dy <= 3 && !hit; dy++) for (let dx = -3; dx <= 3; dx++) { const xx = px + dx, yy = py + dy; if (xx >= 0 && yy >= 0 && xx < WW && yy < HH && dark[yy * WW + xx]) { hit = true; break; } } if (hit) on++; }
+      if (on / tot < 0.9) continue;
+      picks.push([bx0, by0, bx1, by1]);
+    }
+    if (!picks.length) return null;
+    picks.sort((u, v) => u[0] - v[0]);      // 왼쪽부터 (복수 정답은 동그라미가 여러 개)
+    return picks.map(pick => { const nc = createCanvas(pick[2] - pick[0] + 1, pick[3] - pick[1] + 1), nx = nc.getContext('2d'); nx.fillStyle = '#fff'; nx.fillRect(0, 0, nc.width, nc.height); nx.drawImage(wc, pick[0], pick[1], nc.width, nc.height, 0, 0, nc.width, nc.height); return { canvas: nc, w: nc.width / S, h: nc.height / S }; });
+  }
   async function readLabeledImageAnswers(doc, pages, onProgress) {
     const rows = [], items = [], tpl = _digitTemplates().map(t => ({ d: t.d, c: _centered(t.v.f), ar: t.v.ar }));
     let pi = 0;
@@ -3441,10 +3464,30 @@
       });
       // 어떤 교재는 보이지 않는 사본 글자·숫자 그림 층이 몇 pt 어긋나게 겹쳐 있다(번호도 하나씩 밀려 있다) → 같은 자리에 겹친 번호표 중 순서가 맞는 것만 진짜로 보고,
       // 숫자 그림은 가장 가까운 번호표(가짜 포함)에 붙여서 가짜 번호표에 붙은 그림은 버린다
+      // 먼저 실제로 그려진 글자가 있는 번호표만 남긴다 (눈에 안 보이는 사본 글자는 그 자리가 비어 있다)
+      try {
+        const SCI = 3, cv = await renderRect(doc, p, [0, 0, pd.W, pd.H], SCI, false), im = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, cw = cv.width;
+        const inkOf = l => { const x0 = Math.max(0, Math.floor((l.x != null ? l.x : l.right - 20) * SCI)), x1 = Math.min(cw - 1, Math.ceil(l.right * SCI)), y0 = Math.max(0, Math.floor(l.top * SCI)), y1 = Math.min(cv.height - 1, Math.ceil(l.bottom * SCI)); let n = 0; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const k = (y * cw + x) * 4; if (im[k] < 120 && im[k + 1] < 120 && im[k + 2] < 120) n++; } return n; };
+        const seen = labs.filter(l => inkOf(l) >= 40); if (seen.length) labs = seen;
+      } catch (e) {}
       const allLabs = labs.slice(), ghost = new Set();
-      { const halfW = (pd.W || 600) / 2;     // 같은 줄(단) 안에서 번호는 아래로 갈수록 커져야 한다 → 순서가 거꾸로 가는(이미 나온 번호 이하인) 번호표는 가짜 사본 층의 것
-        [0, 1].forEach(col => { let prev = 0; labs.filter(q => (q.x < halfW ? 0 : 1) === col).sort((a, b) => a.top - b.top).forEach(q => { if (q.n > prev) prev = q.n; else ghost.add(q); }); }); }
+      const ringOf = async l => { if (l._ring === undefined) l._ring = await _findRing(doc, p, [Math.max(0, (l.x != null ? l.x : l.right - 30) + 10), l.top - 4, l.right + 50, l.bottom + 4]); return l._ring; };
+      { const halfW = (pd.W || 600) / 2;
+        // 같은 번호가 두 번 있으면 한쪽은 보이지 않는 사본이다. 사본이 진짜보다 위에 있는 쪽도, 아래에 있는 쪽도 있어서 → 위쪽 것만 쓴 경우와 아래쪽 것만 쓴 경우를 견주고,
+        // 번호표 오른쪽에 동그라미가 더 많이 보이는 쪽을 진짜로 본다 (동점이면 위쪽)
+        for (const col of [0, 1]) {
+          const cl = labs.filter(q => (q.x < halfW ? 0 : 1) === col), byN = {};
+          cl.forEach(q => { (byN[q.n] = byN[q.n] || []).push(q); });
+          const ns = Object.keys(byN).map(Number); if (!ns.some(n => byN[n].length > 1)) continue;
+          const pickSet = which => { const out = []; let prev = 0; ns.sort((a, b) => a - b).forEach(n => { const g = byN[n].slice().sort((a, b) => a.top - b.top); const q = which === 0 ? g[0] : g[g.length - 1]; out.push(q); }); return out; };
+          const sets = [pickSet(0), pickSet(1)], sc = [0, 0];
+          for (let k = 0; k < 2; k++) for (const q of sets[k]) if (await ringOf(q)) sc[k]++;
+          const keep = new Set(sets[sc[1] > sc[0] ? 1 : 0]);
+          cl.forEach(q => { if (!keep.has(q)) ghost.add(q); });
+        }
+      }
       if (ghost.size) labs = labs.filter(q => !ghost.has(q));
+      { const halfW2 = (pd.W || 600) / 2; [0, 1].forEach(col => { let prev = 0; labs.filter(q => (q.x < halfW2 ? 0 : 1) === col).sort((u, v) => u.top - v.top).forEach(q => { if (q.n > prev) prev = q.n; else ghost.add(q); }); }); if (ghost.size) labs = labs.filter(q => !ghost.has(q)); }      // 한 단 안에서 번호는 아래로 갈수록 커진다 (본문 속 「3)」 같은 글자를 번호표로 잘못 본 것 제거)
       const imgOwner = new Map();
       rs.forEach(r => { let best = null, bd = 1e9; allLabs.forEach(q => { if (r[0] > q.right - 3 && r[0] - q.right < 16) { const d = Math.abs((r[1] + r[3]) / 2 - (q.top + q.bottom) / 2); if (d < 8 && d < bd) { bd = d; best = q; } } }); if (best) imgOwner.set(r, best); });
       const rowStart = rows.length;
@@ -3461,14 +3504,17 @@
           run += t; endX = q.x + q.w;
         }
         if (/[①-⑨]/.test(run)) { rows.push({ p: p, n: n, d: run.split('').filter(ch => /[①-⑨]/.test(ch)).map(ch => String(ch.charCodeAt(0) - 0x2460 + 1)).join(''), conf: 1, text: true }); continue; }
-        const r = rs.filter(q => imgOwner.get(q) === l).sort((u, v) => u[0] - v[0])[0];
-        if (!r) { rows.push({ p: p, n: n, d: '-', conf: 1 }); continue; }
-        const c = await renderRect(doc, p, [r[0] - 0.5, r[1] - 0.5, r[2] + 0.5, r[3] + 0.5], 12, false);
-        const ic = createCanvas(c.width, c.height), ix = ic.getContext('2d'); ix.fillStyle = '#fff'; ix.fillRect(0, 0, c.width, c.height);
-        const mx = Math.round(c.width * 0.22), my = Math.round(c.height * 0.2);
-        ix.drawImage(c, mx, my, c.width - 2 * mx, c.height - 2 * my, mx, my, c.width - 2 * mx, c.height - 2 * my);   // 바깥 동그라미 테두리는 빼고 속의 숫자만
-        const v = _inkFeature(ic); const row = { p: p, n: n, d: '?', conf: 0 }; rows.push(row);
-        if (v) items.push({ row: row, c: _centered(v.f), ar: v.ar, bw: r[2] - r[0], bh: r[3] - r[1] });
+        // 번호표 바로 오른쪽 자리를 직접 그려 보고, 동그라미 테두리가 있으면 그 속의 숫자를 읽는다 (숨은 사본 그림·어긋난 그림 자리에 속지 않는다). 동그라미가 없으면 글 정답(서술형)
+        const ring = l._ring !== undefined ? l._ring : await _findRing(doc, p, [Math.max(0, (l.x != null ? l.x : l.right - 30) + 10), l.top - 4, l.right + 50, l.bottom + 4]);
+        if (!ring) { rows.push({ p: p, n: n, d: '-', conf: 1 }); continue; }
+        const row = { p: p, n: n, d: '?', conf: 0, subs: [] }; rows.push(row);
+        for (const rg of ring) {
+          const c = rg.canvas, ic = createCanvas(c.width, c.height), ix = ic.getContext('2d'); ix.fillStyle = '#fff'; ix.fillRect(0, 0, c.width, c.height);
+          const mx = Math.round(c.width * 0.22), my = Math.round(c.height * 0.2);
+          ix.drawImage(c, mx, my, c.width - 2 * mx, c.height - 2 * my, mx, my, c.width - 2 * mx, c.height - 2 * my);   // 바깥 동그라미 테두리는 빼고 속의 숫자만
+          const v = _inkFeature(ic), sub = { d: '?', conf: 0 }; row.subs.push(sub);
+          if (v) items.push({ row: sub, c: _centered(v.f), ar: v.ar, bw: rg.w, bh: rg.h });
+        }
       }
       // 사람이 정답을 눈으로 확인할 수 있도록, 이 번호의 「N) [정답]」 줄 주변 위치를 같이 돌려준다
       rows.slice(rowStart).forEach(r => { const lb = labs.find(x => x.n === r.n); if (lb) r.rect = [Math.max(0, lb.right - 80), Math.max(0, lb.top - 6), Math.min(pd.W, lb.right + 300), Math.min(pd.H, lb.top + 64)]; });
@@ -3508,6 +3554,7 @@
         if (bm !== null && bsim >= 0.6) { d = digOf[bm]; ok = true; } else { d = ranked[0]; ok = per[d] >= 0.25 && per[d] - Math.max.apply(null, Object.keys(per).filter(x => x !== d).map(x => per[x])) >= 0.08; }
       } else { d = ranked[0]; ok = per[d] >= 0.25 && per[d] - Math.max.apply(null, Object.keys(per).filter(x => x !== d).map(x => per[x])) >= 0.08; }
       const conf = per[d] - Math.max.apply(null, Object.keys(per).filter(x => x !== d).map(x => per[x]));
+      c.chosen = d; c.okk = ok; c.conf = conf; c.sz = c.items[0] ? Math.round((c.items[0].bw + c.items[0].bh) * 10) / 10 : 0;
       c.items.forEach(it => { Object.assign(it.row, { d: ok ? d : '?', conf: conf, top: per[d], guess: d, alt: ranked.find(x => x !== d), cluster: k, size: c.items.length }); });
     });
       allCls.push.apply(allCls, cls);
@@ -3521,7 +3568,10 @@
       let bm = null, bsim = -1; mainAll.forEach(m => { const sc = _sim(it.c, m.mean); if (sc > bsim && Math.abs(Math.log(it.ar / m.ar)) < 0.35) { bsim = sc; bm = m; } });
       if (bm && bsim >= 0.6) it.row.d = bm.d;
     });
-    rows.clusters = allCls.map(c => ({ n: c.items.length }));
+    rows.forEach(r => { if (r.subs && r.subs.length) { r.d = r.subs.some(x => x.d === '?') ? '?' : r.subs.map(x => x.d).join(''); r.conf = Math.min.apply(null, r.subs.map(x => x.conf || 0)); } });
+    { const best = new Map(); rows.forEach(r => { const k = r.p + '_' + r.n, o = best.get(k); if (!o || (o.d === '-' && r.d !== '-')) best.set(k, r); });      // 같은 쪽·같은 번호가 두 번 잡히면 숫자가 읽힌 쪽을 쓴다 (글 정답 '-'보다 우선)
+      const keep = rows.filter(r => best.get(r.p + '_' + r.n) === r); rows.length = 0; keep.forEach(r => rows.push(r)); }
+    rows.clusters = allCls.map(c => ({ n: c.items.length, key: c.key, d: c.chosen, ok: c.okk, conf: c.conf, sz: c.sz }));
     return rows;
   }
 
