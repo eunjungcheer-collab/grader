@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611162355">
+<link rel="stylesheet" href="css/style.css?v=202611162358">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -32,6 +32,7 @@
     </div>
     <div class="hint" id="filter-msg" style="margin:8px 0 0;"></div>
   </div>
+  <div id="garble-card" class="card" style="display:none; padding:12px 14px; margin-bottom:10px;"></div>
   <div id="bulk-bar" class="card" style="display:none; padding:10px 14px; margin-bottom:10px; align-items:center; gap:10px; flex-wrap:wrap;">
     <label class="bank-include-label" style="margin:0;"><input type="checkbox" id="sel-all"> 전체 선택</label>
     <span class="hint" id="sel-count" style="margin:0;">0개 선택</span>
@@ -41,11 +42,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611162355"></script>
-<script src="js/api.js?v=202611162355"></script>
-<script src="js/common.js?v=202611162355"></script>
-<script src="js/bankcore.js?v=202611162355"></script>
-<script src="js/pdfui.js?v=202611162355"></script>
+<script src="js/config.js?v=202611162358"></script>
+<script src="js/api.js?v=202611162358"></script>
+<script src="js/common.js?v=202611162358"></script>
+<script src="js/bankcore.js?v=202611162358"></script>
+<script src="js/pdfui.js?v=202611162358"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -79,6 +80,27 @@ renderHeader();
     const unitName = (g, n) => { const t = toc.find(x => x.grade === g && x.no === n); return t ? t.unit : (n + '단원'); };
     const unitKey = u => u.grade + '|' + u.no;
     const exams = res.exams.map(ex => Object.assign({ meta: parseMeta(ex.title), ts: Date.parse(ex.createdAt) || 0 }, ex));
+    // 이름이 깨진 시험지(한글이 없고 이상한 글자만 남은 이름)를 찾아 새 이름을 적어 고친다
+    { const gc = document.getElementById('garble-card');
+      const bad = exams.filter(ex => isGarbledName(String(ex.title || '')));
+      if (bad.length) {
+        gc.style.display = '';
+        gc.innerHTML = '<div style="font-weight:700;">⚠ 이름이 깨진 시험지 ' + bad.length + '개</div><div class="hint" style="margin:4px 0 8px;">새 이름을 적고 저장하면 시험지 이름이 바뀌어요. (이미 나눠 준 QR은 그대로 써요)</div><div id="garble-list"></div>';
+        const gl = document.getElementById('garble-list');
+        bad.forEach(ex => {
+          const row = document.createElement('div'); row.style.cssText = 'display:flex; gap:6px; align-items:center; margin:6px 0; flex-wrap:wrap;';
+          row.innerHTML = '<span style="flex:1 1 100%; font-size:12px; color:#6B7280; word-break:break-all;">' + escapeHtml(String(ex.title)) + ' · ' + ((ex.answerCount || 0)) + '문항 · ' + (ex.createdAt ? String(ex.createdAt).slice(0, 10) : '') + '</span><input type="text" placeholder="새 시험지 이름 (한글)" style="flex:1 1 200px; min-width:150px;"><button type="button" class="btn primary" style="padding:6px 12px;">저장</button>';
+          const inp = row.querySelector('input'), btn = row.querySelector('button');
+          btn.addEventListener('click', async () => {
+            const nt = inp.value.trim(); if (!nt) { alert('새 이름을 입력해 주세요.'); return; }
+            if (isGarbledName(nt)) { alert('한글이 들어간 이름으로 적어 주세요.'); return; }
+            btn.disabled = true; btn.textContent = '저장 중...';
+            try { const r = await callApi('updateExamTitle', { password: getTeacherPassword(), id: ex.id, title: nt }); if (!r.ok) throw new Error(r.error || '저장 실패'); ex.title = nt; row.innerHTML = '<span style="color:#1a7a4a;">✅ ' + escapeHtml(nt) + ' (저장됨)</span>'; }
+            catch (e) { alert('저장하지 못했어요: ' + e.message); btn.disabled = false; btn.textContent = '저장'; }
+          });
+          gl.appendChild(row);
+        });
+      } }
     const st = { kind: '', grade: '', unit: '', sort: 'new', q: '', book: '' };
     const isBook = ex => !!ex.bookTitle && !ex.hasRecipe;      // 교재 QR 합본으로 등록한 단원 시험지
     const isBank = ex => !!ex.hasRecipe;      // 문제은행에서 골라 출제한 시험지
