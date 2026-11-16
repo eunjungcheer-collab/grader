@@ -112,6 +112,7 @@ function handle_(e) {
       case 'getBookPublic': result = actionGetBookPublic_(params); break;
       case 'getExamDetail': result = actionGetExamDetail_(params); break;
       case 'submitAnswer': result = actionSubmitAnswer_(params); break;
+      case 'afterSubmit': result = actionAfterSubmit_(params); break;
       case 'retryCheck': result = actionRetryCheck_(params); break;
       case 'listSubmissions': result = actionListSubmissions_(params); break;
       case 'deleteSubmission': result = actionDeleteSubmission_(params); break;
@@ -445,6 +446,21 @@ function actionRetryCheck_(p) {
   return { ok: true, results: results };
 }
 
+// 제출 직후 학생 화면에 결과가 먼저 뜨도록, 알림·메일·반복오답 분석은 따로 부른다 (방금 저장된 그 학생의 마지막 점수 기록을 읽는다)
+function actionAfterSubmit_(p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const sd = ss.getSheetByName(SHEET_SCORES).getDataRange().getValues(), nm = String(p.studentName || '이름없음');
+  for (let i = sd.length - 1; i >= 1; i--) {
+    if (String(sd[i][0]) !== String(p.id) || String(sd[i][1]) !== nm) continue;
+    if (Date.now() - new Date(sd[i][5]).getTime() > 10 * 60 * 1000) break;      // 10분 넘은 기록이면 알림을 다시 보내지 않는다
+    afterSubmit_(ss, found, p, Number(sd[i][3]), Number(sd[i][4]), Number(sd[i][6]));
+    return { ok: true };
+  }
+  return { ok: false, error: '방금 제출한 기록을 찾지 못했어요.' };
+}
+
 function actionSubmitAnswer_(p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
@@ -470,7 +486,7 @@ function actionSubmitAnswer_(p) {
     p.id, p.studentName || '이름없음', studentAnswers.join(','),
     score, objective, new Date().toISOString(), score100,
   ]);
-  try { afterSubmit_(ss, found, p, score, objective, score100); } catch (e) {}      // 알림 때문에 제출이 실패하면 안 된다
+  if (!p.defer) { try { afterSubmit_(ss, found, p, score, objective, score100); } catch (e) {} }      // 알림 때문에 제출이 실패하면 안 된다. defer면 학생에게 결과부터 보내고 알림은 따로(afterSubmit) 보낸다
 
   return {
     ok: true, score: score, total: objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: skipped,

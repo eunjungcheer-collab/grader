@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611161300">
+<link rel="stylesheet" href="css/style.css?v=202611161730">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,9 +41,9 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611161300"></script>
-<script src="js/api.js?v=202611161300"></script>
-<script src="js/common.js?v=202611161300"></script>
+<script src="js/config.js?v=202611161730"></script>
+<script src="js/api.js?v=202611161730"></script>
+<script src="js/common.js?v=202611161730"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -215,8 +215,9 @@ async function submitAnswers(e) {
   btn.textContent = '채점 중...';
 
   try {
-    const res = await callApi('submitAnswer', { id: examId, studentName: name, answers: studentAnswers.map((a, i) => skipAll[i] ? '~' : a) });
+    const res = await callApi('submitAnswer', { defer: true, id: examId, studentName: name, answers: studentAnswers.map((a, i) => skipAll[i] ? '~' : a) });
     if (!res.ok) { alert(res.error || '제출에 실패했어요.'); btn.disabled = false; btn.textContent = '제출하고 채점받기'; return; }
+    callApi('afterSubmit', { id: examId, studentName: name }).catch(() => {});      // 알림은 결과를 보여 준 뒤 따로 보낸다
 
     const sc100 = res.total ? to100(res.score, res.total) : null;
     const wrongN = res.results.filter(r => r === 'x').length;
