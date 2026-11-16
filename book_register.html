@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611161240">
+<link rel="stylesheet" href="css/style.css?v=202611161300">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -89,14 +89,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611161240"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611161240"></script>
-<script src="js/vendor/pdf.min.js?v=202611161240"></script>
-<script src="js/config.js?v=202611161240"></script>
-<script src="js/api.js?v=202611161240"></script>
-<script src="js/common.js?v=202611161240"></script>
-<script src="js/bankcore.js?v=202611161240"></script>
-<script src="js/pdfui.js?v=202611161240"></script>
+<script src="js/vendor/qrcode.min.js?v=202611161300"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611161300"></script>
+<script src="js/vendor/pdf.min.js?v=202611161300"></script>
+<script src="js/config.js?v=202611161300"></script>
+<script src="js/api.js?v=202611161300"></script>
+<script src="js/common.js?v=202611161300"></script>
+<script src="js/bankcore.js?v=202611161300"></script>
+<script src="js/pdfui.js?v=202611161300"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -640,6 +640,9 @@ $('go-btn').addEventListener('click', async () => {
     msg('등록된 시험 목록을 확인하는 중...');
     const ex = await callApi('listExams', { password: getTeacherPassword() });
     if (!ex.ok) throw new Error(ex.error || '시험 목록을 불러오지 못했어요');
+    const usedIds = new Set((ex.exams || []).map(e => e.id));
+    // 시험지 번호를 교재 이름+단원 제목에서 정해 둔다: 시험지를 지우고 같은 이름으로 다시 올려도 QR 주소가 그대로다
+    const stableId = t => { const str = bookName + '|' + t; let h1 = 5381, h2 = 52711; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = ((h1 * 33) ^ c) >>> 0; h2 = ((h2 * 31) + c * 7919) >>> 0; } return 'b' + h1.toString(36) + h2.toString(36); };
     const byTitle = {}; (ex.exams || []).forEach(e => { byTitle[String(e.title).trim()] = e.id; });
     // 교재 이름이 달라도 '같은 단원(이름+태그)이고 정답이 똑같은' 시험이 이미 있으면 새로 만들지 않는다 (Apps Script 새 버전 배포 후 동작)
     const bySig = {}; (ex.exams || []).forEach(e => { if (e.recipeLabel && e.ansSig) bySig[String(e.recipeLabel).trim() + '#' + String(e.ansSig).replace(/\s/g, '')] = e.id; });
@@ -829,7 +832,7 @@ $('go-btn').addEventListener('click', async () => {
         const s = regList[k], title = secTitle(s);
         if (byTitle[title]) { ids[s.order] = byTitle[title]; toLink.push(byTitle[title]); reused++; await repairBank(s, title, byTitle[title]); continue; }
         if (bySig[sigOf(s)]) { ids[s.order] = bySig[sigOf(s)]; toLink.push(bySig[sigOf(s)]); reused++; await repairBank(s, title, bySig[sigOf(s)]); continue; }
-        const id = genExamId();
+        const id = (() => { const sid = stableId(title); return usedIds.has(sid) ? genExamId() : sid; })(); usedIds.add(id);
         let nums; try { const sc0 = await getSec(s); if (sc0 && sc0.nums && sc0.nums.length === s.answers.length && sc0.nums.some((n, i) => n !== i + 1)) nums = sc0.nums; } catch (e) {}
         let saved = null;
         if (toBank) {   // 이 단원의 시험지가 아직 없는데 같은 출처의 문항이 문제은행에 있으면, 예전에 등록하다 중단된 찌꺼기라서 먼저 지운다 (그대로 두면 중복이 쌓인다)
