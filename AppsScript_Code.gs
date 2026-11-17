@@ -1245,6 +1245,35 @@ function actionMergeUpload_(p) {
   const idx = parseInt(p.idx, 10), total = parseInt(p.total, 10);
   if (!id || !(total >= 1) || !(idx >= 0 && idx < total)) return { ok: false, error: '잘못된 요청이에요.' };
   const folder = mergeFolder_();
+  // ── 큰 파일 방식: 드라이브 이어 올리기(resumable)로 조각을 바로 이어 붙인다. 서버가 파일 전체를 메모리에 모으지 않아서 100MB가 넘어도 된다.
+  const totalBytes = parseInt(p.totalBytes, 10);
+  if (totalBytes > 0 && p.mode !== 'legacy') {
+    try {
+      const propKey = 'UP_' + id + '_' + kind, props = PropertiesService.getScriptProperties(), token = ScriptApp.getOAuthToken();
+      if (idx === 0) {
+        const res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true', {
+          method: 'post', contentType: 'application/json; charset=UTF-8', muteHttpExceptions: true,
+          headers: { Authorization: 'Bearer ' + token, 'X-Upload-Content-Type': 'application/pdf', 'X-Upload-Content-Length': String(totalBytes) },
+          payload: JSON.stringify({ name: id + '__' + kind + '.pdf', parents: [folder.getId()], mimeType: 'application/pdf', description: JSON.stringify({ name: String(p.name || ''), date: new Date().toISOString() }) })
+        });
+        const hd = res.getAllHeaders(), loc = hd['Location'] || hd['location'];
+        if (res.getResponseCode() !== 200 || !loc) return { ok: false, error: 'RESUMABLE_FAIL ' + res.getResponseCode() + ' ' + String(res.getContentText()).slice(0, 160) };
+        props.setProperty(propKey, loc);
+      }
+      const loc = props.getProperty(propKey); if (!loc) return { ok: false, error: '올리기 세션이 없어요. 처음부터 다시 올려 주세요.' };
+      const bytes = Utilities.base64Decode(String(p.data || '')), start = parseInt(p.start, 10), end = start + bytes.length - 1;
+      const r = UrlFetchApp.fetch(loc, { method: 'put', contentType: 'application/octet-stream', muteHttpExceptions: true, followRedirects: false, headers: { 'Content-Range': 'bytes ' + start + '-' + end + '/' + totalBytes }, payload: bytes });
+      const code = r.getResponseCode();
+      if (code === 308) return { ok: true, done: false };
+      if (code !== 200 && code !== 201) return { ok: false, error: '드라이브에 올리지 못했어요(' + code + ') ' + String(r.getContentText()).slice(0, 160) };
+      // 마지막 조각까지 모두 도착: 방금 만든 파일만 남기고 같은 이름의 예전 파일은 지운다
+      const newId = JSON.parse(r.getContentText()).id, same = folder.getFilesByName(id + '__' + kind + '.pdf');
+      while (same.hasNext()) { const f = same.next(); if (f.getId() !== newId) f.setTrashed(true); }
+      props.deleteProperty(propKey);
+      return { ok: true, done: true, size: DriveApp.getFileById(newId).getSize() };
+    } catch (e) { return { ok: false, error: 'RESUMABLE_FAIL ' + e }; }
+  }
+  // ── 예전 방식(작은 파일): 조각 파일을 모아 한 PDF로
   // 첫 조각이면 예전에 올리다 만 조각을 먼저 치운다 (남은 조각이 새 조각과 섞여 파일이 깨지는 것을 막는다)
   if (idx === 0) { const st = folder.searchFiles("title contains '__chunk__" + id + '_' + kind + "_'"); while (st.hasNext()) st.next().setTrashed(true); }
   folder.createFile('__chunk__' + id + '_' + kind + '_' + ('000' + idx).slice(-3) + '.txt', String(p.data || ''), MimeType.PLAIN_TEXT);
@@ -1281,8 +1310,17 @@ function actionMergeList_(p) {
 }
 function actionMergeGetPart_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
-  const f = DriveApp.getFileById(String(p.fileId || '')), all = f.getBlob().getBytes();
-  const size = Math.max(100000, Math.min(parseInt(p.partSize, 10) || 1000000, 3000000)), part = parseInt(p.part, 10) || 0;
+  const fileId = String(p.fileId || '');
+  const size0 = Math.max(100000, Math.min(parseInt(p.partSize, 10) || 1000000, 3000000)), part0 = parseInt(p.part, 10) || 0;
+  try {      // 큰 파일도 되게: 파일 전체를 메모리에 올리지 않고 필요한 구간만 받는다
+    const fsz = DriveApp.getFileById(fileId).getSize(), a = part0 * size0, b = Math.min(fsz, (part0 + 1) * size0) - 1;
+    if (fsz > 0 && a <= b) {
+      const rr = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?alt=media', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), Range: 'bytes=' + a + '-' + b }, muteHttpExceptions: true });
+      if (rr.getResponseCode() === 206 || rr.getResponseCode() === 200) { const by = rr.getContent(); if (by.length === b - a + 1) return { ok: true, total: Math.ceil(fsz / size0), base64: Utilities.base64Encode(by) }; }
+    }
+  } catch (e) {}
+  const f = DriveApp.getFileById(fileId), all = f.getBlob().getBytes();
+  const size = size0, part = part0;
   const total = Math.ceil(all.length / size);
   return { ok: true, total: total, base64: Utilities.base64Encode(all.slice(part * size, Math.min(all.length, (part + 1) * size))) };
 }
