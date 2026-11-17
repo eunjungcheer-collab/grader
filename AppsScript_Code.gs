@@ -1501,7 +1501,7 @@ function afterSubmit_(ss, found, p, score, objective, score100) {
       lowText = bits.join(' · ');
     }
   } catch (e) {}
-  try { pushToTeacher_((lowText ? '📉 ' : '📝 ') + name + ' 학생 제출 · ' + score100 + '점' + (lowText ? ' (' + lowText + ')' : ''), title + '\n' + score + '/' + objective + (late ? ' · 기한 지남' : '') + (repText ? '\n⚠️ 반복 오답: ' + repText : '')); } catch (e) {}
+  try { pushToTeacher_((lowText ? '📉 ' : '📝 ') + name + ' 학생 제출 · ' + score100 + '점' + (lowText ? ' (' + lowText + ')' : ''), title + '\n' + score + '/' + objective + (late ? ' · 기한 지남' : '') + (repText ? '\n⚠️ 반복 오답: ' + repText : ''), '?sub=' + encodeURIComponent(String(p.id)) + '&stu=' + encodeURIComponent(name)); } catch (e) {}
   if (alertSettings_().notifySubmit) {
     sendAlertMail_('[자동채점] ' + name + ' 학생이 시험을 제출했어요' + (late ? ' (기한 지남)' : '') + (repText ? ' ⚠️ 반복 오답' : ''),
       name + ' 학생이 「' + title + '」을 제출했어요.\n점수: ' + score + '/' + objective + ' (' + score100 + '점)' + (reserved ? (late ? '\n※ 예약한 기한이 지난 뒤에 제출했어요.' : '\n※ 예약한 기한 안에 제출했어요.') : '') + '\n제출 시각: ' + fmtKst_(now.toISOString()) + (lowText ? '\n📉 낮은 점수: ' + lowText : '') + (repText ? '\n⚠️ 반복 오답: ' + repText : ''));
@@ -2078,11 +2078,12 @@ let PUSH_LAST_ERR = '';
 // ───────── 강사용 푸시 (선생님 폰·컴퓨터) ─────────
 function teacherTokens_() { return safeJson_(PropertiesService.getScriptProperties().getProperty('TEACHER_TOKENS'), []); }
 function missedCount_() { try { const sh = assignSheet_(), last = sh.getLastRow(); if (last < 2) return 0; let n = 0; sh.getRange(2, 6, last - 1, 1).getValues().forEach(function (r) { if (String(r[0]) === 'missed') n++; }); return n; } catch (e) { return 0; } }
-function pushToTeacher_(title, body) {
+function pushToTeacher_(title, body, link) {
   const pr = PropertiesService.getScriptProperties();
   if (!pr.getProperty('FCM_SA')) return false;
   const tokens = teacherTokens_(); if (!tokens.length) return false;
-  const pid = JSON.parse(pr.getProperty('FCM_SA')).project_id, at = fcmAccessToken_(), url = pr.getProperty('TEACHER_APP_URL') || '', count = String(missedCount_()), keep = [];
+  const pid = JSON.parse(pr.getProperty('FCM_SA')).project_id, at = fcmAccessToken_(); let url = pr.getProperty('TEACHER_APP_URL') || ''; const count = String(missedCount_()), keep = [];
+  if (link && url) url = url.replace(/[?#].*$/, '').replace(/[^\/]*$/, 'alerts.html') + link;
   let okCount = 0; PUSH_LAST_ERR = '';
   tokens.forEach(function (tk) {
     const res = UrlFetchApp.fetch('https://fcm.googleapis.com/v1/projects/' + pid + '/messages:send', {
