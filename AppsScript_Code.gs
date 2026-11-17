@@ -1286,8 +1286,10 @@ function actionMergeDelete_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const id = String(p.id || '').replace(/[^A-Za-z0-9_-]/g, ''); if (!id) return { ok: false, error: '잘못된 요청이에요.' };
   const folder = mergeFolder_();
-  ['teacher', 'student'].forEach(function (k) { const it = folder.getFilesByName(id + '__' + k + '.pdf'); while (it.hasNext()) it.next().setTrashed(true); });
-  return { ok: true };
+  // kind 를 주면 그 쪽(teacher/student) 파일만, 안 주면 둘 다 지운다
+  const only = (p.kind === 'teacher' || p.kind === 'student') ? [p.kind] : ['teacher', 'student'];
+  only.forEach(function (k) { const it = folder.getFilesByName(id + '__' + k + '.pdf'); while (it.hasNext()) it.next().setTrashed(true); });
+  return { ok: true, kindAware: true };
 }
 
 function actionGetExamPdf_(p) {
