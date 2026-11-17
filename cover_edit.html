@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180410">
+<link rel="stylesheet" href="css/style.css?v=202611180430">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -26,6 +26,7 @@
   <span class="backlink"><a href="index.html">← 홈으로</a></span>
   <h1>🎨 저장된 교재 수정&관리</h1>
   <p class="muted">이 기기에 저장된 교재(QR 합본)의 <b>표지만</b> 바꿔서 다시 저장해요. 표지 도안·색을 고르고, <b>강사용/학생용 표시</b>를 화면에서 끌어 옮기며 결과를 미리 보세요. 시험지·QR·문제은행은 건드리지 않아요.</p>
+  <div style="margin:6px 0;"><button type="button" class="btn" id="srv-clean">🧹 서버 임시 파일 정리</button> <span class="muted" id="srv-clean-msg">서버 보관을 올리다 실패해서 남은 임시 조각을 지워요. <b>지금 올리는 중인 것이 없을 때만</b> 눌러 주세요.</span></div>
   <div id="list-card" class="card"><div id="list" class="muted">불러오는 중...</div></div>
 
   <div id="editor" class="card" style="display:none;">
@@ -55,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180410"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180410"></script>
-<script src="js/config.js?v=202611180410"></script>
-<script src="js/api.js?v=202611180410"></script>
-<script src="js/common.js?v=202611180410"></script>
-<script src="js/bankcore.js?v=202611180410"></script>
-<script src="js/coverdesign.js?v=202611180410"></script>
+<script src="js/vendor/pdf.min.js?v=202611180430"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180430"></script>
+<script src="js/config.js?v=202611180430"></script>
+<script src="js/api.js?v=202611180430"></script>
+<script src="js/common.js?v=202611180430"></script>
+<script src="js/bankcore.js?v=202611180430"></script>
+<script src="js/coverdesign.js?v=202611180430"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -89,7 +90,12 @@ async function serverUpload(rec, kind, blob, onProg, legacy) {
   const CH = legacy ? 900000 : 786432, total = Math.max(1, Math.ceil(blob.size / CH));
   for (let i = 0; i < total; i++) {
     let r = null;
-    for (let at = 0; at < 4; at++) { try { r = await callApi('mergeUpload', { password: getTeacherPassword(), id: rec.id, kind: kind, name: rec.name, idx: i, total: total, start: i * CH, totalBytes: legacy ? 0 : blob.size, mode: legacy ? 'legacy' : '', data: u8ToB64(new Uint8Array(await blob.slice(i * CH, (i + 1) * CH).arrayBuffer())) }); break; } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); } }
+    for (let at = 0; at < 4; at++) {
+      try { r = await callApi('mergeUpload', { password: getTeacherPassword(), id: rec.id, kind: kind, name: rec.name, idx: i, total: total, start: i * CH, totalBytes: legacy ? 0 : blob.size, mode: legacy ? 'legacy' : '', data: u8ToB64(new Uint8Array(await blob.slice(i * CH, (i + 1) * CH).arrayBuffer())) }); } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); continue; }
+      // 드라이브의 일시적인 서비스 오류는 잠깐 쉬고 같은 조각을 다시 보낸다
+      if (r && r.ok === false && /서비스 오류|Service error|Service invoked too many/i.test(String(r.error || '')) && !/RESUMABLE_FAIL/.test(String(r.error)) && at < 3) { await new Promise(res => setTimeout(res, 2500 * (at + 1))); continue; }
+      break;
+    }
     if (!legacy && i === 0 && r && !r.ok && /RESUMABLE_FAIL/.test(String(r.error || ''))) return serverUpload(rec, kind, blob, onProg, true);
     if (!r || !r.ok) throw new Error((r && r.error) || '서버 보관 실패');
     if (i === total - 1 && r.size != null && r.size !== blob.size) throw new Error('서버에 올라간 파일 크기(' + r.size + ')가 원본(' + blob.size + ')과 달라요. 다시 올려 주세요.');
@@ -311,6 +317,12 @@ async function applyEdit() {
   $('ce-sz').addEventListener('input', e => { ST.wd = +e.target.value; paint(); });
   $('ce-auto').onclick = applyAuto; $('ce-tl').onclick = () => { ST.x = 20; ST.top = 14; paint(); };
   $('ce-close').onclick = () => { $('editor').style.display = 'none'; };
+  $('srv-clean').onclick = async () => {
+    if (!confirm('서버에 남은 임시 조각 파일을 모두 지울까요?\n(올리는 중인 것이 있다면 실패하니, 모두 끝난 뒤에 눌러 주세요. 보관된 합본 파일은 지워지지 않아요)')) return;
+    const b = $('srv-clean'), m = $('srv-clean-msg'); b.disabled = true; m.textContent = '정리하는 중...';
+    try { let tot = 0; for (let k = 0; k < 20; k++) { const r = await callApi('mergeCleanup', { password: getTeacherPassword(), all: true }); if (!r || !r.ok) throw new Error((r && r.error) || '서버를 새 버전으로 배포했는지 확인해 주세요'); tot += r.removed || 0; m.textContent = '정리하는 중... ' + tot + '개 삭제'; if (!r.removed) break; } m.textContent = '✅ 임시 조각 ' + tot + '개를 정리했어요.'; } catch (e) { m.innerHTML = '<span style="color:#C1392B;">정리하지 못했어요: ' + esc(e.message || e) + '</span>'; }
+    b.disabled = false;
+  };
   $('ce-ok').onclick = applyEdit;
   $('ce-file').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadOriginal(f); });
   window.addEventListener('resize', paint);

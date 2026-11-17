@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180410">
+<link rel="stylesheet" href="css/style.css?v=202611180430">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,15 +97,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611180410"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180410"></script>
-<script src="js/vendor/pdf.min.js?v=202611180410"></script>
-<script src="js/config.js?v=202611180410"></script>
-<script src="js/api.js?v=202611180410"></script>
-<script src="js/common.js?v=202611180410"></script>
-<script src="js/bankcore.js?v=202611180410"></script>
-<script src="js/coverdesign.js?v=202611180410"></script>
-<script src="js/pdfui.js?v=202611180410"></script>
+<script src="js/vendor/qrcode.min.js?v=202611180430"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180430"></script>
+<script src="js/vendor/pdf.min.js?v=202611180430"></script>
+<script src="js/config.js?v=202611180430"></script>
+<script src="js/api.js?v=202611180430"></script>
+<script src="js/common.js?v=202611180430"></script>
+<script src="js/bankcore.js?v=202611180430"></script>
+<script src="js/coverdesign.js?v=202611180430"></script>
+<script src="js/pdfui.js?v=202611180430"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -473,7 +473,12 @@ async function serverUpload(rec, kind, blob, onProg, legacy) {
   const CH = legacy ? 900000 : 786432, total = Math.max(1, Math.ceil(blob.size / CH));
   for (let i = 0; i < total; i++) {
     let r = null;
-    for (let at = 0; at < 4; at++) { try { r = await callApi('mergeUpload', { password: getTeacherPassword(), id: rec.id, kind: kind, name: rec.name, idx: i, total: total, start: i * CH, totalBytes: legacy ? 0 : blob.size, mode: legacy ? 'legacy' : '', data: u8ToB64(new Uint8Array(await blob.slice(i * CH, (i + 1) * CH).arrayBuffer())) }); break; } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); } }
+    for (let at = 0; at < 4; at++) {
+      try { r = await callApi('mergeUpload', { password: getTeacherPassword(), id: rec.id, kind: kind, name: rec.name, idx: i, total: total, start: i * CH, totalBytes: legacy ? 0 : blob.size, mode: legacy ? 'legacy' : '', data: u8ToB64(new Uint8Array(await blob.slice(i * CH, (i + 1) * CH).arrayBuffer())) }); } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); continue; }
+      // 드라이브의 일시적인 서비스 오류는 잠깐 쉬고 같은 조각을 다시 보낸다
+      if (r && r.ok === false && /서비스 오류|Service error|Service invoked too many/i.test(String(r.error || '')) && !/RESUMABLE_FAIL/.test(String(r.error)) && at < 3) { await new Promise(res => setTimeout(res, 2500 * (at + 1))); continue; }
+      break;
+    }
     if (!legacy && i === 0 && r && !r.ok && /RESUMABLE_FAIL/.test(String(r.error || ''))) return serverUpload(rec, kind, blob, onProg, true);
     if (!r || !r.ok) throw new Error((r && r.error) || '서버 보관 실패');
     if (i === total - 1 && r.size != null && r.size !== blob.size) throw new Error('서버에 올라간 파일 크기(' + r.size + ')가 원본(' + blob.size + ')과 달라요. 다시 올려 주세요.');

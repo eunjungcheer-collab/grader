@@ -1236,9 +1236,10 @@ function actionDeleteExam_(p) {
 
 // ── 교재 QR 합본 PDF를 드라이브에 보관해 다른 기기에서도 내려받게 한다 (조각으로 나눠 올리고 마지막 조각에서 한 파일로 합친다) ──
 const MERGE_FOLDER_NAME = '교재 QR 합본 PDF';
+// 드라이브가 가끔 내는 일시적 '서비스 오류'는 잠깐 쉬고 다시 시도한다
+function driveRetry_(fn) { let last; for (let i = 0; i < 3; i++) { try { return fn(); } catch (e) { last = e; Utilities.sleep(700 * (i + 1)); } } throw last; }
 function mergeFolder_() {
-  const it = DriveApp.getFoldersByName(MERGE_FOLDER_NAME);
-  return it.hasNext() ? it.next() : DriveApp.createFolder(MERGE_FOLDER_NAME);
+  return driveRetry_(function () { const it = DriveApp.getFoldersByName(MERGE_FOLDER_NAME); return it.hasNext() ? it.next() : DriveApp.createFolder(MERGE_FOLDER_NAME); });
 }
 function actionMergeUpload_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
@@ -1276,8 +1277,10 @@ function actionMergeUpload_(p) {
   }
   // ── 예전 방식(작은 파일): 조각 파일을 모아 한 PDF로
   // 첫 조각이면 예전에 올리다 만 조각을 먼저 치운다 (남은 조각이 새 조각과 섞여 파일이 깨지는 것을 막는다)
-  if (idx === 0) { const st = folder.searchFiles("title contains '__chunk__" + id + '_' + kind + "_'"); while (st.hasNext()) st.next().setTrashed(true); }
-  folder.createFile('__chunk__' + id + '_' + kind + '_' + ('000' + idx).slice(-3) + '.txt', String(p.data || ''), MimeType.PLAIN_TEXT);
+  try {
+    if (idx === 0) { driveRetry_(function () { const st = folder.searchFiles("title contains '__chunk__" + id + '_' + kind + "_'"); while (st.hasNext()) st.next().setTrashed(true); }); }
+    driveRetry_(function () { folder.createFile('__chunk__' + id + '_' + kind + '_' + ('000' + idx).slice(-3) + '.txt', String(p.data || ''), MimeType.PLAIN_TEXT); });
+  } catch (e) { return { ok: false, error: '조각 저장 단계 오류: ' + e }; }
   if (idx < total - 1) return { ok: true, done: false };
   // 마지막 조각: 모아서 한 PDF로
   const bytes = [];
@@ -1316,7 +1319,7 @@ function actionMergeList_(p) {
 // 올리다 만 임시 조각 파일 정리 (2시간 넘게 남아 있는 것만 지운다)
 function actionMergeCleanup_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
-  const folder = mergeFolder_(), it = folder.searchFiles("title contains '__chunk__'"), limit = Date.now() - 2 * 3600 * 1000; let n = 0, t0 = Date.now();
+  const folder = mergeFolder_(), it = folder.searchFiles("title contains '__chunk__'"), limit = p.all ? Date.now() + 1000 : Date.now() - 2 * 3600 * 1000; let n = 0, t0 = Date.now();      // all: 지금 올리는 것이 없을 때 모든 임시 조각 정리
   while (it.hasNext() && Date.now() - t0 < 240000) { const f = it.next(); if (f.getDateCreated().getTime() < limit) { f.setTrashed(true); n++; } }
   return { ok: true, removed: n };
 }
