@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180430">
+<link rel="stylesheet" href="css/style.css?v=202611180445">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,15 +97,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611180430"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180430"></script>
-<script src="js/vendor/pdf.min.js?v=202611180430"></script>
-<script src="js/config.js?v=202611180430"></script>
-<script src="js/api.js?v=202611180430"></script>
-<script src="js/common.js?v=202611180430"></script>
-<script src="js/bankcore.js?v=202611180430"></script>
-<script src="js/coverdesign.js?v=202611180430"></script>
-<script src="js/pdfui.js?v=202611180430"></script>
+<script src="js/vendor/qrcode.min.js?v=202611180445"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180445"></script>
+<script src="js/vendor/pdf.min.js?v=202611180445"></script>
+<script src="js/config.js?v=202611180445"></script>
+<script src="js/api.js?v=202611180445"></script>
+<script src="js/common.js?v=202611180445"></script>
+<script src="js/bankcore.js?v=202611180445"></script>
+<script src="js/coverdesign.js?v=202611180445"></script>
+<script src="js/pdfui.js?v=202611180445"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -468,7 +468,7 @@ const mergeBtns = (rec, wrap) => {
 };
 // ── 서버(드라이브) 보관: 조각으로 올리고 내려받는다 ──
 const u8ToB64 = u8 => { let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(bin); };
-async function serverUpload(rec, kind, blob, onProg, legacy) {
+async function serverUploadRaw(rec, kind, blob, onProg, legacy) {
   // 큰 파일 방식(드라이브 이어 올리기)은 조각이 256KB의 배수여야 해서 768KB로 자른다. 서버가 아직 옛 버전이면 예전 방식(조각 모아 합치기)으로 다시 시도한다.
   const CH = legacy ? 900000 : 786432, total = Math.max(1, Math.ceil(blob.size / CH));
   for (let i = 0; i < total; i++) {
@@ -479,11 +479,17 @@ async function serverUpload(rec, kind, blob, onProg, legacy) {
       if (r && r.ok === false && /서비스 오류|Service error|Service invoked too many/i.test(String(r.error || '')) && !/RESUMABLE_FAIL/.test(String(r.error)) && at < 3) { await new Promise(res => setTimeout(res, 2500 * (at + 1))); continue; }
       break;
     }
-    if (!legacy && i === 0 && r && !r.ok && /RESUMABLE_FAIL/.test(String(r.error || ''))) return serverUpload(rec, kind, blob, onProg, true);
+    if (!legacy && i === 0 && r && !r.ok && /RESUMABLE_FAIL/.test(String(r.error || ''))) return serverUploadRaw(rec, kind, blob, onProg, true);
     if (!r || !r.ok) throw new Error((r && r.error) || '서버 보관 실패');
     if (i === total - 1 && r.size != null && r.size !== blob.size) throw new Error('서버에 올라간 파일 크기(' + r.size + ')가 원본(' + blob.size + ')과 달라요. 다시 올려 주세요.');
     if (onProg) onProg(i + 1, total);
   }
+}
+// 같은 파일을 동시에 두 번 올리면 서로 조각이 섞여 둘 다 깨진다 → 올리는 중이면 다시 시작하지 못하게 막는다
+const UPLOADING = new Set();
+async function serverUpload(rec, kind, blob, onProg) {
+  const k = rec.id + '|' + kind; if (UPLOADING.has(k)) throw new Error('같은 파일을 이미 올리는 중이에요. 끝날 때까지 기다려 주세요.');
+  UPLOADING.add(k); try { return await serverUploadRaw(rec, kind, blob, onProg, false); } finally { UPLOADING.delete(k); }
 }
 async function serverDownload(fileId, onProg) {
   const parts = []; let total = 1;
