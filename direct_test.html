@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>서버 직접 올리기 시험 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611180800">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>🧪 서버 직접 올리기 시험</h1>
+  <p class="muted">PDF 한 개를 앱스크립트를 거치지 않고 구글 드라이브로 <b>바로</b> 올려 보고, 되는지·속도가 얼마나 나오는지 확인하는 시험이에요. 실제 교재 목록에는 영향이 없고, 끝나면 시험 파일은 자동으로 지워요.</p>
+  <div class="card">
+    <input type="file" id="f" accept="application/pdf"> <button type="button" class="btn primary" id="go">시험 시작</button>
+    <div style="height:14px;background:#e6e1d6;border-radius:8px;overflow:hidden;margin:10px 0;"><div id="bar" style="height:100%;width:0;background:#1f6f4a;"></div></div>
+    <pre id="log" style="white-space:pre-wrap;font-size:13px;line-height:1.6;margin:0;"></pre>
+  </div>
+</template>
+<script src="js/config.js?v=202611180800"></script>
+<script src="js/api.js?v=202611180800"></script>
+<script src="js/common.js?v=202611180800"></script>
+<script>
+requireLogin();
+renderHeader({});
+const $ = id => document.getElementById(id);
+const log = t => { $('log').textContent += t + '\n'; };
+$('go').onclick = async () => {
+  const file = $('f').files[0]; if (!file) { alert('PDF 파일을 골라 주세요.'); return; }
+  $('go').disabled = true; $('log').textContent = ''; $('bar').style.width = '0';
+  const pw = getTeacherPassword(), ID = 'zz_directtest', t0 = Date.now();
+  try {
+    log('1) 서버에 올리기 주소 요청… (' + (file.size / 1048576).toFixed(1) + 'MB)');
+    const s = await callApi('mergeSession', { password: pw, id: ID, kind: 'teacher', name: '직접올리기 시험', totalBytes: file.size, origin: location.origin });
+    if (!s || !s.ok) throw new Error((s && s.error) || '서버를 새 버전으로 배포했는지 확인해 주세요');
+    log('   주소 받음 (' + ((Date.now() - t0) / 1000).toFixed(1) + '초)');
+    log('2) 브라우저에서 드라이브로 바로 올리는 중… (8MB씩)');
+    const CH = 8388608; let pos = 0, fileId = '', t1 = Date.now();
+    while (pos < file.size) {
+      const end = Math.min(file.size, pos + CH), blob = file.slice(pos, end);
+      const code = await new Promise((res, rej) => {
+        const x = new XMLHttpRequest(); x.open('PUT', s.url);
+        x.setRequestHeader('Content-Range', 'bytes ' + pos + '-' + (end - 1) + '/' + file.size);
+        x.onload = () => { if (x.status === 200 || x.status === 201) { try { fileId = JSON.parse(x.responseText).id; } catch (e) {} } res(x.status); };
+        x.onerror = () => rej(new Error('브라우저가 드라이브로 직접 올리는 것을 막았어요(CORS). 이 방식은 쓸 수 없어요.'));
+        x.upload.onprogress = e => { $('bar').style.width = Math.round((pos + e.loaded) / file.size * 100) + '%'; };
+        x.send(blob);
+      });
+      if (code !== 308 && code !== 200 && code !== 201) throw new Error('드라이브가 거절했어요 (' + code + ')');
+      pos = end;
+    }
+    const sec = (Date.now() - t1) / 1000; $('bar').style.width = '100%';
+    log('   올리기 끝: ' + sec.toFixed(1) + '초 · 평균 ' + (file.size / 1048576 / sec).toFixed(2) + 'MB/초');
+    if (!fileId) throw new Error('올렸는데 파일 번호를 받지 못했어요.');
+    log('3) 서버에서 파일 확인…');
+    const f = await callApi('mergeSession', { password: pw, id: ID, kind: 'teacher', totalBytes: file.size, origin: location.origin, finish: true, fileId: fileId });
+    if (!f || !f.ok) throw new Error((f && f.error) || '확인 실패');
+    log('   드라이브에 올라간 크기 ' + f.size + ' / 원본 ' + file.size + (f.size === file.size ? '  ✅ 같아요' : '  ❌ 달라요'));
+    log('4) 시험 파일 지우는 중…');
+    await callApi('mergeDelete', { password: pw, id: ID, kind: 'teacher' });
+    log('\n✅ 직접 올리기가 됩니다. (평균 속도를 알려 주세요)');
+  } catch (e) { log('\n❌ ' + (e.message || e)); }
+  $('go').disabled = false;
+};
+</script>
+</body>
+</html>

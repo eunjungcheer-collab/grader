@@ -136,6 +136,7 @@ function handle_(e) {
       case 'deleteExams': result = actionDeleteExams_(params); break;
       case 'getExamPdf': result = actionGetExamPdf_(params); break;
       case 'mergeUpload': result = actionMergeUpload_(params); break;
+      case 'mergeSession': result = actionMergeSession_(params); break;
       case 'mergeCleanup': result = actionMergeCleanup_(params); break;
       case 'mergeList': result = actionMergeList_(params); break;
       case 'mergeGetPart': result = actionMergeGetPart_(params); break;
@@ -1240,6 +1241,28 @@ const MERGE_FOLDER_NAME = '교재 QR 합본 PDF';
 function driveRetry_(fn) { let last; for (let i = 0; i < 3; i++) { try { return fn(); } catch (e) { last = e; Utilities.sleep(700 * (i + 1)); } } throw last; }
 function mergeFolder_() {
   return driveRetry_(function () { const it = DriveApp.getFoldersByName(MERGE_FOLDER_NAME); return it.hasNext() ? it.next() : DriveApp.createFolder(MERGE_FOLDER_NAME); });
+}
+// ── 시험용: 브라우저가 드라이브로 직접 올릴 수 있게 '이어 올리기 주소'만 만들어 준다 (Origin 을 함께 등록해야 브라우저가 직접 올릴 수 있다)
+function actionMergeSession_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const id = String(p.id || '').replace(/[^A-Za-z0-9_-]/g, ''), kind = p.kind === 'student' ? 'student' : 'teacher', totalBytes = parseInt(p.totalBytes, 10);
+  const origin = String(p.origin || '');
+  if (!id || !(totalBytes > 0) || !/^https:\/\/[A-Za-z0-9.-]+$/.test(origin)) return { ok: false, error: '잘못된 요청이에요.' };
+  if (p.finish) {      // 올리기가 끝난 뒤: 방금 올라온 파일만 남기고 같은 이름의 예전 파일은 지운다
+    const newId = String(p.fileId || ''), f0 = DriveApp.getFileById(newId), same = mergeFolder_().getFilesByName(id + '__' + kind + '.pdf');
+    while (same.hasNext()) { const f = same.next(); if (f.getId() !== newId) f.setTrashed(true); }
+    return { ok: true, size: f0.getSize() };
+  }
+  try {
+    const res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true', {
+      method: 'post', contentType: 'application/json; charset=UTF-8', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'X-Upload-Content-Type': 'application/pdf', 'X-Upload-Content-Length': String(totalBytes), Origin: origin },
+      payload: JSON.stringify({ name: id + '__' + kind + '.pdf', parents: [mergeFolder_().getId()], mimeType: 'application/pdf', description: JSON.stringify({ name: String(p.name || ''), date: new Date().toISOString() }) })
+    });
+    const hd = res.getAllHeaders(), loc = hd['Location'] || hd['location'];
+    if (res.getResponseCode() !== 200 || !loc) return { ok: false, error: '세션 만들기 실패 ' + res.getResponseCode() + ' ' + String(res.getContentText()).slice(0, 160) };
+    return { ok: true, url: loc };
+  } catch (e) { return { ok: false, error: '세션 만들기 오류: ' + e }; }
 }
 function actionMergeUpload_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
