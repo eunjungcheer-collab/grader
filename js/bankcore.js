@@ -2273,7 +2273,9 @@
       ctx.font = f; ctx.fillStyle = '#0B1F5C'; ctx.textBaseline = 'middle'; ctx.fillText('이은정 과학', sc, h * sc / 2 + sc * 0.3);
       logo = { img: await doc.embedPng(b64ToBytes(canvasToBase64(c))), w: w, h: h };
     } catch (e) { logo = null; }
+    const skip = opts.skipPages || null;      // 일부러 비워 둔 쪽(양면 인쇄용)은 쪽 번호·로고를 넣지 않는다
     pages.forEach((page, i) => {
+      if (skip && skip.has(i)) return;
       const t = (i + 1) + ' / ' + total;
       const fs = 9, tw = font.widthOfTextAtSize(t, fs);
       page.drawText(t, { x: page.getWidth() / 2 - tw / 2, y: 16, size: fs, font: font, color: rgb(0.55, 0.55, 0.55) });

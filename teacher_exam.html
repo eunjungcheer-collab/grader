@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611172030">
+<link rel="stylesheet" href="css/style.css?v=202611172100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,13 +17,13 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611172030"></script>
-<script src="js/config.js?v=202611172030"></script>
-<script src="js/api.js?v=202611172030"></script>
-<script src="js/common.js?v=202611172030"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611172030"></script>
-<script src="js/bankcore.js?v=202611172030"></script>
-<script src="js/pdfui.js?v=202611172030"></script>
+<script src="js/vendor/qrcode.min.js?v=202611172100"></script>
+<script src="js/config.js?v=202611172100"></script>
+<script src="js/api.js?v=202611172100"></script>
+<script src="js/common.js?v=202611172100"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611172100"></script>
+<script src="js/bankcore.js?v=202611172100"></script>
+<script src="js/pdfui.js?v=202611172100"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -99,6 +99,15 @@ function resolveBankPicks(exam, all, byId) {
   throw new Error('이 시험지에 쓴 문항이 문제은행에서 삭제돼서 같은 시험지를 다시 만들 수 없어요.');
 }
 
+// 문제지 뒤에 정답·해설을 붙인다. 양면 인쇄해도 문제지 뒷면에 정답이 찍히지 않도록, 문제지가 홀수 쪽이면 빈 쪽을 하나 끼워 정답이 항상 새 장의 앞면에서 시작하게 한다 (5쪽이면 6쪽은 빈 쪽, 정답은 7쪽부터)
+async function mergeWithBack(front, back) {
+  let blank = -1;
+  if (front.getPageCount() % 2 === 1) { const sz = front.getPage(front.getPageCount() - 1).getSize(); front.addPage([sz.width, sz.height]); blank = front.getPageCount() - 1; }
+  const merged = await BankCore.mergePdfs(PDFLib, front, back);
+  await BankCore.addPageNumbers(PDFLib, merged, blank >= 0 ? { skipPages: new Set([blank]) } : undefined);
+  return merged;
+}
+
 async function makeStudentFromBank(exam, say) {
   const lq = await callApi('listQuestions', { password: getTeacherPassword() });
   if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요');
@@ -121,6 +130,27 @@ async function makeStudentFromBank(exam, say) {
   say('학생용 시험지 만드는 중...');
   const doc = await BankCore.composeExamPdf(PDFLib, exam.title, imgs, { qrReserve: 62, keepTitle: picks.every(q => q.kind === '기출') });
   await stampQrOnDoc(doc, studentLinkFor(exam.id), { size: 50, corner: 'top-right', margin: 4 });
+  // 교재 단원 시험지는 교재처럼 문제 뒤에 「정답 및 해설」을 붙여 준다 (교재 합본 PDF의 학생용도 정답편이 뒤에 있다)
+  if (exam.composeRecipe && exam.composeRecipe.book) {
+    try {
+      const withExpl = picks.filter(q => q.explFileId), map = {};
+      for (let s = 0; s < withExpl.length; s += B) {
+        const slice = withExpl.slice(s, s + B);
+        say('해설 이미지 불러오는 중... ' + Math.min(s + B, withExpl.length) + '/' + withExpl.length);
+        const ims = await getImgs(slice.map(q => q.explFileId));
+        for (const im of ims) { const c = await BankCore.cleanImageBase64(im.base64); map[im.fileId] = c ? c.base64 : im.base64; }
+      }
+      const explImgs = [];
+      picks.forEach((q, qi) => { if (q.explFileId && map[q.explFileId]) { const sz = pngSize(BankCore.b64ToBytes(map[q.explFileId])); explImgs.push({ base64: map[q.explFileId], width: sz.width, height: sz.height, naturalW: sz.width / 2.2, numRect: q.explNumRect || null, tag: BankCore.pastTagText(q), num: slots[qi].label }); } });
+      let explDoc = null;
+      if (explImgs.length) explDoc = await BankCore.composeExamPdf(PDFLib, exam.title + ' 해설', explImgs, { subtitle: explImgs.every(x => x.numRect) ? '※ 정답 옆의 진한 파란 원 번호가 시험지의 문항 번호예요.' : '※ 왼쪽 진한 파란 원 번호가 시험지의 문항 번호예요. (해설 안에 다른 번호가 보여도 무시하세요)', centerLine: false });
+      const flatPicks = [];
+      picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => flatPicks.push(Object.assign({}, q, { answer: a }))); else flatPicks.push(q); });
+      const back = await BankCore.answerSheetDoc(PDFLib, exam.title, flatPicks, explDoc);
+      const merged = await mergeWithBack(doc, back);
+      return await merged.save();
+    } catch (e) { say('정답·해설 쪽을 붙이지 못해 문제지만 만들었어요: ' + e.message); }
+  }
   await BankCore.addPageNumbers(PDFLib, doc);
   return await doc.save();
 }
@@ -161,8 +191,7 @@ async function makeTeacherFromBank(exam, say) {
   const flatPicks = [];
   picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => flatPicks.push(Object.assign({}, q, { answer: a }))); else flatPicks.push(q); });
   const back = await BankCore.answerSheetDoc(PDFLib, exam.title, flatPicks, explDoc);
-  const merged = await BankCore.mergePdfs(PDFLib, tdoc, back);
-  await BankCore.addPageNumbers(PDFLib, merged);
+  const merged = await mergeWithBack(tdoc, back);
   return await merged.save();
 }
 
@@ -188,7 +217,7 @@ async function makeTeacherFromBank(exam, say) {
         <button type="button" class="btn outline" id="dl-teacher-only" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📘 강사용만 받기 (정답 동그라미·문제 밑 정답·해설)</button>
         <div id="dl-bank" style="display:none; text-align:left; margin-top:6px;">
           <div style="font-weight:700; margin:2px 0 8px;">⬇️ 이 단원만 따로 받기 (문제은행에 저장된 문항으로 만들어요)</div>
-          <button type="button" class="btn primary" id="dl-bank-student" style="width:100%;">📄 학생용 문제지 받기 (QR 포함)</button>
+          <button type="button" class="btn primary" id="dl-bank-student" style="width:100%;">📄 학생용 받기 (문제지 + 정답·해설, QR 포함)</button>
           <button type="button" class="btn outline" id="dl-bank-teacher" style="width:100%; margin-top:8px;">📘 강사용 받기 (정답·해설 포함)</button>
         </div>
         <p class="hint" id="dl-note" style="margin:6px 0 0;">「둘 다」를 누르면 브라우저가 여러 파일 받기를 물을 수 있어요. 허용해 주세요.</p>
