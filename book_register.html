@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611171600">
+<link rel="stylesheet" href="css/style.css?v=202611171710">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -90,14 +90,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611171600"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611171600"></script>
-<script src="js/vendor/pdf.min.js?v=202611171600"></script>
-<script src="js/config.js?v=202611171600"></script>
-<script src="js/api.js?v=202611171600"></script>
-<script src="js/common.js?v=202611171600"></script>
-<script src="js/bankcore.js?v=202611171600"></script>
-<script src="js/pdfui.js?v=202611171600"></script>
+<script src="js/vendor/qrcode.min.js?v=202611171710"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611171710"></script>
+<script src="js/vendor/pdf.min.js?v=202611171710"></script>
+<script src="js/config.js?v=202611171710"></script>
+<script src="js/api.js?v=202611171710"></script>
+<script src="js/common.js?v=202611171710"></script>
+<script src="js/bankcore.js?v=202611171710"></script>
+<script src="js/pdfui.js?v=202611171710"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -969,7 +969,8 @@ $('go-btn').addEventListener('click', async () => {
         }
       }
       const white = PDFLib.rgb(1, 1, 1);
-      kept.forEach((orig, j) => { const pgj = doc.getPage(j); (numBoxes[orig] || []).forEach(bx => pgj.drawRectangle({ x: bx.x0 - 2, y: bx.y0, width: bx.x1 - bx.x0 + 4, height: bx.y1 - bx.y0, color: white, borderWidth: 0 })); });
+      const coverOrig = Math.min.apply(null, chosen.map(s => s.qa)) > 1;     // 교재의 첫 쪽이 문제가 아니면 표지다: 표지는 그대로 둔다(쪽 번호로 착각해 'SCIENCE 1'의 1을 지우면 안 된다)
+      kept.forEach((orig, j) => { if (coverOrig && orig === 0) return; const pgj = doc.getPage(j); (numBoxes[orig] || []).forEach(bx => pgj.drawRectangle({ x: bx.x0 - 2, y: bx.y0, width: bx.x1 - bx.x0 + 4, height: bx.y1 - bx.y0, color: white, borderWidth: 0 })); });
       if (withAns) kept.forEach((orig, j) => { const pgj = doc.getPage(j), H = pgj.getHeight(); (circles[orig] || []).forEach(c => pgj.drawEllipse({ x: c.x, y: H - c.y, xScale: c.rx, yScale: c.ry, borderColor: PDFLib.rgb(0.76, 0.22, 0.17), borderWidth: 1.5 })); });
       const posOf = p => { let i = kept.indexOf(p - 1); if (i < 0) i = kept.indexOf(1e6 + p - 1); return i + 1; };
       let nIns = 0;
@@ -1020,13 +1021,15 @@ $('go-btn').addEventListener('click', async () => {
           cx2.fillText(lab, 220, 80);
           const pg0 = doc.getPage(0), sz = pg0.getSize(), w = Math.min(150, sz.width * 0.28), h = w * 150 / 440;
           const bimg = await doc.embedPng(cv.toDataURL('image/png'));
-          pg0.drawImage(bimg, { x: (sz.width - w) / 2, y: sz.height * 0.155 - h / 2, width: w, height: h });
+          if (coverDone) pg0.drawImage(bimg, { x: (sz.width - w) / 2, y: sz.height * 0.155 - h / 2, width: w, height: h });   // 새로 만든 표지: 목차 칸 아래 빈자리
+          else { const w2 = Math.min(104, sz.width * 0.19), h2 = w2 * 150 / 440; pg0.drawImage(bimg, { x: 20, y: sz.height - 12 - h2, width: w2, height: h2 }); }   // 기존 표지: 내용을 가리지 않게 왼쪽 위 모서리에 작게
         } catch (e) { console.warn('cover label', e); }
       }
       const font = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
       doc.getPages().forEach((pgj, j) => {
         if (coverDone && j === 0) return;
         const orig = j < tocAt ? kept[j] : (j - nIns >= tocAt ? kept[j - nIns] : -1), bx = (numBoxes[orig] || [])[0];
+        if (coverOrig && orig === 0) return;      // 기존 표지에는 쪽 번호를 쓰지 않는다
         const t = (bx && bx.dash ? '- ' + (j + 1) + ' -' : String(j + 1)), fs = 9.5, tw = font.widthOfTextAtSize(t, fs);
         const cx = bx ? (bx.x0 + bx.x1) / 2 : pgj.getWidth() / 2, y = bx ? bx.y0 + 1 : 16;
         pgj.drawText(t, { x: cx - tw / 2, y: y, size: fs, font: font, color: PDFLib.rgb(0.1, 0.1, 0.1) });
