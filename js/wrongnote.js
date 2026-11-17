@@ -179,7 +179,7 @@ async function wnBuild(records, kind, files, opt, say, prog) {
   }
   return out;
 }
-const WN_NAME = { note: { student: '오답노트', teacher: '오답노트_강사용' }, retry: { combined: '다시풀기_학생용+정답해설', student: '다시풀기_학생용', answers: '다시풀기_정답해설', teacher: '다시풀기_강사용' } };
+const WN_NAME = { note: { student: '오답노트', teacher: '오답노트_강사용' }, retry: { combined: '다시풀기_학생용', student: '다시풀기_학생용', answers: '다시풀기_정답해설', teacher: '다시풀기_강사용' } };
 function wnFileName(kind, file, records) {
   const sorted = records.slice().sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt)), who = sorted[0].studentName, what = records.length > 1 ? '합본(' + sorted[0].examTitle + ' 외 ' + (records.length - 1) + '개)' : sorted[0].examTitle;
   return (who + '_' + what + '_' + WN_NAME[kind][file]).replace(/[\\/:*?"<>|]/g, ' ') + '.pdf';
