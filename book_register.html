@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611172320">
+<link rel="stylesheet" href="css/style.css?v=202611172350">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -90,14 +90,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611172320"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611172320"></script>
-<script src="js/vendor/pdf.min.js?v=202611172320"></script>
-<script src="js/config.js?v=202611172320"></script>
-<script src="js/api.js?v=202611172320"></script>
-<script src="js/common.js?v=202611172320"></script>
-<script src="js/bankcore.js?v=202611172320"></script>
-<script src="js/pdfui.js?v=202611172320"></script>
+<script src="js/vendor/qrcode.min.js?v=202611172350"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611172350"></script>
+<script src="js/vendor/pdf.min.js?v=202611172350"></script>
+<script src="js/config.js?v=202611172350"></script>
+<script src="js/api.js?v=202611172350"></script>
+<script src="js/common.js?v=202611172350"></script>
+<script src="js/bankcore.js?v=202611172350"></script>
+<script src="js/pdfui.js?v=202611172350"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -600,6 +600,71 @@ async function syncToServer(rec) {
   renderSaved();
 }
 function showDownloads(rec) { const box = $('dl-box'); box.innerHTML = ''; mergeBtns(rec, box); }
+
+// ── 표지 수정: 만들어 둔 합본의 표지(첫 쪽)만 원본 교재 표지로 바꾸고, 강사용/학생용 표시의 위치·크기를 직접 정해 다시 저장한다 ──
+function badgeCanvas(lab, col) {
+  const cv = document.createElement('canvas'); cv.width = 440; cv.height = 150; const c = cv.getContext('2d');
+  c.fillStyle = '#ffffff'; c.strokeStyle = col; c.lineWidth = 10;
+  c.beginPath(); const x = 8, y = 8, w = 424, h = 134, r = 36; c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = col; c.font = 'bold 84px "Noto Sans CJK KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(lab, 220, 80);
+  return cv;
+}
+async function autoBadgeSpot(doc, w) {      // 원본 표지에서 제목 오른쪽 자리를 찾는다 (글자 → 그림 순)
+  const pg = await doc.getPage(1), vp = pg.getViewport({ scale: 1 }); let spot = null;
+  try {
+    const tc = await pg.getTextContent(), its = tc.items.filter(it => (it.str || '').trim() && (it.height || 0) >= 30), hmax = Math.max.apply(null, its.map(it => it.height).concat([0])), row = its.filter(it => it.height >= hmax * 0.9);
+    if (row.length) spot = { x: Math.max.apply(null, row.map(it => it.transform[4] + it.width)) + 16, cy: vp.height - (row[0].transform[5] + row[0].height * 0.33) };
+    else { const ps = await BankCore.coverTitleSpotByPixels(doc); if (ps) spot = { x: ps.right + 16, cy: vp.height - ps.cy }; }
+  } catch (e) {}
+  if (!spot || spot.x + w > vp.width - 12) spot = { x: 20, cy: 12 + w * 150 / 440 / 2 + 8 };
+  return spot;      // cy: 위에서부터 내려온 거리
+}
+async function editCover(rec) {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/pdf';
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:100; overflow:auto; padding:16px;';
+    ov.innerHTML = '<div style="background:#fff; border-radius:12px; max-width:760px; margin:0 auto; padding:14px;"><b>🎨 표지 수정 — ' + escapeHtml(rec.name) + '</b><div class="muted" style="margin:4px 0;">원본 교재 PDF의 첫 쪽(표지)으로 합본의 표지를 바꾸고, 표시를 끌어서 원하는 곳에 놓아요. 표지 말고는 합본 내용이 그대로예요.</div><div id="ce-msg" class="muted">표지를 읽는 중...</div><div id="ce-stage" style="position:relative; display:inline-block; margin:6px 0; border:1px solid #ccc; touch-action:none;"></div><div id="ce-ctl" style="display:none;">크기 <input type="range" id="ce-sz" min="60" max="320" value="150"> <span id="ce-szv"></span>pt &nbsp; 위치: 표시를 끌어서 옮기세요 &nbsp; <button class="btn" id="ce-auto" type="button">자동 위치</button></div><div style="margin-top:8px;"><button class="btn primary" id="ce-ok" type="button" disabled>✔ 적용해서 다시 저장하고 내려받기</button> <button class="btn" id="ce-x" type="button">닫기</button></div></div>';
+    document.body.appendChild(ov); const q = id => ov.querySelector('#' + id); q('ce-x').onclick = () => ov.remove();
+    try {
+      const buf = new Uint8Array(await f.arrayBuffer()), doc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise, pg = await doc.getPage(1), vp1 = pg.getViewport({ scale: 1 }), dispW = Math.min(560, window.innerWidth - 60), k = dispW / vp1.width, vp = pg.getViewport({ scale: k * 2 });
+      const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height; cv.style.cssText = 'display:block; width:' + dispW + 'px;'; await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise; q('ce-stage').appendChild(cv);
+      const st = { w: 150, x: 20, top: 20 }, imgs = {};
+      const bd = { t: badgeCanvas('강사용', '#c8102e'), s: badgeCanvas('학생용', '#1f4e9c') };
+      const el = document.createElement('img'); el.src = bd.t.toDataURL('image/png'); el.style.cssText = 'position:absolute; cursor:move; user-select:none; -webkit-user-drag:none;'; q('ce-stage').appendChild(el);
+      const place = () => { el.style.width = st.w * k + 'px'; el.style.left = st.x * k + 'px'; el.style.top = st.top * k + 'px'; q('ce-szv').textContent = Math.round(st.w); q('ce-sz').value = st.w; };
+      const auto = async () => { st.w = Math.min(150, vp1.width * 0.28); const sp = await autoBadgeSpot(doc, st.w); st.x = sp.x; st.top = sp.cy - st.w * 150 / 440 / 2; place(); };
+      await auto(); q('ce-ctl').style.display = ''; q('ce-ok').disabled = false; q('ce-msg').textContent = '표시를 끌어서 옮기거나 크기를 조절해 보세요. (미리보기는 강사용 표시예요. 학생용은 같은 자리에 파란색으로 들어가요)';
+      q('ce-sz').oninput = e => { const cxm = st.x + st.w / 2; st.w = +e.target.value; place(); };
+      q('ce-auto').onclick = auto;
+      let drag = null; el.onpointerdown = e => { drag = { sx: e.clientX, sy: e.clientY, x: st.x, top: st.top }; el.setPointerCapture(e.pointerId); e.preventDefault(); };
+      el.onpointermove = e => { if (!drag) return; st.x = Math.max(0, Math.min(vp1.width - st.w, drag.x + (e.clientX - drag.sx) / k)); st.top = Math.max(0, Math.min(vp1.height - st.w * 150 / 440, drag.top + (e.clientY - drag.sy) / k)); place(); };
+      el.onpointerup = () => { drag = null; };
+      q('ce-ok').onclick = async () => {
+        q('ce-ok').disabled = true;
+        try {
+          const out = {};
+          for (const kind of ['teacher', 'student']) {
+            if (!rec[kind]) continue;
+            q('ce-msg').textContent = (kind === 'teacher' ? '강사용' : '학생용') + ' 합본의 표지를 바꾸는 중... (큰 파일은 1분 정도 걸려요)';
+            const d = await PDFLib.PDFDocument.load(await rec[kind].arrayBuffer(), { ignoreEncryption: true }), o = await PDFLib.PDFDocument.load(buf.slice(0), { ignoreEncryption: true });
+            const [cp] = await d.copyPages(o, [0]); d.insertPage(0, cp); d.removePage(1);
+            const first = d.getPage(0), sz = first.getSize(), img = await d.embedPng((kind === 'teacher' ? bd.t : bd.s).toDataURL('image/png')), hh = st.w * 150 / 440;
+            first.drawImage(img, { x: st.x * sz.width / vp1.width, y: sz.height - (st.top + hh) * sz.height / vp1.height, width: st.w * sz.width / vp1.width, height: hh * sz.height / vp1.height });
+            out[kind] = new Blob([await d.save()], { type: 'application/pdf' });
+          }
+          const nrec = { id: rec.id, name: rec.name, date: rec.date, teacher: out.teacher || rec.teacher, student: out.student || rec.student };
+          await mergeDbPut(nrec);
+          if (out.teacher) blobDl(out.teacher, rec.name + ' (QR 강사용 전체).pdf');
+          if (out.student) setTimeout(() => blobDl(out.student, rec.name + ' (QR 학생용).pdf'), 1200);
+          q('ce-msg').textContent = '✅ 표지를 바꿔서 이 기기의 저장본도 새로 저장했고, 내려받았어요.' + (rec.sTeacher || rec.sStudent ? ' (서버에 보관한 파일은 그대로예요. 필요하면 이 합본을 지우고 다시 서버에 보관해 주세요)' : '');
+          renderSaved();
+        } catch (e) { q('ce-msg').innerHTML = '<span style="color:#C1392B;">표지를 바꾸지 못했어요: ' + escapeHtml(e.message || String(e)) + '</span>'; q('ce-ok').disabled = false; }
+      };
+    } catch (e) { q('ce-msg').innerHTML = '<span style="color:#C1392B;">표지를 읽지 못했어요: ' + escapeHtml(e.message || String(e)) + '</span>'; }
+  };
+  inp.click();
+}
 let serverMerges = [];
 async function renderSaved() {
   try {
@@ -631,6 +696,7 @@ async function renderSaved() {
         row.appendChild(b);
       };
       mk('teacher', '강사용', rec.teacher, rec.sTeacher); mk('student', '학생용', rec.student, rec.sStudent);
+      if (rec.teacher || rec.student) { const ce = document.createElement('button'); ce.type = 'button'; ce.className = 'btn'; ce.style.cssText = 'margin:3px 6px 3px 0;'; ce.textContent = '🎨 표지 수정'; ce.title = '원본 교재의 표지로 바꾸고, 강사용/학생용 표시 위치·크기를 직접 정해요'; ce.onclick = () => editCover(rec); row.appendChild(ce); }
       if (!(rec.sTeacher || rec.sStudent) && (rec.teacher || rec.student)) {
         const up = document.createElement('button'); up.type = 'button'; up.className = 'btn'; up.style.cssText = 'margin:3px 6px 3px 0;'; up.textContent = '☁ 서버에 보관';
         up.onclick = async () => { up.disabled = true; await syncToServer({ id: rec.id, name: rec.name, teacher: rec.teacher, student: rec.student }); };
