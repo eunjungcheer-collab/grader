@@ -137,6 +137,7 @@ function handle_(e) {
       case 'getExamPdf': result = actionGetExamPdf_(params); break;
       case 'mergeUpload': result = actionMergeUpload_(params); break;
       case 'mergeSession': result = actionMergeSession_(params); break;
+      case 'mergeDlCopy': result = actionMergeDlCopy_(params); break;
       case 'mergeCleanup': result = actionMergeCleanup_(params); break;
       case 'mergeList': result = actionMergeList_(params); break;
       case 'mergeGetPart': result = actionMergeGetPart_(params); break;
@@ -1263,6 +1264,19 @@ function actionMergeSession_(p) {
     if (res.getResponseCode() !== 200 || !loc) return { ok: false, error: '세션 만들기 실패 ' + res.getResponseCode() + ' ' + String(res.getContentText()).slice(0, 160) };
     return { ok: true, url: loc };
   } catch (e) { return { ok: false, error: '세션 만들기 오류: ' + e }; }
+}
+// 구글 드라이브에서 바로 받을 때 보기 좋은 파일 이름이 되도록, 합본을 '내려받기용' 폴더에 사람이 읽는 이름으로 복사해 준다(원본 파일 이름은 그대로 둔다)
+function actionMergeDlCopy_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const fid = String(p.fileId || ''); if (!fid) return { ok: false, error: '잘못된 요청이에요.' };
+  const nice = String(p.name || '교재').replace(/[\\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) + '.pdf';
+  try {
+    const folder = mergeFolder_(), sub = (function () { const it = folder.getFoldersByName('내려받기용'); return it.hasNext() ? it.next() : folder.createFolder('내려받기용'); })();
+    const same = sub.getFilesByName(nice); while (same.hasNext()) same.next().setTrashed(true);
+    const old = sub.getFiles(), lim = Date.now() - 24 * 3600 * 1000; while (old.hasNext()) { const f = old.next(); if (f.getDateCreated().getTime() < lim) f.setTrashed(true); }
+    const c = DriveApp.getFileById(fid).makeCopy(nice, sub);
+    return { ok: true, fileId: c.getId() };
+  } catch (e) { return { ok: false, error: '복사하지 못했어요: ' + e }; }
 }
 function actionMergeUpload_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
