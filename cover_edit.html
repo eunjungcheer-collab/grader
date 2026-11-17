@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180830">
+<link rel="stylesheet" href="css/style.css?v=202611180845">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180830"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180830"></script>
-<script src="js/config.js?v=202611180830"></script>
-<script src="js/api.js?v=202611180830"></script>
-<script src="js/common.js?v=202611180830"></script>
-<script src="js/bankcore.js?v=202611180830"></script>
-<script src="js/coverdesign.js?v=202611180830"></script>
+<script src="js/vendor/pdf.min.js?v=202611180845"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180845"></script>
+<script src="js/config.js?v=202611180845"></script>
+<script src="js/api.js?v=202611180845"></script>
+<script src="js/common.js?v=202611180845"></script>
+<script src="js/bankcore.js?v=202611180845"></script>
+<script src="js/coverdesign.js?v=202611180845"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -139,7 +139,22 @@ async function serverUpload(rec, kind, blob, onProg) {
   UPQ = run.catch(() => {});
   try { return await run; } finally { UPLOADING.delete(k); if (!UPLOADING.size) { for (const x in UPJOBS) delete UPJOBS[x]; upBar._stopping = false; } upBar(); }
 }
-async function serverDownload(fileId, onProg) {
+function dlBarMake(label) {
+  let wrap = document.getElementById('dl-wrap');
+  if (!wrap) { wrap = document.createElement('div'); wrap.id = 'dl-wrap'; wrap.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:99998;width:min(560px,94vw);display:grid;gap:8px;'; document.body.appendChild(wrap); }
+  const el = document.createElement('div'); el.style.cssText = 'background:#1c2333;color:#fff;padding:10px 14px;border-radius:12px;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.3);';
+  el.innerHTML = '<div class="t"></div><div style="height:12px;background:#3a4258;border-radius:8px;overflow:hidden;margin-top:8px;"><div class="f" style="height:100%;width:0;background:#4cc38a;transition:width .4s linear;"></div></div>';
+  wrap.appendChild(el); const t0 = Date.now(), tx = el.querySelector('.t'), fl = el.querySelector('.f');
+  tx.textContent = '⬇ ' + label + ' · 서버에 요청 중...';
+  return {
+    set: (done, total) => { if (!(total > 0)) return; const pct = Math.floor(done / total * 100), el2 = (Date.now() - t0) / 1000; let eta = ''; if (done >= 2 && el2 > 3 && done < total) { const sec = Math.round(el2 * (total - done) / done); eta = ' · 약 ' + (sec >= 60 ? Math.floor(sec / 60) + '분 ' + (sec % 60) + '초' : sec + '초') + ' 남음(대략)'; } fl.style.width = pct + '%'; tx.textContent = '⬇ ' + label + ' · 받는 중 ' + pct + '% (' + done + '/' + total + ')' + eta; },
+    end: ok => { if (!ok) { tx.textContent = '⬇ ' + label + ' · 받지 못했어요'; fl.style.background = '#C1392B'; } else { fl.style.width = '100%'; tx.textContent = '✅ ' + label + ' · 받기 완료'; } setTimeout(() => { el.remove(); }, ok ? 2500 : 5000); }
+  };
+}
+async function serverDownload(fileId, onProg, label) {
+  const bar = dlBarMake(label || '파일'); try { const r = await serverDownloadRaw(fileId, (i, n) => { bar.set(i, n); if (onProg) onProg(i, n); }); bar.end(true); return r; } catch (e) { bar.end(false); throw e; }
+}
+async function serverDownloadRaw(fileId, onProg) {
   // 조각을 한 개씩 받으면 구글 서버 왕복이 쌓여 느리다 → 조각을 크게(3MB) 하고 5개씩 동시에 받는다
   const PS = 2000000, get = async i => {
     let r = null;
@@ -198,7 +213,7 @@ async function renderList(fresh) {
       const upload = (b, word) => serverUpload({ id: f.srvId, name: f.srvName }, f.srvKind, f.loc, (i, n) => { b.textContent = '☁ ' + word + ' ' + i + '/' + n; });
       const tooBig = () => { if (f.loc.size > 150e6) throw new Error(f.lab + ' 파일이 150MB를 넘어서 서버에 보관할 수 없어요.'); };
       if (f.loc) add('⬇ 내려받기', async () => { blobDl(f.loc, f.dl); });
-      if (!f.loc && f.srv) add('📱 이 기기로 내려받아 저장', async b => { const blob = await serverDownload(f.srv.fileId, (i, n) => { b.textContent = n === '?' ? '받는 중... 서버에 요청했어요(처음엔 몇 초 걸려요)' : '받는 중... ' + i + '/' + n; }); const cur = (await mergeDbGet(it.id)) || { id: it.id, name: it.name, date: it.date }; cur[f.key] = blob; await mergeDbPut(cur); blobDl(blob, f.dl); });
+      if (!f.loc && f.srv) add('📱 이 기기로 내려받아 저장', async b => { const blob = await serverDownload(f.srv.fileId, (i, n) => { b.textContent = n === '?' ? '받는 중... 서버에 요청했어요(처음엔 몇 초 걸려요)' : '받는 중... ' + i + '/' + n; }, (it.name || '교재') + ' ' + f.lab); const cur = (await mergeDbGet(it.id)) || { id: it.id, name: it.name, date: it.date }; cur[f.key] = blob; await mergeDbPut(cur); blobDl(blob, f.dl); });
       if (!f.loc && f.key === 'original' && rec) add('📎 원본 교재 PDF 저장 (이 기기에)', async () => { const file = await pickPdf(); if (!file) return; const cur = (await mergeDbGet(it.id)) || rec; cur.original = file; await mergeDbPut(cur); });
       if (f.loc && !f.srv) add('☁ 서버에 보관', async b => { tooBig(); await upload(b, '올리는 중...'); alert(f.lab + ' 서버 보관 완료'); });
       if (f.loc && f.srv) add('☁ 서버 파일을 이 기기 파일로 교체', async b => { tooBig(); if (!confirm('서버에 보관된 ' + f.lab + ' 파일을 지금 이 기기의 파일로 바꿔요. (기존 서버 파일은 지워져요)')) return; await upload(b, '교체 중...'); alert(f.lab + ' 서버 파일을 교체했어요'); });
