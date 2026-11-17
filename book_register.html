@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611172100">
+<link rel="stylesheet" href="css/style.css?v=202611172130">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -90,14 +90,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611172100"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611172100"></script>
-<script src="js/vendor/pdf.min.js?v=202611172100"></script>
-<script src="js/config.js?v=202611172100"></script>
-<script src="js/api.js?v=202611172100"></script>
-<script src="js/common.js?v=202611172100"></script>
-<script src="js/bankcore.js?v=202611172100"></script>
-<script src="js/pdfui.js?v=202611172100"></script>
+<script src="js/vendor/qrcode.min.js?v=202611172130"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611172130"></script>
+<script src="js/vendor/pdf.min.js?v=202611172130"></script>
+<script src="js/config.js?v=202611172130"></script>
+<script src="js/api.js?v=202611172130"></script>
+<script src="js/common.js?v=202611172130"></script>
+<script src="js/bankcore.js?v=202611172130"></script>
+<script src="js/pdfui.js?v=202611172130"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -243,8 +243,20 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
   const pill = (t, cx, cy) => { x.font = '700 15px ' + FONT; const w = x.measureText(t).width + 36; x.fillStyle = '#fff'; x.strokeStyle = pal.main; x.lineWidth = 1.6; x.beginPath(); x.roundRect(cx, cy, w, 34, 17); x.fill(); x.fillStyle = pal.main; x.textBaseline = 'middle'; x.fillText(t, cx + 18, cy + 17); };
   const ml = 54; if (pal.grade) pill(pal.grade + ' · ' + typeLabel, ml, 74);
   const subj = (bookName.replace(/내신대비|교재|보충|심화|기출|개념|기본/g, ' ').replace(/\s+/g, ' ').trim() || '과학'), base = /과학/.test(subj) ? subj : subj + ' 과학';
-  x.textBaseline = 'alphabetic'; x.fillStyle = pal.main; x.font = '900 72px ' + FONT; x.fillText(base, ml, 250);
-  window._coverTitle = { x: ml, right: ml + x.measureText(base).width, baseline: 250, size: 72, H: H };      // 학생용/강사용 표시를 제목 오른쪽에 달 때 쓴다
+  x.textBaseline = 'alphabetic'; x.fillStyle = pal.main;
+  // 제목이 길면 표지 밖으로 넘어가지 않게 글자를 줄이고, 그래도 안 되면 두 줄로 나눈다
+  { const maxW = W - ml * 2 - 8, fw = fs => { x.font = '900 ' + fs + 'px ' + FONT; return x.measureText(base).width; };
+    let fs = 72; while (fs > 46 && fw(fs) > maxW) fs -= 2;
+    if (fw(fs) <= maxW) { x.font = '900 ' + fs + 'px ' + FONT; x.fillText(base, ml, 250); window._coverTitle = { x: ml, right: ml + x.measureText(base).width, baseline: 250, size: fs, H: H }; }
+    else {
+      const words = base.split(' '); let best = 1, bd = 1e9;      // 두 줄로 나눌 자리: 두 줄 길이가 비슷한 공백
+      for (let k = 1; k < words.length; k++) { const d = Math.abs(x.measureText(words.slice(0, k).join(' ')).width - x.measureText(words.slice(k).join(' ')).width); if (d < bd) { bd = d; best = k; } }
+      const l1 = words.slice(0, best).join(' '), l2 = words.slice(best).join(' ') || '';
+      let f2 = 54; const wd = f => { x.font = '900 ' + f + 'px ' + FONT; return Math.max(x.measureText(l1).width, x.measureText(l2).width); };
+      while (f2 > 30 && wd(f2) > maxW) f2 -= 2;
+      x.font = '900 ' + f2 + 'px ' + FONT; x.fillText(l1, ml, 202); if (l2) x.fillText(l2, ml, 258);
+      window._coverTitle = { x: ml, right: ml + x.measureText(l2 || l1).width, baseline: l2 ? 258 : 202, size: f2, H: H };
+    } }
   if (typeChip) { x.font = '800 38px ' + FONT; const tw = x.measureText(typeLabel + ' 교재').width; x.fillStyle = pal.main; x.beginPath(); x.roundRect(ml - 14, 278, tw + 28, 50, 12); x.fill(); x.fillStyle = '#fff'; x.fillText(typeLabel + ' 교재', ml, 314); }
   else { x.fillStyle = '#17203A'; x.font = '800 40px ' + FONT; x.fillText(typeLabel + ' 교재', ml, 312); }
   x.fillStyle = pal.main; x.fillRect(ml, 338, 74, 5);
