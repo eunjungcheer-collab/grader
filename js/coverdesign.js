@@ -1,6 +1,7 @@
 // 표지 도안(새 표지 그림 만들기) — book_register.html 과 cover_edit.html 이 같이 쓴다
 const COVER_COLORS = { pink: ['#E4566D', '#FDEBEE', '#B93A50'], blue: ['#2F7BC0', '#E4F0FA', '#1D5A93'], purple: ['#7A55C2', '#EFE9FA', '#59399A'], teal: ['#139186', '#E0F4F1', '#0C6B62'], orange: ['#E8833A', '#FFF1E4', '#B8641F'], green: ['#2E9E5B', '#E3F5EA', '#1F7A44'], navy: ['#0B1F5C', '#E6EAF6', '#08153F'], red: ['#D63A3A', '#FDE8E8', '#A82626'] };
-function coverCanvas(bookName, secs, W, H, design, colorKey) {
+function coverCanvas(bookName, secs, W, H, design, colorKey, opts) {
+  const O = opts || {};      // 표지 목차 칸 조절: fs(글자 배율) · row(줄 간격 배율, 칸 안에서만) · cols('auto'|1|2) · dy(칸 위치 위아래 이동)
   const K = 3, cv = document.createElement('canvas'); cv.width = Math.round(W * K); cv.height = Math.round(H * K);
   const x = cv.getContext('2d'); x.scale(K, K);
   const pal = /중\s*1/.test(bookName) ? { main: '#E4566D', soft: '#FDEBEE', deep: '#B93A50', grade: '중학교 1학년' }
@@ -93,14 +94,14 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
   const uinfoC = unitInfoFor(secs);
   secs.forEach(s => { const ui = uinfoC(s), k = ui.no + '|' + ui.name; if (!seen[k] && (ui.name || ui.no)) { seen[k] = 1; units.push({ n: toRoman(ui.no), t: ui.name || '' }); } });
   // 목차 칸 크기는 단원 수에 맞춘다: 아래쪽 '강사용/학생용' 표시 자리(H*0.155 위치)와 맨 아래 글자를 침범하지 않는 범위 안에서만 그린다. 모자라면 줄 간격을 줄이고, 그래도 모자라면 두 열로 나눈다.
-  const list = units.slice(0, 16), by = 372, cardLimit = H * (1 - 0.155) - 26 - 16, avail = cardLimit - by - 64 - 14;
-  const twoCol = list.length * 30 > avail, perCol = twoCol ? Math.ceil(list.length / 2) : list.length, rowH = Math.max(18, Math.min(40, avail / perCol));
+  const list = units.slice(0, 16), by = 372 + (O.dy || 0), cardLimit = H * (1 - 0.155) - 26 - 16, avail = cardLimit - by - 64 - 14;
+  const twoCol = O.cols === 2 ? true : O.cols === 1 ? false : list.length * 30 > avail, perCol = twoCol ? Math.ceil(list.length / 2) : list.length, fit = avail / perCol, rowH = Math.max(10, Math.min(fit, (O.cols ? Math.min(40, fit) : Math.max(18, Math.min(40, fit))) * (O.row || 1)));
   const boxH = 64 + perCol * rowH + 10;
   x.shadowColor = 'rgba(20,30,60,.14)'; x.shadowBlur = 24; x.shadowOffsetY = 8; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(ml, by, W - ml * 2, boxH, 22); x.fill(); x.shadowColor = 'transparent';
   x.fillStyle = pal.deep; x.font = '800 13px ' + FONT; x.fillText('C O N T E N T S', ml + 28, by + 38);
   list.forEach((u, i) => {
     const col = twoCol ? Math.floor(i / perCol) : 0, ri = twoCol ? i % perCol : i, colW = (W - ml * 2 - 56) / (twoCol ? 2 : 1), x0 = ml + 28 + col * colW;
-    const cy = by + 64 + ri * rowH, bh = Math.min(28, rowH - 6), fs = Math.max(11, Math.min(18, rowH * 0.45)), tw = Math.min(46, bh * 1.65);
+    const cy = by + 64 + ri * rowH, bh = Math.min(28, rowH - 6), fs = Math.max(9, Math.min(24, Math.max(11, Math.min(18, rowH * 0.45)) * (O.fs || 1))), tw = Math.min(46, bh * 1.65);
     x.fillStyle = pal.main; x.beginPath(); x.roundRect(x0, cy - 8, tw, bh, 8); x.fill();
     x.fillStyle = '#fff'; x.font = '800 ' + Math.round(fs * 0.9) + 'px ' + FONT; x.textAlign = 'center'; x.fillText(String(u.n || i + 1), x0 + tw / 2, cy - 8 + bh / 2 + fs * 0.33);
     x.textAlign = 'left'; x.fillStyle = '#17203A'; x.font = '700 ' + Math.round(fs) + 'px ' + FONT;

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180135">
+<link rel="stylesheet" href="css/style.css?v=202611180150">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -39,7 +39,7 @@
         <b>1. 표지 그림</b>
         <label class="ce-opt"><input type="radio" name="src" value="stored" id="src-stored"> 저장된 표지 그대로 <span class="muted" id="stored-note" style="font-weight:400;"></span></label>
         <label class="ce-opt"><input type="radio" name="src" value="gen" id="src-gen"> 새 표지 만들기 <span class="muted" id="gen-note" style="font-weight:400;"></span></label>
-        <div class="ce-sub" id="gen-box" style="display:none;">책 이름 <input type="text" id="ce-name" style="max-width:280px;"><br>도안 <select id="ce-design"><option value="auto">자동 (학년·종류에 맞춰)</option><option value="mol">분자 · 플라스크</option><option value="atom">원자</option><option value="dna">DNA</option><option value="hex">육각 격자</option><option value="tubes">시험관</option><option value="circuit">전기 회로</option><option value="planet">행성</option><option value="ripple">물결 · 별자리</option><option value="star">별자리</option></select><br>색 <select id="ce-color"><option value="">자동 (학년색)</option><option value="pink">분홍</option><option value="blue">파랑</option><option value="purple">보라</option><option value="teal">청록</option><option value="orange">주황</option><option value="green">초록</option><option value="navy">남색</option><option value="red">빨강</option></select></div>
+        <div class="ce-sub" id="gen-box" style="display:none;">책 이름 <input type="text" id="ce-name" style="max-width:280px;"><br>도안 <select id="ce-design"><option value="auto">자동 (학년·종류에 맞춰)</option><option value="mol">분자 · 플라스크</option><option value="atom">원자</option><option value="dna">DNA</option><option value="hex">육각 격자</option><option value="tubes">시험관</option><option value="circuit">전기 회로</option><option value="planet">행성</option><option value="ripple">물결 · 별자리</option><option value="star">별자리</option></select><br>색 <select id="ce-color"><option value="">자동 (학년색)</option><option value="pink">분홍</option><option value="blue">파랑</option><option value="purple">보라</option><option value="teal">청록</option><option value="orange">주황</option><option value="green">초록</option><option value="navy">남색</option><option value="red">빨강</option></select><br><b>목차 칸</b> (표지의 CONTENTS 상자 — 표지 밖으로 넘치지 않는 범위에서만 커져요)<br>글자 크기 <input type="range" id="ce-cfs" min="60" max="150" value="100" style="width:150px;"> <span id="ce-cfsv">100</span>%<br>줄 간격 <input type="range" id="ce-crow" min="60" max="160" value="100" style="width:150px;"> <span id="ce-crowv">100</span>%<br>열 <select id="ce-ccols"><option value="0">자동</option><option value="1">1열</option><option value="2">2열</option></select><br>칸 위치 <input type="range" id="ce-cdy" min="-60" max="60" value="0" style="width:150px;"> <span id="ce-cdyv">0</span><br><button type="button" class="btn" id="ce-creset">목차 칸 기본값</button></div>
         <label class="ce-opt"><input type="radio" name="src" value="file" id="src-file"> 원본 교재 PDF에서 표지 가져오기</label>
         <div class="ce-sub" id="file-box" style="display:none;"><input type="file" id="ce-file" accept="application/pdf"><div class="muted">교재 PDF의 첫 쪽(표지)만 읽어요.</div></div>
 
@@ -55,13 +55,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180135"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180135"></script>
-<script src="js/config.js?v=202611180135"></script>
-<script src="js/api.js?v=202611180135"></script>
-<script src="js/common.js?v=202611180135"></script>
-<script src="js/bankcore.js?v=202611180135"></script>
-<script src="js/coverdesign.js?v=202611180135"></script>
+<script src="js/vendor/pdf.min.js?v=202611180150"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180150"></script>
+<script src="js/config.js?v=202611180150"></script>
+<script src="js/api.js?v=202611180150"></script>
+<script src="js/common.js?v=202611180150"></script>
+<script src="js/bankcore.js?v=202611180150"></script>
+<script src="js/coverdesign.js?v=202611180150"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -194,6 +194,12 @@ async function coverFromPdfDoc(doc) {
 }
 function loadImg(src) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('표지 그림을 읽지 못했어요')); im.src = src; }); }
 
+function copts() { const c = +$('ce-ccols').value; return { fs: +$('ce-cfs').value / 100, row: +$('ce-crow').value / 100, cols: c || 0, dy: +$('ce-cdy').value }; }
+function regenGen() {      // 목차 칸만 바꿀 때: 표지를 다시 그리되 표시 위치는 그대로 둔다
+  if (!REC || !REC.cover || !COV) return; const c = REC.cover;
+  $('ce-cfsv').textContent = $('ce-cfs').value; $('ce-crowv').textContent = $('ce-crow').value; $('ce-cdyv').textContent = $('ce-cdy').value;
+  COV.canvas = coverCanvas($('ce-name').value.trim() || REC.name, c.secs, COV.pw, COV.ph, $('ce-design').value, $('ce-color').value, copts()); paint();
+}
 async function setSource(kind) {
   const m = $('ce-msg'); m.textContent = '';
   $('gen-box').style.display = kind === 'gen' ? '' : 'none'; $('file-box').style.display = kind === 'file' ? '' : 'none';
@@ -205,7 +211,7 @@ async function setSource(kind) {
       if (c.spot) { ST.x = c.spot.x; ST.top = c.spot.top; paint(); } else applyAuto();
     } else if (kind === 'gen') {
       const c = REC.cover, W = c.pw, H = c.ph;
-      const cv = coverCanvas($('ce-name').value.trim() || REC.name, c.secs, W, H, $('ce-design').value, $('ce-color').value), T = window._coverTitle;
+      const cv = coverCanvas($('ce-name').value.trim() || REC.name, c.secs, W, H, $('ce-design').value, $('ce-color').value, copts()), T = window._coverTitle;
       COV = { canvas: cv, pw: W, ph: H }; ST.wd = Math.min(150, W * 0.28);
       setAuto(T ? { x: T.right + 16, cy: T.baseline - T.size * 0.33 } : null); applyAuto();
     } else if (kind === 'file') { if (COV && COV._file) { paint(); return; } m.textContent = '위 칸에서 원본 교재 PDF를 골라 주세요.'; }
@@ -254,6 +260,8 @@ async function applyEdit() {
   document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => setSource(r.value)));
   document.querySelectorAll('input[name=pv-kind]').forEach(r => r.addEventListener('change', () => { KIND = r.value; paint(); }));
   ['ce-name', 'ce-design', 'ce-color'].forEach(id => { const e = $(id); const f = () => { if (document.querySelector('input[name=src]:checked').value === 'gen') { const x0 = ST.x, t0 = ST.top; setSource('gen'); } }; e.addEventListener('input', f); e.addEventListener('change', f); });
+  ['ce-cfs', 'ce-crow', 'ce-cdy'].forEach(id => $(id).addEventListener('input', regenGen)); $('ce-ccols').addEventListener('change', regenGen);
+  $('ce-creset').onclick = () => { $('ce-cfs').value = 100; $('ce-crow').value = 100; $('ce-cdy').value = 0; $('ce-ccols').value = '0'; regenGen(); };
   $('ce-sz').addEventListener('input', e => { ST.wd = +e.target.value; paint(); });
   $('ce-auto').onclick = applyAuto; $('ce-tl').onclick = () => { ST.x = 20; ST.top = 14; paint(); };
   $('ce-close').onclick = () => { $('editor').style.display = 'none'; };
