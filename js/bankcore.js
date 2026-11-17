@@ -3594,6 +3594,27 @@
 
   // ── 교재 한 권(여러 소단원이 25문제씩 이어진 PDF)의 목차 읽기 ──
   // 앞쪽 몇 쪽에서 「최다빈출 공략  1-1.물질의 특성(01)   4~9   357~359」 같은 줄(이름, 문제 쪽, 정답 쪽)을 찾는다.
+
+  // 표지 제목이 그림으로 들어 있는 교재: 표지를 작게 그려서 왼쪽 반의 가장 큰 진한 파랑 글자 줄(=제목)의 오른쪽 끝과 세로 가운데를 찾는다. 못 찾으면 null
+  async function coverTitleSpotByPixels(doc) {
+    const pg = await doc.getPage(1), vp1 = pg.getViewport({ scale: 1 }), sc = 0.5, vp = pg.getViewport({ scale: sc });
+    const cv = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height)), cx = cv.getContext('2d');
+    cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+    await pg.render({ canvasContext: cx, viewport: vp }).promise;
+    const W = cv.width, H = cv.height, d = cx.getImageData(0, 0, W, H).data, xmax = Math.floor(W * 0.62);
+    const dark = (x, y) => { const i = (y * W + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2]; return b > r + 30 && 0.299 * r + 0.587 * g + 0.114 * b < 135; };
+    const rowCnt = [], rowMax = [];
+    for (let y = Math.floor(H * 0.15); y < Math.floor(H * 0.75); y++) { let c = 0, mx = -1; for (let x = 0; x < xmax; x++) if (dark(x, y)) { c++; mx = x; } rowCnt[y] = c; rowMax[y] = mx; }
+    let best = null, cur = null;
+    for (let y = Math.floor(H * 0.15); y <= Math.floor(H * 0.75); y++) {
+      if ((rowCnt[y] || 0) >= 3) { if (!cur) cur = { y0: y, y1: y, mx: rowMax[y] }; else { cur.y1 = y; cur.mx = Math.max(cur.mx, rowMax[y]); } }
+      else if (cur) { if (!best || cur.y1 - cur.y0 > best.y1 - best.y0) best = cur; cur = null; }
+    }
+    if (cur && (!best || cur.y1 - cur.y0 > best.y1 - best.y0)) best = cur;
+    if (!best || best.y1 - best.y0 < H * 0.03 || best.mx < W * 0.25) return null;
+    return { right: (best.mx + 1) / sc, cy: vp1.height - ((best.y0 + best.y1) / 2) / sc, h: (best.y1 - best.y0) / sc };
+  }
+
   async function parseBookToc(doc, maxPages) {
     const secs = []; let unit = null, tocPage = 0; const seen = {};
     const n = Math.min(doc.numPages, maxPages || 8);
@@ -4324,7 +4345,7 @@
   }
 
   root.BankCore = {
-    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, extendCutQuestions: extendCutQuestions, parseBookToc: parseBookToc, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
+    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, extendCutQuestions: extendCutQuestions, parseBookToc: parseBookToc, coverTitleSpotByPixels: coverTitleSpotByPixels, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
     _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, detectBogiMarks: detectBogiMarks, detectBogiMarksB64: detectBogiMarksB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
