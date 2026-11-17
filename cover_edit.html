@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
-<title>저장된 합본 · 표지 수정 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180050">
+<title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611180100">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -24,8 +24,8 @@
 <body>
 <template id="page-content">
   <span class="backlink"><a href="index.html">← 홈으로</a></span>
-  <h1>🎨 저장된 합본 · 표지 수정</h1>
-  <p class="muted">이 기기에 저장된 QR 합본의 <b>표지만</b> 바꿔서 다시 저장해요. 표지 도안·색을 고르고, <b>강사용/학생용 표시</b>를 화면에서 끌어 옮기며 결과를 미리 보세요. 시험지·QR·문제은행은 건드리지 않아요.</p>
+  <h1>🎨 저장된 교재 수정&관리</h1>
+  <p class="muted">이 기기에 저장된 교재(QR 합본)의 <b>표지만</b> 바꿔서 다시 저장해요. 표지 도안·색을 고르고, <b>강사용/학생용 표시</b>를 화면에서 끌어 옮기며 결과를 미리 보세요. 시험지·QR·문제은행은 건드리지 않아요.</p>
   <div id="list-card" class="card"><div id="list" class="muted">불러오는 중...</div></div>
 
   <div id="editor" class="card" style="display:none;">
@@ -33,7 +33,7 @@
     <div class="ce-grid">
       <div>
         <div class="ce-stage" id="stage"><canvas id="pv"></canvas></div>
-        <div class="muted" style="margin-top:6px;">미리보기 (실제 합본 표지와 같은 모습이에요). 표시를 끌어서 옮기세요.</div>
+        <div class="muted" style="margin-top:6px;">미리보기 (실제 교재 표지와 같은 모습이에요). 표시를 끌어서 옮기세요.</div>
       </div>
       <div>
         <b>1. 표지 그림</b>
@@ -55,13 +55,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180050"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180050"></script>
-<script src="js/config.js?v=202611180050"></script>
-<script src="js/api.js?v=202611180050"></script>
-<script src="js/common.js?v=202611180050"></script>
-<script src="js/bankcore.js?v=202611180050"></script>
-<script src="js/coverdesign.js?v=202611180050"></script>
+<script src="js/vendor/pdf.min.js?v=202611180100"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180100"></script>
+<script src="js/config.js?v=202611180100"></script>
+<script src="js/api.js?v=202611180100"></script>
+<script src="js/common.js?v=202611180100"></script>
+<script src="js/bankcore.js?v=202611180100"></script>
+<script src="js/coverdesign.js?v=202611180100"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -87,7 +87,7 @@ async function renderList() {
   let all = []; try { all = await mergeDbAll(); } catch (e) {}
   all.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const box = $('list');
-  if (!all.length) { box.innerHTML = '이 기기에 저장된 합본이 없어요. 「교재 한 권 QR 합본 만들기」에서 합본을 만들면 여기에 나타나요. (다른 기기에서 만든 합본은 그 기기에서 열어야 해요)'; return; }
+  if (!all.length) { box.innerHTML = '이 기기에 저장된 교재가 없어요. 「교재 한 권 QR 합본 만들기」에서 교재를 만들면 여기에 나타나요. (다른 기기에서 만든 교재는 그 기기에서 열어야 해요)'; return; }
   box.className = ''; box.innerHTML = '';
   all.forEach(rec => {
     const d = new Date(rec.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
@@ -158,8 +158,8 @@ async function openEditor(rec) {
   REC = rec; $('editor').style.display = ''; $('ed-title').textContent = '🎨 ' + rec.name; COV = null;
   BD.t = badgeCanvas('강사용', '#c8102e'); BD.s = badgeCanvas('학생용', '#1f4e9c');
   const has = !!(rec.cover && rec.cover.png), canGen = !!(rec.cover && rec.cover.secs && rec.cover.secs.length);
-  $('src-stored').disabled = !has; $('stored-note').textContent = has ? '' : '(이 합본은 표지를 따로 저장해 두지 않았어요 — 아래에서 원본 교재 PDF를 골라 주세요)';
-  $('src-gen').disabled = !canGen; $('gen-note').textContent = canGen ? '' : '(이 합본은 단원 정보가 없어 새로 만들 수 없어요)';
+  $('src-stored').disabled = !has; $('stored-note').textContent = has ? '' : '(이 교재는 표지를 따로 저장해 두지 않았어요 — 아래에서 원본 교재 PDF를 골라 주세요)';
+  $('src-gen').disabled = !canGen; $('gen-note').textContent = canGen ? '' : '(이 교재는 단원 정보가 없어 새로 만들 수 없어요)';
   $('ce-name').value = rec.name.replace(/\s*\(?(문제편|정답편|최신판|초판).*$/, '').trim() || rec.name;
   const first = has ? 'stored' : 'file'; document.querySelector('input[name=src][value=' + first + ']').checked = true;
   await setSource(first); $('editor').scrollIntoView({ behavior: 'smooth' });
@@ -171,7 +171,7 @@ async function applyEdit() {
     const png = COV.canvas.toDataURL('image/png'), out = {};
     for (const kind of ['teacher', 'student']) {
       if (!REC[kind]) continue;
-      m.textContent = (kind === 'teacher' ? '강사용' : '학생용') + ' 합본의 표지를 바꾸는 중... (큰 파일은 1분 정도 걸려요)';
+      m.textContent = (kind === 'teacher' ? '강사용' : '학생용') + ' 교재의 표지를 바꾸는 중... (큰 파일은 1분 정도 걸려요)';
       const d = await PDFLib.PDFDocument.load(await REC[kind].arrayBuffer(), { ignoreEncryption: true });
       const sz0 = d.getPage(0).getSize(), np = d.insertPage(0, [sz0.width, sz0.height]);
       np.drawImage(await d.embedPng(png), { x: 0, y: 0, width: sz0.width, height: sz0.height }); d.removePage(1);

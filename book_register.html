@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180050">
+<link rel="stylesheet" href="css/style.css?v=202611180100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -36,7 +36,7 @@
 
   <div class="card" id="saved-card" style="display:none;">
     <details id="saved-drawer">
-      <summary style="cursor:pointer; font-weight:700; padding:2px 0;">📁 전에 만들어 둔 합본 PDF <span class="muted" id="saved-count" style="font-weight:400;"></span> <span class="muted" style="font-weight:400;">— 눌러서 열기 (강사용/학생용 따로 내려받아요)</span></summary>
+      <summary style="cursor:pointer; font-weight:700; padding:2px 0;">📁 저장된 교재 (QR 합본 PDF) <span class="muted" id="saved-count" style="font-weight:400;"></span> <span class="muted" style="font-weight:400;">— 눌러서 열기 (강사용/학생용 따로 내려받아요)</span></summary>
       <div id="saved-list" style="margin-top:8px;"></div>
     </details>
   </div>
@@ -90,15 +90,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611180050"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180050"></script>
-<script src="js/vendor/pdf.min.js?v=202611180050"></script>
-<script src="js/config.js?v=202611180050"></script>
-<script src="js/api.js?v=202611180050"></script>
-<script src="js/common.js?v=202611180050"></script>
-<script src="js/bankcore.js?v=202611180050"></script>
-<script src="js/coverdesign.js?v=202611180050"></script>
-<script src="js/pdfui.js?v=202611180050"></script>
+<script src="js/vendor/qrcode.min.js?v=202611180100"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180100"></script>
+<script src="js/vendor/pdf.min.js?v=202611180100"></script>
+<script src="js/config.js?v=202611180100"></script>
+<script src="js/api.js?v=202611180100"></script>
+<script src="js/common.js?v=202611180100"></script>
+<script src="js/bankcore.js?v=202611180100"></script>
+<script src="js/coverdesign.js?v=202611180100"></script>
+<script src="js/pdfui.js?v=202611180100"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
