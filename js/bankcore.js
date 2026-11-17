@@ -2191,7 +2191,7 @@
       const withEx = !!opts.withExpl && items.some(it => it.explBase64);
       // 정답·해설은 뒤쪽에 따로 모은다. 양면으로 인쇄하면 오답노트가 홀수 쪽에서 끝날 때 해설이 그 뒷면에 붙어 버리니, 빈 쪽을 한 장 끼워 해설이 새 장의 앞면부터 시작하게 한다.
       if (opts.part === 'answers') doc.removePage(0);
-      else if (withEx && doc.getPageCount() % 2 === 1) doc.addPage([W, H]);
+      else if (doc.getPageCount() % 2 === 1) doc.addPage([W, H]);
       if (all.length) await wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, all, qrImg, opts);
       if (withEx) {
         newPage();
