@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180445">
+<link rel="stylesheet" href="css/style.css?v=202611180455">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180445"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180445"></script>
-<script src="js/config.js?v=202611180445"></script>
-<script src="js/api.js?v=202611180445"></script>
-<script src="js/common.js?v=202611180445"></script>
-<script src="js/bankcore.js?v=202611180445"></script>
-<script src="js/coverdesign.js?v=202611180445"></script>
+<script src="js/vendor/pdf.min.js?v=202611180455"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180455"></script>
+<script src="js/config.js?v=202611180455"></script>
+<script src="js/api.js?v=202611180455"></script>
+<script src="js/common.js?v=202611180455"></script>
+<script src="js/bankcore.js?v=202611180455"></script>
+<script src="js/coverdesign.js?v=202611180455"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -326,7 +326,7 @@ async function applyEdit() {
   $('srv-clean').onclick = async () => {
     if (!confirm('서버에 남은 임시 조각 파일을 모두 지울까요?\n(올리는 중인 것이 있다면 실패하니, 모두 끝난 뒤에 눌러 주세요. 보관된 합본 파일은 지워지지 않아요)')) return;
     const b = $('srv-clean'), m = $('srv-clean-msg'); b.disabled = true; m.textContent = '정리하는 중...';
-    try { let tot = 0; for (let k = 0; k < 20; k++) { const r = await callApi('mergeCleanup', { password: getTeacherPassword(), all: true }); if (!r || !r.ok) throw new Error((r && r.error) || '서버를 새 버전으로 배포했는지 확인해 주세요'); tot += r.removed || 0; m.textContent = '정리하는 중... ' + tot + '개 삭제'; if (!r.removed) break; } m.textContent = '✅ 임시 조각 ' + tot + '개를 정리했어요.'; } catch (e) { m.innerHTML = '<span style="color:#C1392B;">정리하지 못했어요: ' + esc(e.message || e) + '</span>'; }
+    try { let tot = 0; for (let k = 0; k < 400; k++) { const r = await callApi('mergeCleanup', { password: getTeacherPassword(), all: true }); if (!r || !r.ok) throw new Error((r && r.error) || '서버를 새 버전으로 배포했는지 확인해 주세요'); tot += r.removed || 0; m.textContent = '정리하는 중... ' + tot + '개 삭제'; if (!r.removed) break; } m.textContent = '✅ 임시 조각 ' + tot + '개를 정리했어요.'; } catch (e) { m.innerHTML = '<span style="color:#C1392B;">정리하지 못했어요: ' + esc(e.message || e) + '</span>'; }
     b.disabled = false;
   };
   $('ce-ok').onclick = applyEdit;

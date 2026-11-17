@@ -1320,7 +1320,7 @@ function actionMergeList_(p) {
 function actionMergeCleanup_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const folder = mergeFolder_(), it = folder.searchFiles("title contains '__chunk__'"), limit = p.all ? Date.now() + 1000 : Date.now() - 2 * 3600 * 1000; let n = 0, t0 = Date.now();      // all: 지금 올리는 것이 없을 때 모든 임시 조각 정리
-  while (it.hasNext() && Date.now() - t0 < 240000) { const f = it.next(); if (f.getDateCreated().getTime() < limit) { f.setTrashed(true); n++; } }
+  while (it.hasNext() && Date.now() - t0 < 20000) { const f = it.next(); if (f.getDateCreated().getTime() < limit) { f.setTrashed(true); n++; } }
   return { ok: true, removed: n };
 }
 function actionMergeGetPart_(p) {
