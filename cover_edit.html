@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180300">
+<link rel="stylesheet" href="css/style.css?v=202611180315">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -55,13 +55,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180300"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180300"></script>
-<script src="js/config.js?v=202611180300"></script>
-<script src="js/api.js?v=202611180300"></script>
-<script src="js/common.js?v=202611180300"></script>
-<script src="js/bankcore.js?v=202611180300"></script>
-<script src="js/coverdesign.js?v=202611180300"></script>
+<script src="js/vendor/pdf.min.js?v=202611180315"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180315"></script>
+<script src="js/config.js?v=202611180315"></script>
+<script src="js/api.js?v=202611180315"></script>
+<script src="js/common.js?v=202611180315"></script>
+<script src="js/bankcore.js?v=202611180315"></script>
+<script src="js/coverdesign.js?v=202611180315"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -131,74 +131,40 @@ async function renderList(fresh) {
   all.forEach(it => {
     const rec = it.rec, d = new Date(it.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
     const row = document.createElement('div'); row.className = 'ce-row'; row.style.display = 'block';
-    const kinds = [['teacher', '강사용', rec && rec.teacher, it.sT], ['student', '학생용', rec && rec.student, it.sS]].filter(k => k[2] || k[3]);
-    const st = kinds.map(k => '<div style="margin:3px 0;">' + k[1] + ' ' + mb(k[2] ? k[2].size : k[3].size) + ' &nbsp; ' + (k[2] ? '<span style="color:#145A32;font-weight:700;">📱 이 기기 저장됨</span>' : '<span class="muted">이 기기 없음</span>') + ' &nbsp; ' + (k[3] ? '<span style="color:#145A32;font-weight:700;">☁ 서버 보관됨</span>' : '<span style="color:#B45309;font-weight:700;">☁ 서버 보관 안 됨</span>') + '</div>').join('');
-    row.innerHTML = '<div><b>' + esc(it.name) + '</b> <span class="muted">' + ds + (rec && rec.cover ? ' · 표지 정보 저장됨' : '') + '</span></div>' + st;
-    const bar = document.createElement('div'); bar.style.cssText = 'margin-top:6px;';
-    if (rec) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary'; b.style.marginRight = '6px'; b.textContent = '🎨 표지 수정'; b.onclick = () => openEditor(rec); bar.appendChild(b); }
-    kinds.forEach(k => {
-      if (k[2] && !k[3]) {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.style.marginRight = '6px'; b.textContent = '☁ ' + k[1] + ' 서버에 보관';
-        b.onclick = async () => {
-          if (k[2].size > 150e6) { alert(k[1] + ' 파일이 150MB를 넘어서 서버에 보관할 수 없어요.'); return; }
-          b.disabled = true;
-          try { await serverUpload({ id: it.id, name: it.name }, k[0], k[2], (i, n) => { b.textContent = '☁ 올리는 중... ' + i + '/' + n; }); alert(k[1] + ' 서버 보관 완료'); } catch (e) { alert('서버 보관을 못 했어요: ' + e.message); }
-          renderList(true);
-        };
-        bar.appendChild(b);
-      }
-      if (k[2] && k[3]) {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.style.marginRight = '6px'; b.textContent = '☁ ' + k[1] + ' 서버 파일을 이 기기 파일로 교체';
-        b.onclick = async () => {
-          if (k[2].size > 150e6) { alert(k[1] + ' 파일이 150MB를 넘어서 서버에 보관할 수 없어요.'); return; }
-          if (!confirm('서버에 보관된 ' + k[1] + ' 파일을 지금 이 기기의 파일로 바꿔요. (기존 서버 파일은 지워져요)')) return;
-          b.disabled = true;
-          try { await serverUpload({ id: it.id, name: it.name }, k[0], k[2], (i, n) => { b.textContent = '☁ 교체 중... ' + i + '/' + n; }); alert(k[1] + ' 서버 파일을 교체했어요'); } catch (e) { alert('교체하지 못했어요: ' + e.message); }
-          renderList(true);
-        };
-        bar.appendChild(b);
-      }
-      if (k[3]) {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.style.cssText = 'margin-right:6px; color:#C1392B;'; b.textContent = '🗑 ' + k[1] + ' 서버 파일 삭제';
-        b.onclick = async () => {
-          const other = k[0] === 'teacher' ? ['student', '학생용', it.sS, rec && rec.student] : ['teacher', '강사용', it.sT, rec && rec.teacher];
-          if (other[2] && !other[3]) { alert('서버에 있는 ' + other[1] + ' 파일이 이 기기에는 없어요. 서버 파일 삭제 중 함께 지워질 위험을 막기 위해, 먼저 ' + other[1] + '을 「이 기기로 내려받아 저장」해 두세요.'); return; }
-          if (!confirm('서버에 보관된 ' + k[1] + ' 파일을 삭제할까요? (이 기기에 저장된 파일은 그대로예요)')) return;
-          b.disabled = true;
-          try {
-            await srvDelete(it.id, k[0]);
-            if (other[2] && other[3]) { await srvList(); const still = SERVER.find(m => m.id === it.id); if (!still || !(other[0] === 'teacher' ? still.teacher : still.student)) { b.textContent = '다른 쪽을 다시 올리는 중...'; await serverUpload({ id: it.id, name: it.name }, other[0], other[3], () => {}); } }
-            alert(k[1] + ' 서버 파일을 삭제했어요');
-          } catch (e) { alert('삭제하지 못했어요: ' + e.message); }
-          renderList(true);
-        };
-        bar.appendChild(b);
-      }
-      if (!k[2] && k[3]) {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.style.marginRight = '6px'; b.textContent = '📱 ' + k[1] + ' 이 기기로 내려받아 저장';
-        b.onclick = async () => {
-          b.disabled = true;
-          try { const blob = await serverDownload(k[3].fileId, (i, n) => { b.textContent = '받는 중... ' + i + '/' + n; }); const cur = (await mergeDbAll()).find(x => x.id === it.id) || { id: it.id, name: it.name, date: it.date }; cur[k[0]] = blob; await mergeDbPut(cur); blobDl(blob, it.name + ' (QR ' + (k[0] === 'teacher' ? '강사용 전체' : '학생용') + ').pdf'); } catch (e) { alert('내려받지 못했어요: ' + e.message); }
-          renderList();
-        };
-        bar.appendChild(b);
-      }
+    row.innerHTML = '<div style="margin-bottom:4px;"><b>' + esc(it.name) + '</b> <span class="muted">' + ds + (rec && rec.cover ? ' · 표지 정보 저장됨' : '') + '</span></div>';
+    const hasLocO = !!(rec && rec.original);
+    // 강사용 · 학생용 · 원본 — 세 줄이 같은 모양으로 나란히 (이 기기/서버 상태 + 그 파일의 버튼)
+    const files = [
+      { key: 'teacher', lab: '강사용', loc: rec && rec.teacher, srv: it.sT, srvId: it.id, srvKind: 'teacher', srvName: it.name, other: ['student', '학생용', it.sS, rec && rec.student], dl: it.name + ' (QR 강사용 전체).pdf' },
+      { key: 'student', lab: '학생용', loc: rec && rec.student, srv: it.sS, srvId: it.id, srvKind: 'student', srvName: it.name, other: ['teacher', '강사용', it.sT, rec && rec.teacher], dl: it.name + ' (QR 학생용).pdf' },
+      { key: 'original', lab: '원본', loc: rec && rec.original, srv: it.sO, srvId: it.id + '_orig', srvKind: 'teacher', srvName: it.name + ' [원본]', other: null, dl: it.name + ' (원본).pdf' }
+    ].filter(f => f.loc || f.srv || f.key === 'original');
+    files.forEach(f => {
+      const line = document.createElement('div'); line.style.cssText = 'padding:7px 0; border-top:1px dashed #e3e6ee;';
+      const size = f.loc ? f.loc.size : (f.srv ? f.srv.size : 0);
+      line.innerHTML = '<div style="margin:2px 0;"><b style="display:inline-block;min-width:54px;">' + f.lab + '</b> ' + (size ? mb(size) : '<span class="muted">파일 없음</span>') + ' &nbsp; ' + (f.loc ? '<span style="color:#145A32;font-weight:700;">📱 이 기기 저장됨</span>' : '<span class="muted">📱 이 기기 없음</span>') + ' &nbsp; ' + (f.srv ? '<span style="color:#145A32;font-weight:700;">☁ 서버 보관됨</span>' : '<span style="color:#B45309;font-weight:700;">☁ 서버 보관 안 됨</span>') + '</div>';
+      const bar = document.createElement('div');
+      const add = (label, fn, danger) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.style.cssText = 'margin:3px 6px 3px 0;' + (danger ? 'color:#C1392B;' : ''); b.textContent = label; b.onclick = async () => { b.disabled = true; try { await fn(b); } catch (e) { alert(e.message || e); } renderList(true); }; bar.appendChild(b); };
+      const upload = (b, word) => serverUpload({ id: f.srvId, name: f.srvName }, f.srvKind, f.loc, (i, n) => { b.textContent = '☁ ' + word + ' ' + i + '/' + n; });
+      const tooBig = () => { if (f.loc.size > 150e6) throw new Error(f.lab + ' 파일이 150MB를 넘어서 서버에 보관할 수 없어요.'); };
+      if (f.loc) add('⬇ 내려받기', async () => { blobDl(f.loc, f.dl); });
+      if (!f.loc && f.srv) add('📱 이 기기로 내려받아 저장', async b => { const blob = await serverDownload(f.srv.fileId, (i, n) => { b.textContent = '받는 중... ' + i + '/' + n; }); const cur = (await mergeDbAll()).find(x => x.id === it.id) || { id: it.id, name: it.name, date: it.date }; cur[f.key] = blob; await mergeDbPut(cur); blobDl(blob, f.dl); });
+      if (!f.loc && f.key === 'original' && rec) add('📎 원본 교재 PDF 저장 (이 기기에)', async () => { const file = await pickPdf(); if (!file) return; const cur = (await mergeDbAll()).find(x => x.id === it.id) || rec; cur.original = file; await mergeDbPut(cur); });
+      if (f.loc && !f.srv) add('☁ 서버에 보관', async b => { tooBig(); await upload(b, '올리는 중...'); alert(f.lab + ' 서버 보관 완료'); });
+      if (f.loc && f.srv) add('☁ 서버 파일을 이 기기 파일로 교체', async b => { tooBig(); if (!confirm('서버에 보관된 ' + f.lab + ' 파일을 지금 이 기기의 파일로 바꿔요. (기존 서버 파일은 지워져요)')) return; await upload(b, '교체 중...'); alert(f.lab + ' 서버 파일을 교체했어요'); });
+      if (f.srv) add('🗑 서버 파일 삭제', async b => {
+        const o = f.other;
+        if (o && o[2] && !o[3]) { alert('서버에 있는 ' + o[1] + ' 파일이 이 기기에는 없어요. 서버 파일 삭제 중 함께 지워질 위험을 막기 위해, 먼저 ' + o[1] + '을 「이 기기로 내려받아 저장」해 두세요.'); return; }
+        if (!confirm('서버에 보관된 ' + f.lab + ' 파일을 삭제할까요? (이 기기에 저장된 파일은 그대로예요)')) return;
+        await srvDelete(f.srvId, f.srvKind);
+        if (o && o[2] && o[3]) { await srvList(); const still = SERVER.find(m => m.id === it.id); if (!still || !(o[0] === 'teacher' ? still.teacher : still.student)) { b.textContent = '다른 쪽을 다시 올리는 중...'; await serverUpload({ id: it.id, name: it.name }, o[0], o[3], () => {}); } }
+        alert(f.lab + ' 서버 파일을 삭제했어요');
+      }, true);
+      if (f.loc && f.key === 'original') add('🗑 이 기기 원본 삭제', async () => { if (!confirm('이 기기에 저장된 원본 교재 PDF를 삭제할까요? (서버 보관본은 그대로예요)')) return; const cur = (await mergeDbAll()).find(x => x.id === it.id); delete cur.original; await mergeDbPut(cur); }, true);
+      line.appendChild(bar); row.appendChild(line);
     });
-    // 원본 교재 PDF: 이 기기 / 서버에 따로 보관해 두면 표지를 고칠 때 파일을 다시 고르지 않아도 되고, 다른 기기에서도 받을 수 있다
-    const ob = document.createElement('div'); ob.style.cssText = 'margin-top:8px; padding-top:8px; border-top:1px dashed #d6dbe6;';
-    const hasLocO = !!(rec && rec.original), oSize = hasLocO ? rec.original.size : (it.sO ? it.sO.size : 0);
-    ob.innerHTML = '<div style="margin:3px 0;"><b>원본 교재 PDF</b> ' + (oSize ? mb(oSize) : '') + ' &nbsp; ' + (hasLocO ? '<span style="color:#145A32;font-weight:700;">📱 이 기기 저장됨</span>' : '<span class="muted">이 기기 없음</span>') + ' &nbsp; ' + (it.sO ? '<span style="color:#145A32;font-weight:700;">☁ 서버 보관됨</span>' : '<span style="color:#B45309;font-weight:700;">☁ 서버 보관 안 됨</span>') + '</div>';
-    const mkb = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.style.marginRight = '6px'; b.textContent = label; b.onclick = async () => { b.disabled = true; try { await fn(b); } catch (e) { alert(e.message || e); } renderList(true); }; ob.appendChild(b); };
-    const origName = it.name + ' (원본).pdf';
-    if (rec && !hasLocO) mkb('📎 원본 교재 PDF 저장 (이 기기에)', async () => { const f = await pickPdf(); if (!f) return; const cur = (await mergeDbAll()).find(x => x.id === it.id) || rec; cur.original = f; await mergeDbPut(cur); });
-    if (hasLocO) mkb('⬇ 원본 내려받기', async () => { blobDl(rec.original, origName); });
-    if (hasLocO && !it.sO) mkb('☁ 원본 서버에 보관', async b => { if (rec.original.size > 150e6) throw new Error('원본이 150MB를 넘어서 서버에 보관할 수 없어요.'); await serverUpload({ id: it.id + '_orig', name: it.name + ' [원본]' }, 'teacher', rec.original, (i, n) => { b.textContent = '☁ 올리는 중... ' + i + '/' + n; }); alert('원본 서버 보관 완료'); });
-    if (!hasLocO && it.sO) mkb('📱 원본 이 기기로 내려받아 저장', async b => { const blob = await serverDownload(it.sO.fileId, (i, n) => { b.textContent = '받는 중... ' + i + '/' + n; }); const cur = (await mergeDbAll()).find(x => x.id === it.id) || { id: it.id, name: it.name, date: it.date }; cur.original = blob; await mergeDbPut(cur); });
-    if (hasLocO && it.sO) mkb('☁ 서버 원본을 이 기기 파일로 교체', async b => { if (rec.original.size > 150e6) throw new Error('원본이 150MB를 넘어서 서버에 보관할 수 없어요.'); if (!confirm('서버의 원본 파일을 이 기기의 파일로 바꿔요. (기존 서버 파일은 지워져요)')) return; await serverUpload({ id: it.id + '_orig', name: it.name + ' [원본]' }, 'teacher', rec.original, (i, n) => { b.textContent = '☁ 교체 중... ' + i + '/' + n; }); alert('원본 서버 파일을 교체했어요'); });
-    if (it.sO) mkb('🗑 서버 원본 삭제', async () => { if (!confirm('서버에 보관된 원본 교재 PDF를 삭제할까요? (이 기기에 저장된 원본은 그대로예요)')) return; await srvDelete(it.id + '_orig', 'teacher'); alert('서버 원본을 삭제했어요'); });
-    if (hasLocO) mkb('🗑 이 기기 원본 삭제', async () => { if (!confirm('이 기기에 저장된 원본 교재 PDF를 삭제할까요? (서버 보관본은 그대로예요)')) return; const cur = (await mergeDbAll()).find(x => x.id === it.id); delete cur.original; await mergeDbPut(cur); });
-    if (!rec && it.sO) mkb('⬇ 원본 내려받기', async b => { blobDl(await serverDownload(it.sO.fileId, (i, n) => { b.textContent = '받는 중... ' + i + '/' + n; }), origName); });
-    row.appendChild(bar); row.appendChild(ob); box.appendChild(row);
+    if (rec) { const t = document.createElement('div'); t.style.cssText = 'padding-top:8px; border-top:1px dashed #e3e6ee;'; const b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary'; b.textContent = '🎨 표지 수정 (표지·목차 칸·로고·강사용/학생용 표시)'; b.onclick = () => openEditor(rec); t.appendChild(b); row.appendChild(t); }
+    box.appendChild(row);
   });
   const want = new URLSearchParams(location.search).get('id'); if (want && !REC) { const r = local.find(x => x.id === want); if (r) openEditor(r); }
 }
