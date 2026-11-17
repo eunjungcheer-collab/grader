@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611171710">
+<link rel="stylesheet" href="css/style.css?v=202611171845">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -90,14 +90,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611171710"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611171710"></script>
-<script src="js/vendor/pdf.min.js?v=202611171710"></script>
-<script src="js/config.js?v=202611171710"></script>
-<script src="js/api.js?v=202611171710"></script>
-<script src="js/common.js?v=202611171710"></script>
-<script src="js/bankcore.js?v=202611171710"></script>
-<script src="js/pdfui.js?v=202611171710"></script>
+<script src="js/vendor/qrcode.min.js?v=202611171845"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611171845"></script>
+<script src="js/vendor/pdf.min.js?v=202611171845"></script>
+<script src="js/config.js?v=202611171845"></script>
+<script src="js/api.js?v=202611171845"></script>
+<script src="js/common.js?v=202611171845"></script>
+<script src="js/bankcore.js?v=202611171845"></script>
+<script src="js/pdfui.js?v=202611171845"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -244,6 +244,7 @@ function coverCanvas(bookName, secs, W, H, design, colorKey) {
   const ml = 54; if (pal.grade) pill(pal.grade + ' · ' + typeLabel, ml, 74);
   const subj = (bookName.replace(/내신대비|교재|보충|심화|기출|개념|기본/g, ' ').replace(/\s+/g, ' ').trim() || '과학'), base = /과학/.test(subj) ? subj : subj + ' 과학';
   x.textBaseline = 'alphabetic'; x.fillStyle = pal.main; x.font = '900 72px ' + FONT; x.fillText(base, ml, 250);
+  window._coverTitle = { x: ml, right: ml + x.measureText(base).width, baseline: 250, size: 72, H: H };      // 학생용/강사용 표시를 제목 오른쪽에 달 때 쓴다
   if (typeChip) { x.font = '800 38px ' + FONT; const tw = x.measureText(typeLabel + ' 교재').width; x.fillStyle = pal.main; x.beginPath(); x.roundRect(ml - 14, 278, tw + 28, 50, 12); x.fill(); x.fillStyle = '#fff'; x.fillText(typeLabel + ' 교재', ml, 314); }
   else { x.fillStyle = '#17203A'; x.font = '800 40px ' + FONT; x.fillText(typeLabel + ' 교재', ml, 312); }
   x.fillStyle = pal.main; x.fillRect(ml, 338, 74, 5);
@@ -1021,8 +1022,20 @@ $('go-btn').addEventListener('click', async () => {
           cx2.fillText(lab, 220, 80);
           const pg0 = doc.getPage(0), sz = pg0.getSize(), w = Math.min(150, sz.width * 0.28), h = w * 150 / 440;
           const bimg = await doc.embedPng(cv.toDataURL('image/png'));
-          if (coverDone) pg0.drawImage(bimg, { x: (sz.width - w) / 2, y: sz.height * 0.155 - h / 2, width: w, height: h });   // 새로 만든 표지: 목차 칸 아래 빈자리
-          else { const w2 = Math.min(104, sz.width * 0.19), h2 = w2 * 150 / 440; pg0.drawImage(bimg, { x: 20, y: sz.height - 12 - h2, width: w2, height: h2 }); }   // 기존 표지: 내용을 가리지 않게 왼쪽 위 모서리에 작게
+          // 학생용/강사용 표시: 모든 교재에서 표지 제목(「중1」「중2 과학」…) 바로 오른쪽, 제목 글자 높이에 맞춰 단다. 제목 자리를 못 찾으면 왼쪽 위 모서리에 작게
+          let spot = null;
+          try {
+            if (coverDone && window._coverTitle) { const T = window._coverTitle; spot = { x: T.right + 16, cy: sz.height - T.baseline + T.size * 0.33 }; }
+            else if (!coverDone) {
+              const tp = await bookDoc.getPage(1), tc = await tp.getTextContent();
+              const its = tc.items.filter(it => (it.str || '').trim() && (it.height || 0) >= 30), hmax = Math.max.apply(null, its.map(it => it.height).concat([0]));      // 표지에서 가장 큰 글자 줄 = 제목(「중1」「중2 과학」)
+              const row = its.filter(it => it.height >= hmax * 0.9);
+              const cand = row.length ? { transform: [0, 0, 0, 0, Math.max.apply(null, row.map(it => it.transform[4] + it.width)) - 0, row[0].transform[5]], width: 0, height: row[0].height } : null;
+              if (cand) spot = { x: cand.transform[4] + cand.width + 16, cy: cand.transform[5] + cand.height * 0.33 };
+            }
+          } catch (e) { spot = null; }
+          if (spot && spot.x + w <= sz.width - 12) pg0.drawImage(bimg, { x: spot.x, y: spot.cy - h / 2, width: w, height: h });
+          else { const w2 = Math.min(104, sz.width * 0.19), h2 = w2 * 150 / 440; pg0.drawImage(bimg, { x: 20, y: sz.height - 12 - h2, width: w2, height: h2 }); }
         } catch (e) { console.warn('cover label', e); }
       }
       const font = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);

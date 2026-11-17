@@ -1436,7 +1436,9 @@
       const tm = t.match(/^(.*?)(\s*(?:\(강사용\)|해설|정답))?\s*$/); tail = tm && tm[2] ? ' ' + tm[2].trim() : ''; t = tm ? tm[1] : t;
       t = t.replace(/\[[^\]]*\]/g, b => { if (TAG_RE.test(b)) { tags.push(b.replace(/\[\s+/, '[').replace(/\s+\]/, ']')); return ' '; } return b; });   // 표시는 맨 뒤로
       const um0 = origTitle.match(/(\d{1,2}(?:-\d{1,2}){1,3})\s*[.．]\s*(.+?)(?=\s+[초중고]\s?\d|\s+과학(?![가-힣])|\s+Ai(?![A-Za-z])|\s*\[|\s*_|\s*\(|\s*$)/);
-      if (um0 && um0[2].trim().length >= 2) t = um0[1] + ' ' + um0[2].trim();                                              // "5-2-1.알짜힘과 힘의 평형 …" → "5-2-1 알짜힘과 힘의 평형"
+      if (um0 && um0[2].trim().length >= 2) t = um0[1] + ' ' + um0[2].trim();
+      // 단원 이름 뒤에 「(01)」이 붙은 제목은 위 줄이 거기서 끊겨 「최다빈출공략」 같은 종류 표시가 사라진다 → 제목 끝의 「○○공략」을 다시 붙인다
+      { const gm = origTitle.match(/([가-힣][가-힣 ]{0,8}?\s*공략)\s*(?:\(강사용\)|해설|정답)?\s*$/); if (gm) { const g = gm[1].replace(/\s+/g, ''); if (t.indexOf(g) < 0 && !tags.some(x => x.indexOf(g.replace(/공략$/, '')) >= 0)) t += ' ' + g; } }                                              // "5-2-1.알짜힘과 힘의 평형 …" → "5-2-1 알짜힘과 힘의 평형"
       t = t.replace(/[초중고]\s?[1-6]\s*-\s*(?=\d)/g, '').replace(/(^|[\s\[(·+,])[초중고]\s?[1-6](?![\d가-힣])\s*/g, '$1')   // 학년 글자는 일단 빼고 맨 앞에 한 번만 붙인다
         .replace(/\[\s*\]|\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
       if (!t) t = origTitle;
@@ -1895,11 +1897,15 @@
     const hdr = headerPngEx(title + ' (강사용)', Math.round(areaW - (opts.qrReserve || 0)), '※ 강사용: 정답(빨간 동그라미)과 해설이 각 문제 바로 아래에 있습니다. 학생에게 나눠주지 마세요.', opts.keepTitle), headH = hdr.h;
     const marginTop = 74 + 12 + (headH - 48), maxH = H - marginTop - marginBottom;
     const headImg = await doc.embedPng(b64ToBytes(hdr.b64));
+    // 첫 쪽엔 오른쪽 위에 QR이 있으니 제목 상자를 QR 자리만큼 줄여서(그림 그대로, 늘리지 않고) 그리고, 다음 쪽부터는 전체 폭 제목 상자를 쓴다
+    const hdrW = (opts.qrReserve || 0) ? headerPngEx(title + ' (강사용)', Math.round(areaW), '※ 강사용: 정답(빨간 동그라미)과 해설이 각 문제 바로 아래에 있습니다. 학생에게 나눠주지 마세요.', opts.keepTitle) : hdr;
+    const headImgW = hdrW === hdr ? headImg : await doc.embedPng(b64ToBytes(hdrW.b64));
     const RED = rgb(0.85, 0.1, 0.1);
     let page, ys, col;
     function newPage() {
       page = doc.addPage([W, H]);
-      page.drawImage(headImg, { x: marginX, y: H - 28 - headH, width: areaW, height: headH });
+      if (doc.getPageCount() === 1) page.drawImage(headImg, { x: marginX, y: H - 28 - headH, width: areaW - (opts.qrReserve || 0), height: headH });
+      else page.drawImage(headImgW, { x: marginX, y: H - 28 - hdrW.h, width: areaW, height: hdrW.h });
       page.drawLine({ start: { x: marginX + colW + colGap / 2, y: H - marginTop + 4 }, end: { x: marginX + colW + colGap / 2, y: marginBottom - 4 }, thickness: 0.7, color: rgb(0.25, 0.25, 0.25) });
       ys = [H - marginTop, H - marginTop]; col = 0;
     }
@@ -3369,10 +3375,15 @@
     const labelsOf = pd => {
       const labs = [];
       pd.items.forEach(l => {
-        let m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[정답\]/);
+        // 글자 층이 깨진 교재(눈엔 정상인데 「정답」이 「㚄Ⅴ」 같은 글자로 읽힘)도 번호표로 본다: 「1) [깨진 두 글자]」 또는 「2)」 옆에 깨진 조각 + 「[」가 같은 줄에 있는 모양
+        let m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[(?:정답|[^\]\[\x00-\x7f]{1,3})\]/);
         if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w }); return; }
+        m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[\s*$/);      // 「1) [」「(깨진 정답)」「]」로 쪼개진 모양
+        if (m && pd.items.some(q => /^\s*\]/.test(String(q.str)) && Math.abs(q.top - l.top) < 5 && q.x > l.x && q.x - l.x < 60)) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w + 21 }); return; }
         m = String(l.str).match(/^\s*(\d{1,3})\)\s*$/);
-        const tg = m && pd.items.find(q => String(q.str).trim() === '정답' && Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14);
+        const sameRow = q => Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14;
+        const tg = m && (pd.items.find(q => String(q.str).trim() === '정답' && sameRow(q)) ||
+          (pd.items.some(q => /^\s*\[\s*$/.test(String(q.str)) && Math.abs(q.top - l.top) < 5 && q.x > l.x && q.x - l.x < 70) ? (pd.items.find(q => /^[^\x00-\x7f\s]{1,3}$/.test(String(q.str).trim()) && sameRow(q)) || pd.items.find(q => /^\s*\]\s*$/.test(String(q.str)) && Math.abs(q.top - l.top) < 5 && q.x > l.x && q.x - l.x < 70)) : null));
         if (tg) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: tg.x + tg.w - l.x }); return; }
         // 서술형 해설: 「142)」 번호만 있고 바로 밑 줄에 「모범 답안」이 오는 모양
         const md = m && pd.items.find(q => /모범\s*답안/.test(String(q.str)) && q.top > l.top && q.top - l.top < 26 && Math.abs(q.x - l.x) < 30);
@@ -3594,14 +3605,15 @@
         line = line.replace(/\s+/g, ' ').trim();
         // 목차 모양이 교재마다 달라도 읽도록 범용으로: 줄 끝에 「문제 a~b  정답 c~d」 쪽 범위 두 개가 있으면 소단원 줄, 그 앞은 (구분 이름 +) 소단원 이름
         const RNG = '(\\d+)\\s*[~∼～\\-–—]\\s*(\\d+)';
-        const tail = line.match(new RegExp('^(.*?\\S)\\s*[\\s·|:]\\s*(?:문제\\s*)?' + RNG + '\\s*쪽?\\s*[\\s·|:,/]*\\s*(?:정답(?:\\s*[·및과]?\\s*해설)?\\s*)?' + RNG + '\\s*쪽?$'));
+        const RNG2 = '(\\d+)(?:\\s*[~∼～\\-–—]\\s*(\\d+))?';      // 정답 쪽이 한 쪽뿐이면 「306」처럼 적는다
+        const tail = line.match(new RegExp('^(.*?\\S)\\s*[\\s·|:]\\s*(?:문제\\s*)?' + RNG + '\\s*쪽?\\s*[\\s·|:,/]*\\s*(?:정답(?:\\s*[·및과]?\\s*해설)?\\s*)?' + RNG2 + '\\s*쪽?$'));
         let m = null;
         if (tail && !/^\s*(?:제\s*)?(?:\d+\s*(?:단원|장|강)|[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\s*[.．:)\s])/.test(line)) {
           let head = tail[1].replace(/^\[\s*([^\]]*?)\s*\]\s*/, '$1 ').replace(/\s+/g, ' ').trim(), tag = '', name = head;
           const hm = head.match(/^([^\d]{2,16}?)\s+(\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*[.．)]?\s*\S.*)$/);
           if (hm) { tag = hm[1].replace(/\s*공략\s*$/, '').replace(/\s+/g, ''); name = hm[2].trim(); }
           else { const hm2 = head.match(/^(\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*[.．)]?\s*\S.*)$/); if (hm2) name = hm2[1]; }
-          if (name.length >= 2) m = [line, tag, name, tail[2], tail[3], tail[4], tail[5]];
+          if (name.length >= 2 && (tail[5] != null || parseInt(tail[4], 10) > parseInt(tail[3], 10))) m = [line, tag, name, tail[2], tail[3], tail[4], tail[5]];      // 정답 쪽이 한 쪽뿐인 줄(「306」)은 문제 쪽 뒤에 있어야 한다
         }
         if (!m) {
           const um = line.match(/^(?:제\s*)?(\d+)\s*(?:단원|장|강)\s*[.．:)]?\s*(.+)$/) || line.match(/^(?:제\s*)?([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ])\s*[.．:)]?\s*(.+)$/) || (!/[~∼～]/.test(line) ? line.match(/^(\d{1,2})\s*[.．]\s*([^\d~].{1,40})$/) : null);
@@ -3630,7 +3642,7 @@
           if (am) { const k = am.index + am[0].search(/\s(\d+)\s*~\s*(\d+)\s*$/) + 1; if (xs[k] != null) ansX = xs[k] - 3; }
           const hMax = Math.max.apply(null, its.map(i => i.h || 9)), lastIt = its[its.length - 1];
           const link = { page: p, x0: its[0].x - 2, x1: lastIt.x + (lastIt.w || 0) + 2, y0: r.y - 3, y1: r.y + hMax + 2, ansX: ansX };
-          secs.push({ unit: unit.no, unitName: unit.name, tag: m[1], name: m[2].trim(), qa: parseInt(m[3], 10), qb: parseInt(m[4], 10), aa: parseInt(m[5], 10), ab: parseInt(m[6], 10), tocLink: link });
+          secs.push({ unit: unit.no, unitName: unit.name, tag: m[1], name: m[2].trim(), qa: parseInt(m[3], 10), qb: parseInt(m[4], 10), aa: parseInt(m[5], 10), ab: parseInt(m[6] != null ? m[6] : m[5], 10), tocLink: link });
         }
       });
     }
