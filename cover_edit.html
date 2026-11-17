@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180120">
+<link rel="stylesheet" href="css/style.css?v=202611180135">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -55,13 +55,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180120"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180120"></script>
-<script src="js/config.js?v=202611180120"></script>
-<script src="js/api.js?v=202611180120"></script>
-<script src="js/common.js?v=202611180120"></script>
-<script src="js/bankcore.js?v=202611180120"></script>
-<script src="js/coverdesign.js?v=202611180120"></script>
+<script src="js/vendor/pdf.min.js?v=202611180135"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180135"></script>
+<script src="js/config.js?v=202611180135"></script>
+<script src="js/api.js?v=202611180135"></script>
+<script src="js/common.js?v=202611180135"></script>
+<script src="js/bankcore.js?v=202611180135"></script>
+<script src="js/coverdesign.js?v=202611180135"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -107,17 +107,22 @@ async function serverDownload(fileId, onProg) {
 
 let SERVER = [];
 const mb = n => (n / 1048576).toFixed(0) + 'MB';
-async function renderList() {
+let SERVER_LOADED = false, SERVER_ERR = '';
+async function renderList(fresh) {
   let local = []; try { local = await mergeDbAll(); } catch (e) {}
-  let srvErr = '';
-  try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) SERVER = r.merges || []; else srvErr = (r && r.error) || '서버 목록을 불러오지 못했어요'; } catch (e) { srvErr = '서버 목록을 불러오지 못했어요(' + e.message + ')'; }
+  // 서버 목록(구글 서버라 몇 초 걸려요)은 기다리지 않고, 이 기기 목록을 먼저 보여 준 뒤 도착하면 다시 그린다
+  if (fresh || !SERVER_LOADED) {
+    const loadSrv = async () => { try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) { SERVER = r.merges || []; SERVER_ERR = ''; } else SERVER_ERR = (r && r.error) || '서버 목록을 불러오지 못했어요'; } catch (e) { SERVER_ERR = '서버 목록을 불러오지 못했어요(' + e.message + ')'; } SERVER_LOADED = true; };
+    if (!SERVER_LOADED) { loadSrv().then(() => renderList()); } else await loadSrv();
+  }
+  let srvErr = SERVER_ERR;
   const by = {};
   SERVER.forEach(m => { by[m.id] = { id: m.id, name: m.name, date: m.date, sT: m.teacher, sS: m.student }; });
   local.forEach(m => { const r = by[m.id] = by[m.id] || { id: m.id, name: m.name, date: m.date }; r.rec = m; });
   const all = Object.keys(by).map(k => by[k]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const box = $('list');
   if (!all.length) { box.className = 'muted'; box.innerHTML = '저장된 교재가 없어요. 「교재 한 권 QR 합본 만들기」에서 교재를 만들면 여기에 나타나요.' + (srvErr ? '<br>' + esc(srvErr) : ''); return; }
-  box.className = ''; box.innerHTML = srvErr ? '<div class="muted" style="color:#B45309;">⚠ ' + esc(srvErr) + ' — 이 기기에 저장된 교재만 보여요.</div>' : '';
+  box.className = ''; box.innerHTML = !SERVER_LOADED ? '<div class="muted">☁ 서버 보관 상태를 확인하는 중...</div>' : srvErr ? '<div class="muted" style="color:#B45309;">⚠ ' + esc(srvErr) + ' — 이 기기에 저장된 교재만 보여요.</div>' : '';
   all.forEach(it => {
     const rec = it.rec, d = new Date(it.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
     const row = document.createElement('div'); row.className = 'ce-row'; row.style.display = 'block';
@@ -133,7 +138,7 @@ async function renderList() {
           if (k[2].size > 150e6) { alert(k[1] + ' 파일이 150MB를 넘어서 서버에 보관할 수 없어요.'); return; }
           b.disabled = true;
           try { await serverUpload({ id: it.id, name: it.name }, k[0], k[2], (i, n) => { b.textContent = '☁ 올리는 중... ' + i + '/' + n; }); alert(k[1] + ' 서버 보관 완료'); } catch (e) { alert('서버 보관을 못 했어요: ' + e.message); }
-          renderList();
+          renderList(true);
         };
         bar.appendChild(b);
       }
