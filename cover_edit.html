@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180745">
+<link rel="stylesheet" href="css/style.css?v=202611180800">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180745"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180745"></script>
-<script src="js/config.js?v=202611180745"></script>
-<script src="js/api.js?v=202611180745"></script>
-<script src="js/common.js?v=202611180745"></script>
-<script src="js/bankcore.js?v=202611180745"></script>
-<script src="js/coverdesign.js?v=202611180745"></script>
+<script src="js/vendor/pdf.min.js?v=202611180800"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180800"></script>
+<script src="js/config.js?v=202611180800"></script>
+<script src="js/api.js?v=202611180800"></script>
+<script src="js/common.js?v=202611180800"></script>
+<script src="js/bankcore.js?v=202611180800"></script>
+<script src="js/coverdesign.js?v=202611180800"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -87,7 +87,7 @@ let REC = null, COV = null /* { canvas: 표지 그림, pw, ph } */, ST = { x: 20
 const u8ToB64 = u8 => { let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(bin); };
 async function serverUploadRaw(rec, kind, blob, onProg, legacy, gen) {
   // 큰 파일 방식(드라이브 이어 올리기)은 조각이 256KB의 배수여야 해서 768KB로 자른다. 서버가 아직 옛 버전이면 예전 방식(조각 모아 합치기)으로 다시 시도한다.
-  const CH = legacy ? 900000 : 786432, total = Math.max(1, Math.ceil(blob.size / CH));
+  const CH = legacy ? 900000 : 4194304, total = Math.max(1, Math.ceil(blob.size / CH));
   for (let i = 0; i < total; i++) {
     if (gen !== undefined && gen !== UPGEN) throw new Error('올리기를 중단했어요. (서버에 남은 조각은 🧹 정리로 지울 수 있어요)');
     let r = null;
