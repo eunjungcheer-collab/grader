@@ -1482,13 +1482,6 @@ function afterSubmit_(ss, found, p, score, objective, score100) {
       break;
     }
   }
-  let repText = '';
-  try {
-    const wk = weakOfStudent_(ss, name); repText = weakText_(wk, title);
-    if (!repText && wk.weakUnits.length) repText = weakText_({ repeatQ: [], weakUnits: wk.weakUnits }, '');
-    if (repText) pushToStudent_(name, '🔁 반복해서 틀리는 문제가 있어요', repText + ' — 앱에서 「틀린 것 다시 풀기」를 해 보세요');
-  } catch (e) {}
-  try { if (objective > 0) pushToStudent_(name, '✅ 채점 결과: ' + score100 + '점', title + ' · ' + score + '/' + objective + '개 정답' + (objective - score > 0 ? ' · 틀린 문제 ' + (objective - score) + '개는 「틀린 것 다시 풀기」에서 복습해요' : ' · 모두 맞았어요! 🎉')); } catch (e) {}
   let lowText = '';
   try {      // 낮은 점수: 70점 미만이거나, 이 학생의 바로 전 시험보다 20점 이상 떨어졌을 때
     if (objective > 0) {
@@ -1501,7 +1494,15 @@ function afterSubmit_(ss, found, p, score, objective, score100) {
       lowText = bits.join(' · ');
     }
   } catch (e) {}
-  try { pushToTeacher_((lowText ? '📉 ' : '📝 ') + name + ' 학생 제출 · ' + score100 + '점' + (lowText ? ' (' + lowText + ')' : ''), title + '\n' + score + '/' + objective + (late ? ' · 기한 지남' : '') + (repText ? '\n⚠️ 반복 오답: ' + repText : ''), '?sub=' + encodeURIComponent(String(p.id)) + '&stu=' + encodeURIComponent(name)); } catch (e) {}
+  // 선생님 알림을 가장 먼저(느린 분석보다 앞서) 보낸다 — 반복 오답 문구는 뒤쪽 이메일에 들어간다.
+  try { pushToTeacher_((lowText ? '📉 ' : '📝 ') + name + ' 학생 제출 · ' + score100 + '점' + (lowText ? ' (' + lowText + ')' : ''), title + '\n' + score + '/' + objective + (late ? ' · 기한 지남' : ''), '?sub=' + encodeURIComponent(String(p.id)) + '&stu=' + encodeURIComponent(name)); } catch (e) {}
+  let repText = '';
+  try {
+    const wk = weakOfStudent_(ss, name); repText = weakText_(wk, title);
+    if (!repText && wk.weakUnits.length) repText = weakText_({ repeatQ: [], weakUnits: wk.weakUnits }, '');
+    if (repText) pushToStudent_(name, '🔁 반복해서 틀리는 문제가 있어요', repText + ' — 앱에서 「틀린 것 다시 풀기」를 해 보세요');
+  } catch (e) {}
+  try { if (objective > 0) pushToStudent_(name, '✅ 채점 결과: ' + score100 + '점', title + ' · ' + score + '/' + objective + '개 정답' + (objective - score > 0 ? ' · 틀린 문제 ' + (objective - score) + '개는 「틀린 것 다시 풀기」에서 복습해요' : ' · 모두 맞았어요! 🎉')); } catch (e) {}
   if (alertSettings_().notifySubmit) {
     sendAlertMail_('[자동채점] ' + name + ' 학생이 시험을 제출했어요' + (late ? ' (기한 지남)' : '') + (repText ? ' ⚠️ 반복 오답' : ''),
       name + ' 학생이 「' + title + '」을 제출했어요.\n점수: ' + score + '/' + objective + ' (' + score100 + '점)' + (reserved ? (late ? '\n※ 예약한 기한이 지난 뒤에 제출했어요.' : '\n※ 예약한 기한 안에 제출했어요.') : '') + '\n제출 시각: ' + fmtKst_(now.toISOString()) + (lowText ? '\n📉 낮은 점수: ' + lowText : '') + (repText ? '\n⚠️ 반복 오답: ' + repText : ''));
