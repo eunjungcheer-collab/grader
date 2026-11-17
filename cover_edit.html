@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180550">
+<link rel="stylesheet" href="css/style.css?v=202611180555">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180550"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180550"></script>
-<script src="js/config.js?v=202611180550"></script>
-<script src="js/api.js?v=202611180550"></script>
-<script src="js/common.js?v=202611180550"></script>
-<script src="js/bankcore.js?v=202611180550"></script>
-<script src="js/coverdesign.js?v=202611180550"></script>
+<script src="js/vendor/pdf.min.js?v=202611180555"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180555"></script>
+<script src="js/config.js?v=202611180555"></script>
+<script src="js/api.js?v=202611180555"></script>
+<script src="js/common.js?v=202611180555"></script>
+<script src="js/bankcore.js?v=202611180555"></script>
+<script src="js/coverdesign.js?v=202611180555"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -348,7 +348,8 @@ async function applyEdit() {
     try {
       let tot = 0, all = 0;
       try { const c = await callApi('mergeCleanup', { password: getTeacherPassword(), all: true, count: true }); if (c && c.ok && c.total != null) all = c.total; } catch (e) {}
-      const show = () => { if (all > 0) { const pct = Math.min(100, Math.round(tot / all * 100)); fill.style.width = pct + '%'; m.textContent = '정리하는 중... ' + tot + ' / ' + all + '개 (' + pct + '%) · 남은 것 ' + Math.max(0, all - tot) + '개'; } else { fill.style.width = '30%'; m.textContent = '정리하는 중... ' + tot + '개 삭제'; } };
+      const T0 = Date.now(); const etaTxt = () => { if (tot < 5 || all <= tot) return ''; const sec = Math.round((all - tot) / (tot / ((Date.now() - T0) / 1000))); return ' · 예상 남은 시간 ' + (sec >= 60 ? Math.floor(sec / 60) + '분 ' + (sec % 60) + '초' : sec + '초'); };
+      const show = () => { if (all > 0) { const pct = Math.min(100, Math.round(tot / all * 100)); fill.style.width = pct + '%'; m.textContent = '정리하는 중... ' + tot + ' / ' + all + '개 (' + pct + '%) · 남은 것 ' + Math.max(0, all - tot) + '개' + etaTxt(); } else { fill.style.width = '30%'; m.textContent = '정리하는 중... ' + tot + '개 삭제'; } };
       show();
       let rate = 0;      // 초당 삭제 개수(직전 요청 기준) — 응답을 기다리는 동안 바를 이 속도로 미리 채워 부드럽게 보이게 한다
       for (let k = 0; k < 400; k++) {
