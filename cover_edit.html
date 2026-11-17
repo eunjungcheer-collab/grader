@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>저장된 합본 · 표지 수정 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611180050">
+<style>
+  .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
+  .ce-row:first-child { border-top:0; }
+  .ce-grid { display:grid; gap:16px; }
+  @media (min-width: 860px) { .ce-grid { grid-template-columns: minmax(300px, 440px) 1fr; align-items:start; } }
+  .ce-stage { position:relative; display:inline-block; border:1px solid #d6dbe6; border-radius:10px; box-shadow:0 2px 10px rgba(20,30,60,.12); overflow:hidden; touch-action:none; background:#fff; }
+  .ce-stage canvas { display:block; width:100%; height:auto; }
+  .ce-badge { position:absolute; cursor:move; user-select:none; -webkit-user-drag:none; outline:2px dashed rgba(0,0,0,.25); outline-offset:2px; }
+  .ce-opt { display:block; margin:6px 0; font-weight:600; }
+  .ce-sub { margin:4px 0 8px 22px; }
+</style>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>🎨 저장된 합본 · 표지 수정</h1>
+  <p class="muted">이 기기에 저장된 QR 합본의 <b>표지만</b> 바꿔서 다시 저장해요. 표지 도안·색을 고르고, <b>강사용/학생용 표시</b>를 화면에서 끌어 옮기며 결과를 미리 보세요. 시험지·QR·문제은행은 건드리지 않아요.</p>
+  <div id="list-card" class="card"><div id="list" class="muted">불러오는 중...</div></div>
+
+  <div id="editor" class="card" style="display:none;">
+    <h3 id="ed-title" style="margin:0 0 8px;"></h3>
+    <div class="ce-grid">
+      <div>
+        <div class="ce-stage" id="stage"><canvas id="pv"></canvas></div>
+        <div class="muted" style="margin-top:6px;">미리보기 (실제 합본 표지와 같은 모습이에요). 표시를 끌어서 옮기세요.</div>
+      </div>
+      <div>
+        <b>1. 표지 그림</b>
+        <label class="ce-opt"><input type="radio" name="src" value="stored" id="src-stored"> 저장된 표지 그대로 <span class="muted" id="stored-note" style="font-weight:400;"></span></label>
+        <label class="ce-opt"><input type="radio" name="src" value="gen" id="src-gen"> 새 표지 만들기 <span class="muted" id="gen-note" style="font-weight:400;"></span></label>
+        <div class="ce-sub" id="gen-box" style="display:none;">책 이름 <input type="text" id="ce-name" style="max-width:280px;"><br>도안 <select id="ce-design"><option value="auto">자동 (학년·종류에 맞춰)</option><option value="mol">분자 · 플라스크</option><option value="atom">원자</option><option value="dna">DNA</option><option value="hex">육각 격자</option><option value="tubes">시험관</option><option value="circuit">전기 회로</option><option value="planet">행성</option><option value="ripple">물결 · 별자리</option><option value="star">별자리</option></select><br>색 <select id="ce-color"><option value="">자동 (학년색)</option><option value="pink">분홍</option><option value="blue">파랑</option><option value="purple">보라</option><option value="teal">청록</option><option value="orange">주황</option><option value="green">초록</option><option value="navy">남색</option><option value="red">빨강</option></select></div>
+        <label class="ce-opt"><input type="radio" name="src" value="file" id="src-file"> 원본 교재 PDF에서 표지 가져오기</label>
+        <div class="ce-sub" id="file-box" style="display:none;"><input type="file" id="ce-file" accept="application/pdf"><div class="muted">교재 PDF의 첫 쪽(표지)만 읽어요.</div></div>
+
+        <div style="margin-top:12px;"><b>2. 강사용 / 학생용 표시</b></div>
+        <div style="margin:6px 0;">미리보기 <label style="display:inline-block;margin-right:10px;"><input type="radio" name="pv-kind" value="t" checked> 강사용(빨강)</label> <label style="display:inline-block;"><input type="radio" name="pv-kind" value="s"> 학생용(파랑)</label></div>
+        <div style="margin:6px 0;">크기 <input type="range" id="ce-sz" min="50" max="320" value="150" style="width:200px;"> <span id="ce-szv"></span>pt</div>
+        <div style="margin:6px 0;">위치: 표시를 <b>끌어서</b> 옮기세요. <button type="button" class="btn" id="ce-auto">제목 오른쪽으로 자동 배치</button> <button type="button" class="btn" id="ce-tl">왼쪽 위로</button></div>
+
+        <div id="ce-msg" class="muted" style="margin:10px 0;"></div>
+        <button type="button" class="btn primary" id="ce-ok">✔ 이 표지로 바꿔서 다시 저장하고 내려받기</button>
+        <button type="button" class="btn" id="ce-close">닫기</button>
+      </div>
+    </div>
+  </div>
+</template>
+<script src="js/vendor/pdf.min.js?v=202611180050"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180050"></script>
+<script src="js/config.js?v=202611180050"></script>
+<script src="js/api.js?v=202611180050"></script>
+<script src="js/common.js?v=202611180050"></script>
+<script src="js/bankcore.js?v=202611180050"></script>
+<script src="js/coverdesign.js?v=202611180050"></script>
+<script>
+requireLogin();
+renderHeader({ wide: true });
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const mergeDb = () => new Promise((res, rej) => { const rq = indexedDB.open('qr_merges_db', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('m', { keyPath: 'id' }); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+const mergeDbOp = async (mode, fn) => { const db = await mergeDb(); return new Promise((res, rej) => { const tx = db.transaction('m', mode), st = tx.objectStore('m'), rq = fn(st); tx.oncomplete = () => res(rq && rq.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); }); };
+const mergeDbPut = rec => mergeDbOp('readwrite', st => st.put(rec));
+const mergeDbAll = () => mergeDbOp('readonly', st => st.getAll());
+const blobDl = (blob, name) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+
+function badgeCanvas(lab, col) {
+  const cv = document.createElement('canvas'); cv.width = 440; cv.height = 150; const c = cv.getContext('2d');
+  c.fillStyle = '#ffffff'; c.strokeStyle = col; c.lineWidth = 10;
+  c.beginPath(); const x = 8, y = 8, w = 424, h = 134, r = 36; c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = col; c.font = 'bold 84px "Noto Sans CJK KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(lab, 220, 80);
+  return cv;
+}
+const BD = { t: null, s: null };
+let REC = null, COV = null /* { canvas: 표지 그림, pw, ph } */, ST = { x: 20, top: 20, wd: 150 }, KIND = 't', AUTO = null /* 제목 오른쪽 자리 */;
+
+async function renderList() {
+  let all = []; try { all = await mergeDbAll(); } catch (e) {}
+  all.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const box = $('list');
+  if (!all.length) { box.innerHTML = '이 기기에 저장된 합본이 없어요. 「교재 한 권 QR 합본 만들기」에서 합본을 만들면 여기에 나타나요. (다른 기기에서 만든 합본은 그 기기에서 열어야 해요)'; return; }
+  box.className = ''; box.innerHTML = '';
+  all.forEach(rec => {
+    const d = new Date(rec.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    const row = document.createElement('div'); row.className = 'ce-row';
+    row.innerHTML = '<span><b>' + esc(rec.name) + '</b> <span class="muted">' + ds + ' · ' + (rec.teacher ? '강사용 ' + (rec.teacher.size / 1048576).toFixed(0) + 'MB' : '') + (rec.student ? ' · 학생용 ' + (rec.student.size / 1048576).toFixed(0) + 'MB' : '') + '</span></span>';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary'; b.textContent = '🎨 표지 수정'; b.onclick = () => openEditor(rec);
+    row.appendChild(b); box.appendChild(row);
+  });
+  const want = new URLSearchParams(location.search).get('id'); if (want) { const r = all.find(x => x.id === want); if (r) openEditor(r); }
+}
+
+function paint() {
+  const cv = $('pv'); if (!COV) return;
+  cv.width = COV.canvas.width; cv.height = COV.canvas.height; cv.getContext('2d').drawImage(COV.canvas, 0, 0);
+  const stage = $('stage'), k = stage.clientWidth / COV.pw;
+  let el = $('badge'); if (!el) { el = document.createElement('img'); el.id = 'badge'; el.className = 'ce-badge'; stage.appendChild(el); bindDrag(el); }
+  el.src = BD[KIND].toDataURL('image/png');
+  el.style.width = ST.wd * k + 'px'; el.style.left = ST.x * k + 'px'; el.style.top = ST.top * k + 'px';
+  $('ce-szv').textContent = Math.round(ST.wd); $('ce-sz').value = ST.wd;
+}
+function bindDrag(el) {
+  let drag = null;
+  el.onpointerdown = e => { drag = { sx: e.clientX, sy: e.clientY, x: ST.x, top: ST.top }; el.setPointerCapture(e.pointerId); e.preventDefault(); };
+  el.onpointermove = e => { if (!drag) return; const k = $('stage').clientWidth / COV.pw, hh = ST.wd * 150 / 440; ST.x = Math.max(0, Math.min(COV.pw - ST.wd, drag.x + (e.clientX - drag.sx) / k)); ST.top = Math.max(0, Math.min(COV.ph - hh, drag.top + (e.clientY - drag.sy) / k)); paint(); };
+  el.onpointerup = el.onpointercancel = () => { drag = null; };
+}
+function setAuto(a) { AUTO = a; }
+function applyAuto() {
+  if (AUTO && AUTO.x + 72 <= COV.pw - 12) { ST.wd = Math.min(ST.wd, COV.pw - 12 - AUTO.x); const hh = ST.wd * 150 / 440; ST.x = AUTO.x; ST.top = AUTO.cy - hh / 2; }      // 자리가 모자라면 표시를 줄여서 제목 옆에 맞춘다
+  else { ST.x = 20; ST.top = 14; }
+  paint();
+}
+
+// 원본 PDF의 첫 쪽 → 표지 그림 + 제목 오른쪽 자리
+async function coverFromPdfDoc(doc) {
+  const pg = await doc.getPage(1), vp1 = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: 3 });
+  const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+  const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); await pg.render({ canvasContext: cx, viewport: vp }).promise;
+  let auto = null;
+  try {
+    const tc = await pg.getTextContent(), its = tc.items.filter(it => (it.str || '').trim() && (it.height || 0) >= 30), hmax = Math.max.apply(null, its.map(it => it.height).concat([0])), row = its.filter(it => it.height >= hmax * 0.9);
+    if (row.length) auto = { x: Math.max.apply(null, row.map(it => it.transform[4] + it.width)) + 16, cy: vp1.height - (row[0].transform[5] + row[0].height * 0.33) };
+    else { const ps = await BankCore.coverTitleSpotByPixels(doc); if (ps) auto = { x: ps.right + 16, cy: vp1.height - ps.cy }; }
+  } catch (e) {}
+  return { canvas: cv, pw: vp1.width, ph: vp1.height, auto: auto };
+}
+function loadImg(src) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('표지 그림을 읽지 못했어요')); im.src = src; }); }
+
+async function setSource(kind) {
+  const m = $('ce-msg'); m.textContent = '';
+  $('gen-box').style.display = kind === 'gen' ? '' : 'none'; $('file-box').style.display = kind === 'file' ? '' : 'none';
+  try {
+    if (kind === 'stored') {
+      const c = REC.cover; const im = await loadImg(c.png), cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height; cv.getContext('2d').drawImage(im, 0, 0);
+      COV = { canvas: cv, pw: c.pw, ph: c.ph };
+      setAuto(c.auto || null); ST.wd = (c.spot && c.spot.wd) || 150;
+      if (c.spot) { ST.x = c.spot.x; ST.top = c.spot.top; paint(); } else applyAuto();
+    } else if (kind === 'gen') {
+      const c = REC.cover, W = c.pw, H = c.ph;
+      const cv = coverCanvas($('ce-name').value.trim() || REC.name, c.secs, W, H, $('ce-design').value, $('ce-color').value), T = window._coverTitle;
+      COV = { canvas: cv, pw: W, ph: H }; ST.wd = Math.min(150, W * 0.28);
+      setAuto(T ? { x: T.right + 16, cy: T.baseline - T.size * 0.33 } : null); applyAuto();
+    } else if (kind === 'file') { if (COV && COV._file) { paint(); return; } m.textContent = '위 칸에서 원본 교재 PDF를 골라 주세요.'; }
+  } catch (e) { m.innerHTML = '<span style="color:#C1392B;">' + esc(e.message || e) + '</span>'; }
+}
+
+async function openEditor(rec) {
+  REC = rec; $('editor').style.display = ''; $('ed-title').textContent = '🎨 ' + rec.name; COV = null;
+  BD.t = badgeCanvas('강사용', '#c8102e'); BD.s = badgeCanvas('학생용', '#1f4e9c');
+  const has = !!(rec.cover && rec.cover.png), canGen = !!(rec.cover && rec.cover.secs && rec.cover.secs.length);
+  $('src-stored').disabled = !has; $('stored-note').textContent = has ? '' : '(이 합본은 표지를 따로 저장해 두지 않았어요 — 아래에서 원본 교재 PDF를 골라 주세요)';
+  $('src-gen').disabled = !canGen; $('gen-note').textContent = canGen ? '' : '(이 합본은 단원 정보가 없어 새로 만들 수 없어요)';
+  $('ce-name').value = rec.name.replace(/\s*\(?(문제편|정답편|최신판|초판).*$/, '').trim() || rec.name;
+  const first = has ? 'stored' : 'file'; document.querySelector('input[name=src][value=' + first + ']').checked = true;
+  await setSource(first); $('editor').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function applyEdit() {
+  const ok = $('ce-ok'), m = $('ce-msg'); if (!COV || !REC) return; ok.disabled = true;
+  try {
+    const png = COV.canvas.toDataURL('image/png'), out = {};
+    for (const kind of ['teacher', 'student']) {
+      if (!REC[kind]) continue;
+      m.textContent = (kind === 'teacher' ? '강사용' : '학생용') + ' 합본의 표지를 바꾸는 중... (큰 파일은 1분 정도 걸려요)';
+      const d = await PDFLib.PDFDocument.load(await REC[kind].arrayBuffer(), { ignoreEncryption: true });
+      const sz0 = d.getPage(0).getSize(), np = d.insertPage(0, [sz0.width, sz0.height]);
+      np.drawImage(await d.embedPng(png), { x: 0, y: 0, width: sz0.width, height: sz0.height }); d.removePage(1);
+      const hh = ST.wd * 150 / 440, sx = sz0.width / COV.pw, sy = sz0.height / COV.ph;
+      np.drawImage(await d.embedPng((kind === 'teacher' ? BD.t : BD.s).toDataURL('image/png')), { x: ST.x * sx, y: sz0.height - (ST.top + hh) * sy, width: ST.wd * sx, height: hh * sy });
+      out[kind] = new Blob([await d.save()], { type: 'application/pdf' });
+    }
+    const cover = Object.assign({}, REC.cover || {}, { png: png, pw: COV.pw, ph: COV.ph, spot: { x: ST.x, top: ST.top, wd: ST.wd }, auto: AUTO });
+    const nrec = Object.assign({}, REC, { teacher: out.teacher || REC.teacher, student: out.student || REC.student, cover: cover });
+    await mergeDbPut(nrec); REC = nrec;
+    if (out.teacher) blobDl(out.teacher, REC.name + ' (QR 강사용 전체).pdf');
+    if (out.student) setTimeout(() => blobDl(out.student, REC.name + ' (QR 학생용).pdf'), 1200);
+    m.innerHTML = '✅ 표지를 바꿔서 이 기기의 저장본도 새로 저장했고, 내려받았어요. <span class="muted">(서버에 보관해 둔 파일은 그대로예요. 표지를 고친 뒤 「교재 QR 합본 만들기」의 저장 목록에서 다시 서버에 보관해 주세요)</span>';
+    renderList();
+  } catch (e) { m.innerHTML = '<span style="color:#C1392B;">표지를 바꾸지 못했어요: ' + esc(e.message || e) + '</span>'; }
+  ok.disabled = false;
+}
+
+(() => {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('js/vendor/pdf.worker.min.js', location.href).href;
+  renderList();
+  document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => setSource(r.value)));
+  document.querySelectorAll('input[name=pv-kind]').forEach(r => r.addEventListener('change', () => { KIND = r.value; paint(); }));
+  ['ce-name', 'ce-design', 'ce-color'].forEach(id => { const e = $(id); const f = () => { if (document.querySelector('input[name=src]:checked').value === 'gen') { const x0 = ST.x, t0 = ST.top; setSource('gen'); } }; e.addEventListener('input', f); e.addEventListener('change', f); });
+  $('ce-sz').addEventListener('input', e => { ST.wd = +e.target.value; paint(); });
+  $('ce-auto').onclick = applyAuto; $('ce-tl').onclick = () => { ST.x = 20; ST.top = 14; paint(); };
+  $('ce-close').onclick = () => { $('editor').style.display = 'none'; };
+  $('ce-ok').onclick = applyEdit;
+  $('ce-file').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return; const m = $('ce-msg'); m.textContent = '표지를 읽는 중...';
+    try {
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise, c = await coverFromPdfDoc(doc);
+      COV = { canvas: c.canvas, pw: c.pw, ph: c.ph, _file: true }; ST.wd = Math.min(150, c.pw * 0.28); setAuto(c.auto); applyAuto(); m.textContent = '';
+    } catch (er) { m.innerHTML = '<span style="color:#C1392B;">표지를 읽지 못했어요: ' + esc(er.message || er) + '</span>'; }
+  });
+  window.addEventListener('resize', paint);
+})();
+</script>
+</body>
+</html>
