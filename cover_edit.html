@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180915">
+<link rel="stylesheet" href="css/style.css?v=202611180930">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -50,19 +50,19 @@
         <div style="margin:6px 0;">위치: 표지의 <b>누르는 곳</b>으로 바로 옮겨지고, 표시를 끌어서 미세하게 맞출 수도 있어요. <button type="button" class="btn" id="ce-auto">제목 오른쪽으로 자동 배치</button> <button type="button" class="btn" id="ce-tl">왼쪽 위로</button></div>
 
         <div id="ce-msg" class="muted" style="margin:10px 0;"></div>
-        <button type="button" class="btn primary" id="ce-ok">✔ 이 표지로 바꿔서 다시 저장하고 내려받기</button>
+        <button type="button" class="btn primary" id="ce-ok">✔ 이 표지로 바꿔서 다시 저장하고 내려받기</button> <button type="button" class="btn" id="ce-dlonly">⬇ 저장은 하지 않고 내려받기만</button>
         <button type="button" class="btn" id="ce-close">닫기</button>
       </div>
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180915"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180915"></script>
-<script src="js/config.js?v=202611180915"></script>
-<script src="js/api.js?v=202611180915"></script>
-<script src="js/common.js?v=202611180915"></script>
-<script src="js/bankcore.js?v=202611180915"></script>
-<script src="js/coverdesign.js?v=202611180915"></script>
+<script src="js/vendor/pdf.min.js?v=202611180930"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180930"></script>
+<script src="js/config.js?v=202611180930"></script>
+<script src="js/api.js?v=202611180930"></script>
+<script src="js/common.js?v=202611180930"></script>
+<script src="js/bankcore.js?v=202611180930"></script>
+<script src="js/coverdesign.js?v=202611180930"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -273,8 +273,32 @@ async function coverFromPdfDoc(doc) {
 function loadImg(src) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('표지 그림을 읽지 못했어요')); im.src = src; }); }
 
 function copts() { const c = +$('ce-ccols').value; return { fs: +$('ce-cfs').value / 100, row: +$('ce-crow').value / 100, cols: c || 0, dy: +$('ce-cdy').value, logo: { main: $('ce-lmain').value, sub: $('ce-lsub').value, chip: $('ce-lchip').value } }; }
+let SECS_EDITED = false;
+// 목차에 넣을 단원 이름의 기본값: 저장된 단원 정보가 있으면 그것, 없으면 교재 PDF의 목차 쪽에서 「1단원 …」 줄을 읽는다
+async function prefillSecs(rec) {
+  const box = $('ce-secs'); let names = [];
+  try {
+    const sc = rec.cover && rec.cover.secs;
+    if (sc && sc.length) { const info = unitInfoFor(sc), seen = {}; sc.forEach(x => { const u = info(x), k = u.no + '|' + u.name; if (!seen[k] && u.name) { seen[k] = 1; names.push({ no: +u.no || names.length + 1, name: u.name }); } }); names.sort((a, b) => a.no - b.no); names = names.map(x => x.name); }
+    else if (rec.teacher) {
+      box.placeholder = '단원 이름을 교재에서 읽는 중...';
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await rec.teacher.arrayBuffer()) }).promise, got = {};
+      for (let p = 2; p <= Math.min(5, doc.numPages); p++) {
+        const tc = await (await doc.getPage(p)).getTextContent(); let hit = 0;
+        const rows = {}; tc.items.forEach(it => { if (!it.str) return; const y = Math.round(it.transform[5] / 3); (rows[y] = rows[y] || []).push(it); });
+        Object.keys(rows).forEach(y => { const line = rows[y].sort((p, q) => p.transform[4] - q.transform[4]).map(it => it.str).join(''); const m = line.match(/^\s*(\d{1,2})\s*단원\s*(.+?)\s*(?:문제\s*\d.*)?$/); if (m && !/쪽|공략|\d~\d/.test(m[2]) && !got[m[1]]) { got[m[1]] = m[2].trim(); hit++; } });
+        if (!hit && Object.keys(got).length) break;
+      }
+      try { await doc.destroy(); } catch (e) {}
+      names = Object.keys(got).map(Number).sort((a, b) => a - b).map(k => got[k]);
+    }
+  } catch (e) {}
+  box.placeholder = '과학의 기초\n물질과 규칙성\n시스템과 상호작용';
+  if (!SECS_EDITED && !box.value && names.length) { box.value = names.join('\n'); const cur = document.querySelector('input[name=src]:checked'); if (cur && cur.value === 'gen') regenGen(); }
+}
 function manualSecs() {      // 단원 정보가 없는 교재: 직접 적은 줄을 단원으로 쓴다
   if (!REC || !REC.cover || !$('ce-secs') || $('secs-box').style.display === 'none') return;
+  if (REC.cover.secs && REC.cover.secs.length && !SECS_EDITED) return;
   const ls = $('ce-secs').value.split(/\n/).map(x => x.replace(/^\s*\d+\s*[.．)]\s*/, '').trim()).filter(Boolean);
   REC.cover.secs = ls.map((nm, i) => ({ name: (i + 1) + '. ' + nm, tag: '', unit: i + 1, unitName: nm, order: i + 1 }));
 }
@@ -323,7 +347,7 @@ async function openEditor(rec) {
   BD.t = badgeCanvas('강사용', '#c8102e'); BD.s = badgeCanvas('학생용', '#1f4e9c');
   const has = !!(rec.cover && rec.cover.png), canGen = !!(rec.cover && rec.cover.secs && rec.cover.secs.length);
   $('src-stored').disabled = !has; $('stored-note').textContent = has ? '' : '(이 교재는 표지를 따로 저장해 두지 않았어요 — 아래에서 원본 교재 PDF를 골라 주세요)';
-  const hasPg = !!(rec.cover && rec.cover.pw && rec.cover.ph); $('src-gen').disabled = !(canGen || hasPg); $('secs-box').style.display = (!canGen && hasPg) ? '' : 'none'; $('ce-secs').value = ''; $('gen-note').textContent = canGen ? '' : hasPg ? '(단원 정보가 없어서, 목차에 넣을 단원 이름을 직접 적어 주세요)' : '(이 교재는 표지 정보가 없어 새로 만들 수 없어요)';
+  const hasPg = !!(rec.cover && rec.cover.pw && rec.cover.ph); $('src-gen').disabled = !(canGen || hasPg); $('secs-box').style.display = (canGen || hasPg) ? '' : 'none'; $('ce-secs').value = ''; SECS_EDITED = false; prefillSecs(rec); $('gen-note').textContent = canGen ? '' : hasPg ? '(단원 정보가 없어서 교재 목차에서 읽어 왔어요. 틀린 곳은 직접 고쳐 주세요)' : '(이 교재는 표지 정보가 없어 새로 만들 수 없어요)';
   try { const o = rec.cover && rec.cover.opts; if (o) { $('ce-cfs').value = Math.round((o.fs || 1) * 100); $('ce-crow').value = Math.round((o.row || 1) * 100); $('ce-ccols').value = String(o.cols || 0); $('ce-cdy').value = o.dy || 0; if (o.logo) { $('ce-lmain').value = o.logo.main || ''; $('ce-lsub').value = o.logo.sub || ''; $('ce-lchip').value = o.logo.chip || ''; } $('ce-cfsv').textContent = $('ce-cfs').value; $('ce-crowv').textContent = $('ce-crow').value; $('ce-cdyv').textContent = $('ce-cdy').value; } } catch (e) {}
   $('ce-name').value = rec.name.replace(/\s*\(?(문제편|정답편|최신판|초판).*$/, '').trim() || rec.name;
   const first = has ? 'stored' : 'file'; document.querySelector('input[name=src][value=' + first + ']').checked = true;
@@ -331,8 +355,8 @@ async function openEditor(rec) {
   if (first === 'file' && rec.original) { $('ce-msg').textContent = '저장해 둔 원본 교재에서 불러오는 중...'; await loadOriginal(rec.original); }
 }
 
-async function applyEdit() {
-  const ok = $('ce-ok'), m = $('ce-msg'); if (!COV || !REC) return; ok.disabled = true;
+async function applyEdit(saveIt) {
+  saveIt = saveIt !== false; const ok = $('ce-ok'), ok2 = $('ce-dlonly'), m = $('ce-msg'); if (!COV || !REC) return; ok.disabled = true; ok2.disabled = true;
   try {
     const png = COV.canvas.toDataURL('image/png'), out = {};
     for (const kind of ['teacher', 'student']) {
@@ -347,9 +371,10 @@ async function applyEdit() {
     }
     const cover = Object.assign({}, REC.cover || {}, { png: png, pw: COV.pw, ph: COV.ph, spot: { x: ST.x, top: ST.top, wd: ST.wd }, auto: AUTO });
     const nrec = Object.assign({}, REC, { teacher: out.teacher || REC.teacher, student: out.student || REC.student, cover: cover });
-    await mergeDbPut(nrec); REC = nrec;
+    if (saveIt) { await mergeDbPut(nrec); REC = nrec; }
     if (out.teacher) blobDl(out.teacher, REC.name + ' (QR 강사용 전체).pdf');
     if (out.student) setTimeout(() => blobDl(out.student, REC.name + ' (QR 학생용).pdf'), 1200);
+    if (!saveIt) { m.innerHTML = '✅ 표지를 바꾼 파일을 내려받았어요. <span class="muted">(저장은 하지 않아서, 이 기기와 서버의 교재는 그대로예요.)</span>'; ok.disabled = false; ok2.disabled = false; return; }
     m.innerHTML = '✅ 표지를 바꿔서 이 기기의 저장본도 새로 저장했고, 내려받았어요. <span class="muted">(서버에 보관해 둔 파일은 그대로예요. 표지를 고친 뒤 「교재 QR 합본 만들기」의 저장 목록에서 다시 서버에 보관해 주세요)</span>';
     try {
       const sv = SERVER.find(x => x.id === REC.id), kinds = [['teacher', '강사용'], ['student', '학생용']].filter(k => sv && sv[k[0]] && out[k[0]] && out[k[0]].size <= 150e6);
@@ -360,7 +385,7 @@ async function applyEdit() {
     } catch (e) { m.innerHTML += ' <span style="color:#C1392B;">서버 교체는 못 했어요: ' + esc(e.message || e) + '</span>'; }
     renderList(true);
   } catch (e) { m.innerHTML = '<span style="color:#C1392B;">표지를 바꾸지 못했어요: ' + esc(e.message || e) + '</span>'; }
-  ok.disabled = false;
+  ok.disabled = false; ok2.disabled = false;
 }
 
 (() => {
@@ -369,7 +394,7 @@ async function applyEdit() {
   document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => setSource(r.value)));
   document.querySelectorAll('input[name=pv-kind]').forEach(r => r.addEventListener('change', () => { KIND = r.value; paint(); }));
   ['ce-name', 'ce-design', 'ce-color'].forEach(id => { const e = $(id); const f = () => { if (document.querySelector('input[name=src]:checked').value === 'gen') { const x0 = ST.x, t0 = ST.top; setSource('gen'); } }; e.addEventListener('input', f); e.addEventListener('change', f); });
-  ['ce-cfs', 'ce-crow', 'ce-cdy'].forEach(id => $(id).addEventListener('input', regenGen)); $('ce-secs').addEventListener('input', regenGen); $('ce-ccols').addEventListener('change', regenGen);
+  ['ce-cfs', 'ce-crow', 'ce-cdy'].forEach(id => $(id).addEventListener('input', regenGen)); $('ce-secs').addEventListener('input', () => { SECS_EDITED = true; regenGen(); }); $('ce-ccols').addEventListener('change', regenGen);
   const LOGO0 = { main: '이은정 과학', sub: 'MIDDLE SCHOOL SCIENCE · EXAM PREP', chip: '' };
   const setLogo = l => { $('ce-lmain').value = l.main; $('ce-lsub').value = l.sub; $('ce-lchip').value = l.chip || ''; };
   setLogo(Object.assign({}, LOGO0, savedCoverLogo() || {}));
@@ -402,7 +427,7 @@ async function applyEdit() {
     } catch (e) { bar.style.display = 'none'; m.innerHTML = '<span style="color:#C1392B;">정리하지 못했어요: ' + esc(e.message || e) + '</span>'; }
     b.disabled = false;
   };
-  $('ce-ok').onclick = applyEdit;
+  $('ce-ok').onclick = () => applyEdit(true); $('ce-dlonly').onclick = () => applyEdit(false);
   $('ce-file').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadOriginal(f); });
   window.addEventListener('resize', paint);
 })();
