@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180100">
+<link rel="stylesheet" href="css/style.css?v=202611180120">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -55,13 +55,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180100"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180100"></script>
-<script src="js/config.js?v=202611180100"></script>
-<script src="js/api.js?v=202611180100"></script>
-<script src="js/common.js?v=202611180100"></script>
-<script src="js/bankcore.js?v=202611180100"></script>
-<script src="js/coverdesign.js?v=202611180100"></script>
+<script src="js/vendor/pdf.min.js?v=202611180120"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180120"></script>
+<script src="js/config.js?v=202611180120"></script>
+<script src="js/api.js?v=202611180120"></script>
+<script src="js/common.js?v=202611180120"></script>
+<script src="js/bankcore.js?v=202611180120"></script>
+<script src="js/coverdesign.js?v=202611180120"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -83,20 +83,73 @@ function badgeCanvas(lab, col) {
 const BD = { t: null, s: null };
 let REC = null, COV = null /* { canvas: 표지 그림, pw, ph } */, ST = { x: 20, top: 20, wd: 150 }, KIND = 't', AUTO = null /* 제목 오른쪽 자리 */;
 
+const u8ToB64 = u8 => { let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(bin); };
+async function serverUpload(rec, kind, blob, onProg) {
+  const CH = 900000, total = Math.max(1, Math.ceil(blob.size / CH));      // 조각마다 파일에서 잘라 읽는다(큰 파일을 통째로 메모리에 올리지 않음)
+  for (let i = 0; i < total; i++) {
+    let r = null;
+    for (let at = 0; at < 4; at++) { try { r = await callApi('mergeUpload', { password: getTeacherPassword(), id: rec.id, kind: kind, name: rec.name, idx: i, total: total, data: u8ToB64(new Uint8Array(await blob.slice(i * CH, (i + 1) * CH).arrayBuffer())) }); break; } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); } }
+    if (!r || !r.ok) throw new Error((r && r.error) || '서버 보관 실패');
+    if (onProg) onProg(i + 1, total);
+  }
+}
+async function serverDownload(fileId, onProg) {
+  const parts = []; let total = 1;
+  for (let i = 0; i < total; i++) {
+    let r = null;
+    for (let at = 0; at < 4; at++) { try { r = await callApi('mergeGetPart', { password: getTeacherPassword(), fileId: fileId, part: i, partSize: 1500000 }); break; } catch (e) { if (at === 3) throw e; await new Promise(res => setTimeout(res, 1500 * (at + 1))); } }
+    if (!r || !r.ok) throw new Error((r && r.error) || '내려받기 실패');
+    total = r.total; const bin = atob(r.base64), u = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k); parts.push(u);
+    if (onProg) onProg(i + 1, total);
+  }
+  return new Blob(parts, { type: 'application/pdf' });
+}
+
+let SERVER = [];
+const mb = n => (n / 1048576).toFixed(0) + 'MB';
 async function renderList() {
-  let all = []; try { all = await mergeDbAll(); } catch (e) {}
-  all.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  let local = []; try { local = await mergeDbAll(); } catch (e) {}
+  let srvErr = '';
+  try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) SERVER = r.merges || []; else srvErr = (r && r.error) || '서버 목록을 불러오지 못했어요'; } catch (e) { srvErr = '서버 목록을 불러오지 못했어요(' + e.message + ')'; }
+  const by = {};
+  SERVER.forEach(m => { by[m.id] = { id: m.id, name: m.name, date: m.date, sT: m.teacher, sS: m.student }; });
+  local.forEach(m => { const r = by[m.id] = by[m.id] || { id: m.id, name: m.name, date: m.date }; r.rec = m; });
+  const all = Object.keys(by).map(k => by[k]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const box = $('list');
-  if (!all.length) { box.innerHTML = '이 기기에 저장된 교재가 없어요. 「교재 한 권 QR 합본 만들기」에서 교재를 만들면 여기에 나타나요. (다른 기기에서 만든 교재는 그 기기에서 열어야 해요)'; return; }
-  box.className = ''; box.innerHTML = '';
-  all.forEach(rec => {
-    const d = new Date(rec.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-    const row = document.createElement('div'); row.className = 'ce-row';
-    row.innerHTML = '<span><b>' + esc(rec.name) + '</b> <span class="muted">' + ds + ' · ' + (rec.teacher ? '강사용 ' + (rec.teacher.size / 1048576).toFixed(0) + 'MB' : '') + (rec.student ? ' · 학생용 ' + (rec.student.size / 1048576).toFixed(0) + 'MB' : '') + '</span></span>';
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary'; b.textContent = '🎨 표지 수정'; b.onclick = () => openEditor(rec);
-    row.appendChild(b); box.appendChild(row);
+  if (!all.length) { box.className = 'muted'; box.innerHTML = '저장된 교재가 없어요. 「교재 한 권 QR 합본 만들기」에서 교재를 만들면 여기에 나타나요.' + (srvErr ? '<br>' + esc(srvErr) : ''); return; }
+  box.className = ''; box.innerHTML = srvErr ? '<div class="muted" style="color:#B45309;">⚠ ' + esc(srvErr) + ' — 이 기기에 저장된 교재만 보여요.</div>' : '';
+  all.forEach(it => {
+    const rec = it.rec, d = new Date(it.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    const row = document.createElement('div'); row.className = 'ce-row'; row.style.display = 'block';
+    const kinds = [['teacher', '강사용', rec && rec.teacher, it.sT], ['student', '학생용', rec && rec.student, it.sS]].filter(k => k[2] || k[3]);
+    const st = kinds.map(k => '<div style="margin:3px 0;">' + k[1] + ' ' + mb(k[2] ? k[2].size : k[3].size) + ' &nbsp; ' + (k[2] ? '<span style="color:#145A32;font-weight:700;">📱 이 기기 저장됨</span>' : '<span class="muted">이 기기 없음</span>') + ' &nbsp; ' + (k[3] ? '<span style="color:#145A32;font-weight:700;">☁ 서버 보관됨</span>' : '<span style="color:#B45309;font-weight:700;">☁ 서버 보관 안 됨</span>') + '</div>').join('');
+    row.innerHTML = '<div><b>' + esc(it.name) + '</b> <span class="muted">' + ds + (rec && rec.cover ? ' · 표지 정보 저장됨' : '') + '</span></div>' + st;
+    const bar = document.createElement('div'); bar.style.cssText = 'margin-top:6px;';
+    if (rec) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary'; b.style.marginRight = '6px'; b.textContent = '🎨 표지 수정'; b.onclick = () => openEditor(rec); bar.appendChild(b); }
+    kinds.forEach(k => {
+      if (k[2] && !k[3]) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.style.marginRight = '6px'; b.textContent = '☁ ' + k[1] + ' 서버에 보관';
+        b.onclick = async () => {
+          if (k[2].size > 150e6) { alert(k[1] + ' 파일이 150MB를 넘어서 서버에 보관할 수 없어요.'); return; }
+          b.disabled = true;
+          try { await serverUpload({ id: it.id, name: it.name }, k[0], k[2], (i, n) => { b.textContent = '☁ 올리는 중... ' + i + '/' + n; }); alert(k[1] + ' 서버 보관 완료'); } catch (e) { alert('서버 보관을 못 했어요: ' + e.message); }
+          renderList();
+        };
+        bar.appendChild(b);
+      }
+      if (!k[2] && k[3]) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.style.marginRight = '6px'; b.textContent = '📱 ' + k[1] + ' 이 기기로 내려받아 저장';
+        b.onclick = async () => {
+          b.disabled = true;
+          try { const blob = await serverDownload(k[3].fileId, (i, n) => { b.textContent = '받는 중... ' + i + '/' + n; }); const cur = (await mergeDbAll()).find(x => x.id === it.id) || { id: it.id, name: it.name, date: it.date }; cur[k[0]] = blob; await mergeDbPut(cur); blobDl(blob, it.name + ' (QR ' + (k[0] === 'teacher' ? '강사용 전체' : '학생용') + ').pdf'); } catch (e) { alert('내려받지 못했어요: ' + e.message); }
+          renderList();
+        };
+        bar.appendChild(b);
+      }
+    });
+    row.appendChild(bar); box.appendChild(row);
   });
-  const want = new URLSearchParams(location.search).get('id'); if (want) { const r = all.find(x => x.id === want); if (r) openEditor(r); }
+  const want = new URLSearchParams(location.search).get('id'); if (want && !REC) { const r = local.find(x => x.id === want); if (r) openEditor(r); }
 }
 
 function paint() {
