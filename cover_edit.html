@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180205">
+<link rel="stylesheet" href="css/style.css?v=202611180220">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -55,13 +55,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180205"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180205"></script>
-<script src="js/config.js?v=202611180205"></script>
-<script src="js/api.js?v=202611180205"></script>
-<script src="js/common.js?v=202611180205"></script>
-<script src="js/bankcore.js?v=202611180205"></script>
-<script src="js/coverdesign.js?v=202611180205"></script>
+<script src="js/vendor/pdf.min.js?v=202611180220"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180220"></script>
+<script src="js/config.js?v=202611180220"></script>
+<script src="js/api.js?v=202611180220"></script>
+<script src="js/common.js?v=202611180220"></script>
+<script src="js/bankcore.js?v=202611180220"></script>
+<script src="js/coverdesign.js?v=202611180220"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -277,6 +277,15 @@ async function applyEdit() {
     try {
       const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise, c = await coverFromPdfDoc(doc);
       COV = { canvas: c.canvas, pw: c.pw, ph: c.ph, _file: true }; ST.wd = Math.min(150, c.pw * 0.28); setAuto(c.auto); applyAuto(); m.textContent = '';
+      // 원본 목차에서 단원 정보도 읽어 둔다 → 이미 만든 교재도 「새 표지 만들기」(목차 칸·로고 포함)를 쓸 수 있다
+      try {
+        m.textContent = '원본 목차에서 단원 정보를 읽는 중...';
+        const toc = await BankCore.parseBookToc(doc, 8), raw = (toc && toc.sections) || [];
+        const secs = raw.filter(x => raw.filter(o => o !== x && o.qa >= x.qa && o.qb <= x.qb && o.aa >= x.aa && o.ab <= x.ab).length < 2).map((x, i) => ({ name: x.name, tag: x.tag, unit: x.unit, unitName: x.unitName, order: i + 1, qa: x.qa, qb: x.qb, aa: x.aa, ab: x.ab }));
+        REC.cover = Object.assign({}, REC.cover || {}, { pw: c.pw, ph: c.ph, secs: secs.length ? secs : (REC.cover && REC.cover.secs) || [] });
+        const ok = REC.cover.secs.length > 0; $('src-gen').disabled = !ok; $('gen-note').textContent = ok ? '(원본 목차에서 단원 ' + REC.cover.secs.length + '개를 읽었어요)' : '(원본에서 목차를 찾지 못해 새로 만들 수 없어요)';
+        m.textContent = '';
+      } catch (e2) { m.textContent = ''; }
     } catch (er) { m.innerHTML = '<span style="color:#C1392B;">표지를 읽지 못했어요: ' + esc(er.message || er) + '</span>'; }
   });
   window.addEventListener('resize', paint);
