@@ -1440,7 +1440,7 @@
       // 단원 이름 바로 뒤의 「(01)」「(02)」 번호는 같은 이름의 소단원을 구별하니 제목에도 남긴다
       { const nm0 = um0 && um0[2].trim(), pn = nm0 && origTitle.indexOf(nm0) >= 0 && origTitle.slice(origTitle.indexOf(nm0) + nm0.length).match(/^\s*(\(\s*\d{1,2}\s*\))/); if (pn && t.indexOf(pn[1].replace(/\s/g, '')) < 0) t = t.replace(nm0, nm0 + pn[1].replace(/\s/g, '')); }
       // 단원 이름 뒤에 「(01)」이 붙은 제목은 위 줄이 거기서 끊겨 「최다빈출공략」 같은 종류 표시가 사라진다 → 제목 끝의 「○○공략」을 다시 붙인다
-      { const gm = origTitle.match(/([가-힣][가-힣 ]{0,8}?\s*공략)\s*(?:\(강사용\)|해설|정답)?\s*$/); if (gm) { const g = gm[1].replace(/\s+/g, ''); if (t.indexOf(g) < 0 && !tags.some(x => x.indexOf(g.replace(/공략$/, '')) >= 0)) t += ' ' + g; } }                                              // "5-2-1.알짜힘과 힘의 평형 …" → "5-2-1 알짜힘과 힘의 평형"
+      { const gm = origTitle.match(/(\S*공략)\s*(?:\(강사용\)|해설|정답)?\s*$/); if (gm) { const g = gm[1].replace(/\s+/g, ''); if (t.indexOf(g) < 0 && !tags.some(x => x.indexOf(g.replace(/공략$/, '')) >= 0)) t += ' ' + g; } }                                              // "5-2-1.알짜힘과 힘의 평형 …" → "5-2-1 알짜힘과 힘의 평형"
       t = t.replace(/[초중고]\s?[1-6]\s*-\s*(?=\d)/g, '').replace(/(^|[\s\[(·+,])[초중고]\s?[1-6](?![\d가-힣])\s*/g, '$1')   // 학년 글자는 일단 빼고 맨 앞에 한 번만 붙인다
         .replace(/\[\s*\]|\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
       if (!t) t = origTitle;
@@ -3412,7 +3412,7 @@
       if (ink) {
         // 번호표 줄(「3) [정답] ④」)은 그 줄에 번호표만 있다 → 글자 영역엔 먹물이 있고, 오른쪽 나머지엔 없어야 진짜 (겹친 가짜 글자 층은 해설 글줄 위에 놓여 오른쪽에 먹물이 있다)
         labs.forEach(l => { const cr = (!two || l.x < half) ? (two ? half - 2 : pd.W) : pd.W - 6; l.ink = ink([l.x - 1, l.top - 1, l.x + l.w + 1, l.bottom + 1]); l.tail = ink([l.x + l.w + 95, l.top, cr, l.bottom]); });
-        const real = labs.filter(l => l.ink > 60 && l.tail <= 8);
+        const real = labs.filter(l => l.ink > 30 && l.tail <= 8);
         const best = {}; real.forEach(l => { const k = l.n + '_' + (two ? (l.x < half ? 0 : 1) : 0); if (!best[k] || l.ink > best[k].ink) best[k] = l; });
         labs = real.filter(l => best[l.n + '_' + (two ? (l.x < half ? 0 : 1) : 0)] === l);
       }
