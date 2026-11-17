@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180610">
+<link rel="stylesheet" href="css/style.css?v=202611180625">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180610"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180610"></script>
-<script src="js/config.js?v=202611180610"></script>
-<script src="js/api.js?v=202611180610"></script>
-<script src="js/common.js?v=202611180610"></script>
-<script src="js/bankcore.js?v=202611180610"></script>
-<script src="js/coverdesign.js?v=202611180610"></script>
+<script src="js/vendor/pdf.min.js?v=202611180625"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180625"></script>
+<script src="js/config.js?v=202611180625"></script>
+<script src="js/api.js?v=202611180625"></script>
+<script src="js/common.js?v=202611180625"></script>
+<script src="js/bankcore.js?v=202611180625"></script>
+<script src="js/coverdesign.js?v=202611180625"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -105,25 +105,36 @@ async function serverUploadRaw(rec, kind, blob, onProg, legacy, gen) {
 }
 // 같은 파일을 동시에 두 번 올리면 서로 조각이 섞여 둘 다 깨진다 → 올리는 중이면 다시 시작하지 못하게 막는다
 const UPLOADING = new Set(); let UPQ = Promise.resolve(), UPGEN = 0;
+const UPJOBS = {}; let UPT0 = 0, UPB0 = 0;      // 올리기 진행(바이트 기준): 대기 중인 파일 포함 전체 진행률·예상 시간 계산용
+function upStats() {
+  let tot = 0, done = 0; Object.values(UPJOBS).forEach(j => { tot += j.size; done += j.size * j.frac; });
+  const el = (Date.now() - UPT0) / 1000, sent = done - UPB0; let eta = '';
+  if (sent > 1e6 && el > 5) { const sec = Math.round((tot - done) / (sent / el)); eta = ' · 약 ' + (sec >= 60 ? Math.floor(sec / 60) + '분 ' + (sec % 60) + '초' : sec + '초') + ' 남음(대략)'; }
+  return { pct: tot ? Math.min(99, Math.floor(done / tot * 100)) : 0, eta: eta };
+}
 function upBar() {
   let el = document.getElementById('up-bar');
   if (!UPLOADING.size) { if (el) el.remove(); return; }
   if (!el) {
     el = document.createElement('div'); el.id = 'up-bar';
-    el.style.cssText = 'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#1c2333;color:#fff;padding:10px 14px;border-radius:12px;z-index:99999;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center;max-width:94vw;';
-    el.innerHTML = '<span id="up-msg"></span><button type="button" id="up-stop" style="background:#C1392B;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer;">⛔ 모두 중단</button>';
+    el.style.cssText = 'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#1c2333;color:#fff;padding:10px 14px;border-radius:12px;z-index:99999;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.3);width:min(560px,94vw);box-sizing:border-box;';
+    el.innerHTML = '<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;"><span id="up-msg"></span><button type="button" id="up-stop" style="background:#C1392B;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer;white-space:nowrap;">⛔ 모두 중단</button></div><div style="height:12px;background:#3a4258;border-radius:8px;overflow:hidden;margin-top:8px;"><div id="up-fill" style="height:100%;width:0;background:#4cc38a;transition:width .5s linear;"></div></div>';
     document.body.appendChild(el);
-    el.querySelector('#up-stop').onclick = () => { UPGEN++; document.getElementById('up-msg').textContent = '중단하는 중... (지금 보내던 조각까지만 보내고 멈춰요)'; };
+    el.querySelector('#up-stop').onclick = () => { UPGEN++; upBar._stopping = true; document.getElementById('up-msg').textContent = '중단하는 중... (지금 보내던 조각까지만 보내고 멈춰요)'; };
   }
-  document.getElementById('up-msg').textContent = '서버에 올리는 중 · 대기 포함 ' + UPLOADING.size + '개 (한 번에 하나씩 차례로 올려요)';
+  const st = upStats(); document.getElementById('up-fill').style.width = st.pct + '%';
+  if (!upBar._stopping) document.getElementById('up-msg').textContent = '서버에 올리는 중 ' + st.pct + '%' + st.eta + ' · 대기 포함 ' + UPLOADING.size + '개';
 }
+setInterval(() => { if (UPLOADING.size) upBar(); }, 1000);
 // 여러 개를 눌러도 한 번에 하나씩 차례로 올린다(동시에 올리면 서로 느려지고 끊김). 같은 파일 중복 시작은 막고, 모두 중단도 가능.
 async function serverUpload(rec, kind, blob, onProg) {
   const k = rec.id + '|' + kind; if (UPLOADING.has(k)) throw new Error('같은 파일을 이미 올리는 중이에요. 끝날 때까지 기다려 주세요.');
-  UPLOADING.add(k); upBar(); const gen = UPGEN;
-  const run = UPQ.then(() => serverUploadRaw(rec, kind, blob, onProg, false, gen));
+  if (!UPLOADING.size) { for (const x in UPJOBS) delete UPJOBS[x]; UPT0 = Date.now(); UPB0 = 0; }
+  UPJOBS[k] = { size: blob.size, frac: 0 }; UPLOADING.add(k); upBar(); const gen = UPGEN;
+  const prog = (i, n) => { UPJOBS[k].frac = n ? i / n : 1; upBar(); if (onProg) onProg(i, n); };
+  const run = UPQ.then(() => serverUploadRaw(rec, kind, blob, prog, false, gen));
   UPQ = run.catch(() => {});
-  try { return await run; } finally { UPLOADING.delete(k); upBar(); }
+  try { return await run; } finally { UPLOADING.delete(k); if (!UPLOADING.size) { for (const x in UPJOBS) delete UPJOBS[x]; upBar._stopping = false; } upBar(); }
 }
 async function serverDownload(fileId, onProg) {
   const parts = []; let total = 1;
