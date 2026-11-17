@@ -1319,6 +1319,7 @@ function actionMergeList_(p) {
 // 올리다 만 임시 조각 파일 정리 (2시간 넘게 남아 있는 것만 지운다)
 function actionMergeCleanup_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  if (p.count) { let c = 0; const ci = mergeFolder_().searchFiles("title contains '__chunk__'"), t1 = Date.now(); while (ci.hasNext() && Date.now() - t1 < 25000) { ci.next(); c++; } return { ok: true, total: c, partial: ci.hasNext() }; }
   const folder = mergeFolder_(), it = folder.searchFiles("title contains '__chunk__'"), limit = p.all ? Date.now() + 1000 : Date.now() - 2 * 3600 * 1000; let n = 0, t0 = Date.now();      // all: 지금 올리는 것이 없을 때 모든 임시 조각 정리
   while (it.hasNext() && Date.now() - t0 < 20000) { const f = it.next(); if (f.getDateCreated().getTime() < limit) { f.setTrashed(true); n++; } }
   return { ok: true, removed: n };
