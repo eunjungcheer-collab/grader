@@ -1,7 +1,8 @@
 // 표지 도안(새 표지 그림 만들기) — book_register.html 과 cover_edit.html 이 같이 쓴다
 const COVER_COLORS = { pink: ['#E4566D', '#FDEBEE', '#B93A50'], blue: ['#2F7BC0', '#E4F0FA', '#1D5A93'], purple: ['#7A55C2', '#EFE9FA', '#59399A'], teal: ['#139186', '#E0F4F1', '#0C6B62'], orange: ['#E8833A', '#FFF1E4', '#B8641F'], green: ['#2E9E5B', '#E3F5EA', '#1F7A44'], navy: ['#0B1F5C', '#E6EAF6', '#08153F'], red: ['#D63A3A', '#FDE8E8', '#A82626'] };
+function savedCoverLogo() { try { return JSON.parse(localStorage.getItem('cover_logo') || 'null'); } catch (e) { return null; } }
 function coverCanvas(bookName, secs, W, H, design, colorKey, opts) {
-  const O = opts || {};      // 표지 목차 칸 조절: fs(글자 배율) · row(줄 간격 배율, 칸 안에서만) · cols('auto'|1|2) · dy(칸 위치 위아래 이동)
+  const O = opts || {}, LG = Object.assign({}, savedCoverLogo() || {}, O.logo || {});      // 로고 글자: 저장해 둔 것 → 이번에 입력한 것 순      // 표지 목차 칸 조절: fs(글자 배율) · row(줄 간격 배율, 칸 안에서만) · cols('auto'|1|2) · dy(칸 위치 위아래 이동)
   const K = 3, cv = document.createElement('canvas'); cv.width = Math.round(W * K); cv.height = Math.round(H * K);
   const x = cv.getContext('2d'); x.scale(K, K);
   const pal = /중\s*1/.test(bookName) ? { main: '#E4566D', soft: '#FDEBEE', deep: '#B93A50', grade: '중학교 1학년' }
@@ -109,9 +110,9 @@ function coverCanvas(bookName, secs, W, H, design, colorKey, opts) {
     x.fillText(nm, x0 + tw + 14, cy - 8 + bh / 2 + fs * 0.33);
     if (ri < perCol - 1 && !twoCol) { x.fillStyle = '#E8EAF0'; x.fillRect(x0 + tw + 14, cy - 8 + bh + 4, colW - tw - 14, 1); }
   });
-  x.fillStyle = pal.main; x.font = '800 20px ' + FONT; x.fillText('이은정 과학', ml, H - 62);
-  x.fillStyle = '#7B8197'; x.font = '600 10.5px ' + FONT; x.fillText('MIDDLE SCHOOL SCIENCE · EXAM PREP', ml, H - 44);
-  { const gl = pal.grade ? (/중/.test(pal.grade) ? pal.grade.replace(/\D/g, '') : '') : ''; const ct = ('SCIENCE ' + gl).trim(); x.font = '800 13px ' + FONT; const cw = x.measureText(ct).width + 34; x.fillStyle = '#1F2A44'; x.beginPath(); x.roundRect(W - ml - cw, H - 78, cw, 34, 10); x.fill(); x.fillStyle = '#fff'; x.textAlign = 'center'; x.fillText(ct, W - ml - cw / 2, H - 56); x.textAlign = 'left'; }
+  x.fillStyle = pal.main; x.font = '800 20px ' + FONT; x.fillText(LG.main != null && LG.main !== '' ? LG.main : '이은정 과학', ml, H - 62);
+  x.fillStyle = '#7B8197'; x.font = '600 10.5px ' + FONT; x.fillText(LG.sub != null ? LG.sub : 'MIDDLE SCHOOL SCIENCE · EXAM PREP', ml, H - 44);
+  { const gl = pal.grade ? (/중/.test(pal.grade) ? pal.grade.replace(/\D/g, '') : '') : ''; const ct = LG.chip != null && LG.chip !== '' ? LG.chip : ('SCIENCE ' + gl).trim(); x.font = '800 13px ' + FONT; const cw = x.measureText(ct).width + 34; x.fillStyle = '#1F2A44'; x.beginPath(); x.roundRect(W - ml - cw, H - 78, cw, 34, 10); x.fill(); x.fillStyle = '#fff'; x.textAlign = 'center'; x.fillText(ct, W - ml - cw / 2, H - 56); x.textAlign = 'left'; }
   return cv;
 }
 // 단원 번호·이름: 소단원 이름 앞의 숫자(예: '4-1.', '4.')로 단원을 정하고, 단원 이름은 같은 단원 소단원들의 공통 제목(최다오답·최상위 등)으로 정한다
