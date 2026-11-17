@@ -177,6 +177,7 @@ function handle_(e) {
       case 'addHomework': result = actionAddHomework_(params); break;
       case 'homeworkDone': result = actionStuHomeworkDone_(params); break;
       case 'listHomework': result = actionListHomework_(params); break;
+      case 'purgeHomework': result = actionPurgeHomework_(params); break;
       case 'duplicateExam': result = actionDuplicateExam_(params); break;
       case 'nudgeMissing': result = actionNudgeMissing_(params); break;
       case 'listTrash': result = actionListTrash_(params); break;
@@ -2615,6 +2616,23 @@ function actionStuHomeworkDone_(p) {
     return { ok: true, doneAt: done ? 'now' : '' };
   }
   return { ok: false, error: '숙제를 찾지 못했어요.' };
+}
+// 선생님용: 최근 며칠(기본 7일) 숙제만 남기고 나머지 숙제 기록 삭제 (알림장 앱 「최근 1주일만 남기고 삭제」)
+function actionPurgeHomework_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const days = Math.max(1, Number(p.keepDays) || 7);
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = hwSheet_(), last = sh.getLastRow(); if (last < 2) return { ok: true, removed: 0 };
+    const vals = sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues();
+    const cut = Date.now() - days * 86400000;
+    const keep = vals.filter(function (r) { const t = new Date(r[2]).getTime(); return !t || t >= cut; });
+    const removed = vals.length - keep.length;
+    if (!removed) return { ok: true, removed: 0 };
+    sh.getRange(2, 1, last - 1, HW_HEADERS.length).clearContent();
+    if (keep.length) { sh.getRange(2, 1, keep.length, HW_HEADERS.length).setValues(keep); if (last - 1 > keep.length) sh.deleteRows(keep.length + 2, last - 1 - keep.length); }
+    return { ok: true, removed: removed };
+  } finally { lock.releaseLock(); }
 }
 // 선생님용: 최근 숙제와 학생별 확인 여부
 function actionListHomework_(p) {
