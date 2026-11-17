@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180240">
+<link rel="stylesheet" href="css/style.css?v=202611180300">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -76,6 +76,13 @@
         <div style="min-width:260px"><b>표지 도안·색</b> — 새 표지를 만들 때 쓰는 배경 무늬와 색이에요. '자동'은 학년·교재 종류에 맞춰 골라요.<br>
           <div style="margin-top:6px">도안 <select id="cover-design"><option value="auto">자동 (학년·종류에 맞춰)</option><option value="mol">분자 · 플라스크</option><option value="atom">원자</option><option value="dna">DNA</option><option value="hex">육각 격자</option><option value="tubes">시험관</option><option value="circuit">전기 회로</option><option value="planet">행성</option><option value="ripple">물결 · 별자리</option><option value="star">별자리</option></select></div>
           <div style="margin-top:6px">색 <select id="cover-color"><option value="">자동 (학년색)</option><option value="pink">분홍</option><option value="blue">파랑</option><option value="purple">보라</option><option value="teal">청록</option><option value="orange">주황</option><option value="green">초록</option><option value="navy">남색</option><option value="red">빨강</option></select></div>
+          <div style="margin-top:10px"><b>목차 칸</b> <span class="muted">(표지 밖으로 넘치지 않는 범위에서만 커져요)</span><br>
+            글자 크기 <input type="range" id="cv-cfs" min="60" max="150" value="100" style="width:140px"> <span id="cv-cfsv">100</span>% · 줄 간격 <input type="range" id="cv-crow" min="60" max="160" value="100" style="width:140px"> <span id="cv-crowv">100</span>%<br>
+            열 <select id="cv-ccols"><option value="0">자동</option><option value="1">1열</option><option value="2">2열</option></select> · 칸 위치 <input type="range" id="cv-cdy" min="-60" max="60" value="0" style="width:120px"> <button type="button" class="btn" id="cv-creset" style="padding:3px 10px">기본값</button></div>
+          <div style="margin-top:10px"><b>로고</b> <span class="muted">(표지 아래쪽)</span><br>
+            로고 글자 <input type="text" id="cv-lmain" style="max-width:150px"> 오른쪽 칩 <input type="text" id="cv-lchip" style="max-width:110px" placeholder="비우면 학년 자동"><br>
+            작은 글자 <input type="text" id="cv-lsub" style="max-width:260px"><br>
+            <button type="button" class="btn" id="cv-lsave" style="padding:3px 10px">💾 이 로고 저장</button> <button type="button" class="btn" id="cv-lreset" style="padding:3px 10px">↩ 원래 로고로</button> <span class="muted" id="cv-lmsg"></span></div>
           <div style="margin-top:10px"><button type="button" id="cover-confirm" class="btn" style="padding:7px 14px">✔ 이 표지로 확정</button> <span id="cover-confirm-msg" class="muted" style="margin-left:6px">아직 확정 전이에요 (오른쪽 미리보기를 보고 눌러 주세요)</span></div>
         </div>
         <canvas id="cover-preview" width="260" height="368" style="border:1px solid #d6dbe6;border-radius:10px;box-shadow:0 2px 10px rgba(20,30,60,.12)"></canvas>
@@ -90,15 +97,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611180240"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180240"></script>
-<script src="js/vendor/pdf.min.js?v=202611180240"></script>
-<script src="js/config.js?v=202611180240"></script>
-<script src="js/api.js?v=202611180240"></script>
-<script src="js/common.js?v=202611180240"></script>
-<script src="js/bankcore.js?v=202611180240"></script>
-<script src="js/coverdesign.js?v=202611180240"></script>
-<script src="js/pdfui.js?v=202611180240"></script>
+<script src="js/vendor/qrcode.min.js?v=202611180300"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180300"></script>
+<script src="js/vendor/pdf.min.js?v=202611180300"></script>
+<script src="js/config.js?v=202611180300"></script>
+<script src="js/api.js?v=202611180300"></script>
+<script src="js/common.js?v=202611180300"></script>
+<script src="js/bankcore.js?v=202611180300"></script>
+<script src="js/coverdesign.js?v=202611180300"></script>
+<script src="js/pdfui.js?v=202611180300"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -157,16 +164,28 @@ function setCoverConfirmed(v) {
   if (m) m.textContent = v ? '✅ 확정됐어요: ' + $('cover-design').selectedOptions[0].textContent + ' · ' + $('cover-color').selectedOptions[0].textContent : '아직 확정 전이에요 (오른쪽 미리보기를 보고 눌러 주세요)';
   if (b) b.textContent = v ? '✔ 확정됨 (바꾸면 다시 확정해야 해요)' : '✔ 이 표지로 확정';
 }
+function coverOpts() {
+  const g = id => $(id) ? $(id).value : '';
+  return { fs: (+g('cv-cfs') || 100) / 100, row: (+g('cv-crow') || 100) / 100, cols: +g('cv-ccols') || 0, dy: +g('cv-cdy') || 0, logo: { main: g('cv-lmain'), sub: g('cv-lsub'), chip: g('cv-lchip') } };
+}
 function drawCoverPreview() {
   try {
     const cvp = $('cover-preview'); if (!cvp) return;
     const nm = ($('book-name').value || '').trim() || (typeof bookFileName === 'string' ? bookFileName : '') || '중1 과학';
-    const big = coverCanvas(nm, [{ name: '단원', unit: 'IV', unitName: '단원 이름', order: 0 }, { name: '단원', unit: 'V', unitName: '단원 이름', order: 1 }], 595, 842, $('cover-design').value, $('cover-color').value);
+    const realSecs = (typeof sections !== 'undefined' && sections.length) ? sections.slice().sort((a, b) => a.order - b.order) : null;
+    const big = coverCanvas(nm, realSecs || [{ name: '단원', unit: 'IV', unitName: '단원 이름', order: 0 }, { name: '단원', unit: 'V', unitName: '단원 이름', order: 1 }], 595, 842, $('cover-design').value, $('cover-color').value, coverOpts());
     const c = cvp.getContext('2d'); c.clearRect(0, 0, cvp.width, cvp.height); c.drawImage(big, 0, 0, cvp.width, cvp.height);
   } catch (e) {}
 }
 document.addEventListener('DOMContentLoaded', () => {
-  ['cover-design', 'cover-color', 'book-name'].forEach(id => { const e = $(id); if (!e) return; const f = () => { drawCoverPreview(); setCoverConfirmed(false); }; e.addEventListener('input', f); e.addEventListener('change', f); });
+  const LOGO0 = { main: '이은정 과학', sub: 'MIDDLE SCHOOL SCIENCE · EXAM PREP', chip: '' };
+  const setLogo = l => { $('cv-lmain').value = l.main; $('cv-lsub').value = l.sub; $('cv-lchip').value = l.chip || ''; };
+  setLogo(Object.assign({}, LOGO0, savedCoverLogo() || {}));
+  $('cv-lsave').addEventListener('click', () => { try { localStorage.setItem('cover_logo', JSON.stringify({ main: $('cv-lmain').value, sub: $('cv-lsub').value, chip: $('cv-lchip').value })); $('cv-lmsg').textContent = '✅ 저장했어요 (다음 표지에도 쓰여요)'; } catch (e) { $('cv-lmsg').textContent = '저장하지 못했어요'; } });
+  $('cv-lreset').addEventListener('click', () => { try { localStorage.removeItem('cover_logo'); } catch (e) {} setLogo(LOGO0); drawCoverPreview(); setCoverConfirmed(false); $('cv-lmsg').textContent = '↩ 원래 로고로 되돌렸어요'; });
+  $('cv-creset').addEventListener('click', () => { $('cv-cfs').value = 100; $('cv-crow').value = 100; $('cv-cdy').value = 0; $('cv-ccols').value = '0'; $('cv-cfsv').textContent = 100; $('cv-crowv').textContent = 100; drawCoverPreview(); setCoverConfirmed(false); });
+  ['cv-cfs', 'cv-crow'].forEach(id => $(id).addEventListener('input', () => { $(id + 'v').textContent = $(id).value; }));
+  ['cover-design', 'cover-color', 'book-name', 'cv-cfs', 'cv-crow', 'cv-cdy', 'cv-ccols', 'cv-lmain', 'cv-lsub', 'cv-lchip'].forEach(id => { const e = $(id); if (!e) return; const f = () => { drawCoverPreview(); setCoverConfirmed(false); }; e.addEventListener('input', f); e.addEventListener('change', f); });
   const nc = $('new-cover'); if (nc) nc.addEventListener('change', drawCoverPreview);
   const cb = $('cover-confirm'); if (cb) cb.addEventListener('click', () => { drawCoverPreview(); setCoverConfirmed(true); });
   drawCoverPreview();
@@ -338,6 +357,7 @@ $('read-btn').addEventListener('click', async () => {
       }
     }
     renderTable();
+    try { drawCoverPreview(); } catch (e) {}
     $('step2').style.display = 'block';
     const unread = sections.reduce((a, s) => a + s.answers.filter(x => x === '?').length, 0);
     const text = sections.reduce((a, s) => a + s.answers.filter(x => x === '-').length, 0);
@@ -922,7 +942,7 @@ $('go-btn').addEventListener('click', async () => {
       let coverDone = false;
       if ($('new-cover').checked && isFinite(firstQ) && firstQ > 1) {        // 첫 쪽(표지)을 새 표지로 바꾼다 (쪽 수는 그대로)
         try {
-          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, sections.slice().sort((a, b) => a.order - b.order), ref.width, ref.height, $('cover-design').value, $('cover-color').value);
+          const ref = doc.getPage(0).getSize(), cvs = coverCanvas(bookNm, sections.slice().sort((a, b) => a.order - b.order), ref.width, ref.height, $('cover-design').value, $('cover-color').value, coverOpts());
           const png = await doc.embedPng(cvs.toDataURL('image/png')), np = doc.insertPage(0, [ref.width, ref.height]);
           np.drawImage(png, { x: 0, y: 0, width: ref.width, height: ref.height }); doc.removePage(1); coverDone = true; window._lastCoverPng = cvs.toDataURL('image/png');
         } catch (e) { console.warn('cover', e); }
@@ -981,7 +1001,7 @@ $('go-btn').addEventListener('click', async () => {
     try {
       const sp = window._lastSpot; let png = window._lastCoverPng || null;
       if (!png && bookDoc) { const pg = await bookDoc.getPage(1), vp = pg.getViewport({ scale: 3 }), c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height); const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height); await pg.render({ canvasContext: cx, viewport: vp }).promise; png = c.toDataURL('image/png'); }
-      if (png && sp) cover = { png: png, pw: sp.pw, ph: sp.ph, spot: { x: sp.x, top: sp.top, wd: sp.wd }, auto: sp.auto, bookName: bookName, secs: sections.slice().sort((a, b) => a.order - b.order).map(x => ({ name: x.name, tag: x.tag, unit: x.unit, unitName: x.unitName, order: x.order, qa: x.qa, qb: x.qb, aa: x.aa, ab: x.ab })) };
+      if (png && sp) cover = { opts: coverOpts(), png: png, pw: sp.pw, ph: sp.ph, spot: { x: sp.x, top: sp.top, wd: sp.wd }, auto: sp.auto, bookName: bookName, secs: sections.slice().sort((a, b) => a.order - b.order).map(x => ({ name: x.name, tag: x.tag, unit: x.unit, unitName: x.unitName, order: x.order, qa: x.qa, qb: x.qb, aa: x.aa, ab: x.ab })) };
     } catch (e) { console.warn('cover save', e); }
     const rec = { id: saveKey, name: stem, date: new Date().toISOString(), teacher: teacherBlob, student: stuBytes ? new Blob([stuBytes], { type: 'application/pdf' }) : null, cover: cover };
     let savedOk = true; try { await mergeDbPut(rec); } catch (e) { savedOk = false; }

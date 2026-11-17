@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180240">
+<link rel="stylesheet" href="css/style.css?v=202611180300">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -55,13 +55,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180240"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180240"></script>
-<script src="js/config.js?v=202611180240"></script>
-<script src="js/api.js?v=202611180240"></script>
-<script src="js/common.js?v=202611180240"></script>
-<script src="js/bankcore.js?v=202611180240"></script>
-<script src="js/coverdesign.js?v=202611180240"></script>
+<script src="js/vendor/pdf.min.js?v=202611180300"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180300"></script>
+<script src="js/config.js?v=202611180300"></script>
+<script src="js/api.js?v=202611180300"></script>
+<script src="js/common.js?v=202611180300"></script>
+<script src="js/bankcore.js?v=202611180300"></script>
+<script src="js/coverdesign.js?v=202611180300"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -286,6 +286,7 @@ async function openEditor(rec) {
   const has = !!(rec.cover && rec.cover.png), canGen = !!(rec.cover && rec.cover.secs && rec.cover.secs.length);
   $('src-stored').disabled = !has; $('stored-note').textContent = has ? '' : '(이 교재는 표지를 따로 저장해 두지 않았어요 — 아래에서 원본 교재 PDF를 골라 주세요)';
   $('src-gen').disabled = !canGen; $('gen-note').textContent = canGen ? '' : '(이 교재는 단원 정보가 없어 새로 만들 수 없어요)';
+  try { const o = rec.cover && rec.cover.opts; if (o) { $('ce-cfs').value = Math.round((o.fs || 1) * 100); $('ce-crow').value = Math.round((o.row || 1) * 100); $('ce-ccols').value = String(o.cols || 0); $('ce-cdy').value = o.dy || 0; if (o.logo) { $('ce-lmain').value = o.logo.main || ''; $('ce-lsub').value = o.logo.sub || ''; $('ce-lchip').value = o.logo.chip || ''; } $('ce-cfsv').textContent = $('ce-cfs').value; $('ce-crowv').textContent = $('ce-crow').value; $('ce-cdyv').textContent = $('ce-cdy').value; } } catch (e) {}
   $('ce-name').value = rec.name.replace(/\s*\(?(문제편|정답편|최신판|초판).*$/, '').trim() || rec.name;
   const first = has ? 'stored' : 'file'; document.querySelector('input[name=src][value=' + first + ']').checked = true;
   await setSource(first); $('editor').scrollIntoView({ behavior: 'smooth' });
