@@ -1437,6 +1437,8 @@
       t = t.replace(/\[[^\]]*\]/g, b => { if (TAG_RE.test(b)) { tags.push(b.replace(/\[\s+/, '[').replace(/\s+\]/, ']')); return ' '; } return b; });   // 표시는 맨 뒤로
       const um0 = origTitle.match(/(\d{1,2}(?:-\d{1,2}){1,3})\s*[.．]\s*(.+?)(?=\s+[초중고]\s?\d|\s+과학(?![가-힣])|\s+Ai(?![A-Za-z])|\s*\[|\s*_|\s*\(|\s*$)/);
       if (um0 && um0[2].trim().length >= 2) t = um0[1] + ' ' + um0[2].trim();
+      // 단원 이름 바로 뒤의 「(01)」「(02)」 번호는 같은 이름의 소단원을 구별하니 제목에도 남긴다
+      { const nm0 = um0 && um0[2].trim(), pn = nm0 && origTitle.indexOf(nm0) >= 0 && origTitle.slice(origTitle.indexOf(nm0) + nm0.length).match(/^\s*(\(\s*\d{1,2}\s*\))/); if (pn && t.indexOf(pn[1].replace(/\s/g, '')) < 0) t = t.replace(nm0, nm0 + pn[1].replace(/\s/g, '')); }
       // 단원 이름 뒤에 「(01)」이 붙은 제목은 위 줄이 거기서 끊겨 「최다빈출공략」 같은 종류 표시가 사라진다 → 제목 끝의 「○○공략」을 다시 붙인다
       { const gm = origTitle.match(/([가-힣][가-힣 ]{0,8}?\s*공략)\s*(?:\(강사용\)|해설|정답)?\s*$/); if (gm) { const g = gm[1].replace(/\s+/g, ''); if (t.indexOf(g) < 0 && !tags.some(x => x.indexOf(g.replace(/공략$/, '')) >= 0)) t += ' ' + g; } }                                              // "5-2-1.알짜힘과 힘의 평형 …" → "5-2-1 알짜힘과 힘의 평형"
       t = t.replace(/[초중고]\s?[1-6]\s*-\s*(?=\d)/g, '').replace(/(^|[\s\[(·+,])[초중고]\s?[1-6](?![\d가-힣])\s*/g, '$1')   // 학년 글자는 일단 빼고 맨 앞에 한 번만 붙인다
@@ -3378,13 +3380,15 @@
         // 글자 층이 깨진 교재(눈엔 정상인데 「정답」이 「㚄Ⅴ」 같은 글자로 읽힘)도 번호표로 본다: 「1) [깨진 두 글자]」 또는 「2)」 옆에 깨진 조각 + 「[」가 같은 줄에 있는 모양
         let m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[(?:정답|[^\]\[\x00-\x7f]{1,3})\]/);
         if (m) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w }); return; }
+        // 같은 줄의 닫는 「]」 끝 위치: 번호표(「1) [정답]」)의 오른쪽 끝으로 쓴다 (정답 동그라미는 그 오른쪽에 있다)
+        const closeEnd = () => { const q = pd.items.find(q => /^\s*\]/.test(String(q.str)) && Math.abs(q.top - l.top) < 5 && q.x > l.x && q.x - l.x < 90); return q ? q.x + 7 : 0; };
         m = String(l.str).match(/^\s*(\d{1,3})\)\s*\[\s*$/);      // 「1) [」「(깨진 정답)」「]」로 쪼개진 모양
-        if (m && pd.items.some(q => /^\s*\]/.test(String(q.str)) && Math.abs(q.top - l.top) < 5 && q.x > l.x && q.x - l.x < 60)) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w + 21 }); return; }
+        if (m && closeEnd()) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: Math.max(l.w + 21, closeEnd() - l.x) }); return; }
         m = String(l.str).match(/^\s*(\d{1,3})\)\s*$/);
         const sameRow = q => Math.abs(q.top - l.top) < 5 && q.x >= l.x + l.w - 2 && q.x - (l.x + l.w) < 14;
         const tg = m && (pd.items.find(q => String(q.str).trim() === '정답' && sameRow(q)) ||
           (pd.items.some(q => /^\s*\[\s*$/.test(String(q.str)) && Math.abs(q.top - l.top) < 5 && q.x > l.x && q.x - l.x < 70) ? (pd.items.find(q => /^[^\x00-\x7f\s]{1,3}$/.test(String(q.str).trim()) && sameRow(q)) || pd.items.find(q => /^\s*\]\s*$/.test(String(q.str)) && Math.abs(q.top - l.top) < 5 && q.x > l.x && q.x - l.x < 70)) : null));
-        if (tg) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: tg.x + tg.w - l.x }); return; }
+        if (tg) { labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: Math.max(tg.x + tg.w, closeEnd()) - l.x }); return; }
         // 서술형 해설: 「142)」 번호만 있고 바로 밑 줄에 「모범 답안」이 오는 모양
         const md = m && pd.items.find(q => /모범\s*답안/.test(String(q.str)) && q.top > l.top && q.top - l.top < 26 && Math.abs(q.x - l.x) < 30);
         if (md) labs.push({ n: parseInt(m[1], 10), x: l.x, top: l.top, bottom: l.bottom, w: l.w });
@@ -3407,7 +3411,7 @@
       let labs = labelsOf(pd);
       if (ink) {
         // 번호표 줄(「3) [정답] ④」)은 그 줄에 번호표만 있다 → 글자 영역엔 먹물이 있고, 오른쪽 나머지엔 없어야 진짜 (겹친 가짜 글자 층은 해설 글줄 위에 놓여 오른쪽에 먹물이 있다)
-        labs.forEach(l => { const cr = (!two || l.x < half) ? (two ? half - 2 : pd.W) : pd.W - 6; l.ink = ink([l.x - 1, l.top - 1, l.x + l.w + 1, l.bottom + 1]); l.tail = ink([l.x + l.w + 22, l.top, cr, l.bottom]); });
+        labs.forEach(l => { const cr = (!two || l.x < half) ? (two ? half - 2 : pd.W) : pd.W - 6; l.ink = ink([l.x - 1, l.top - 1, l.x + l.w + 1, l.bottom + 1]); l.tail = ink([l.x + l.w + 95, l.top, cr, l.bottom]); });
         const real = labs.filter(l => l.ink > 60 && l.tail <= 8);
         const best = {}; real.forEach(l => { const k = l.n + '_' + (two ? (l.x < half ? 0 : 1) : 0); if (!best[k] || l.ink > best[k].ink) best[k] = l; });
         labs = real.filter(l => best[l.n + '_' + (two ? (l.x < half ? 0 : 1) : 0)] === l);
