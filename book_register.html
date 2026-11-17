@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611172130">
+<link rel="stylesheet" href="css/style.css?v=202611172200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -90,14 +90,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611172130"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611172130"></script>
-<script src="js/vendor/pdf.min.js?v=202611172130"></script>
-<script src="js/config.js?v=202611172130"></script>
-<script src="js/api.js?v=202611172130"></script>
-<script src="js/common.js?v=202611172130"></script>
-<script src="js/bankcore.js?v=202611172130"></script>
-<script src="js/pdfui.js?v=202611172130"></script>
+<script src="js/vendor/qrcode.min.js?v=202611172200"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611172200"></script>
+<script src="js/vendor/pdf.min.js?v=202611172200"></script>
+<script src="js/config.js?v=202611172200"></script>
+<script src="js/api.js?v=202611172200"></script>
+<script src="js/common.js?v=202611172200"></script>
+<script src="js/bankcore.js?v=202611172200"></script>
+<script src="js/pdfui.js?v=202611172200"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -520,10 +520,13 @@ async function peekAnswer(s, n) {
   if (!pk && typeof bookDoc !== 'undefined' && bookDoc) {      // 정확한 줄 위치를 못 찾았으면 이 단원의 정답 쪽 전체를 보여 준다 (◀ ▶ 로 넘겨 가며 직접 찾는다)
     let pgNo = s.aa; box.dataset.key = '';
     const draw = async () => {
-      box.innerHTML = '<b>' + escapeHtml(secTitle(s)) + ' ' + n + '번</b> <span class="muted">— 정확한 위치를 못 찾아 정답 쪽을 보여드려요 (교재 ' + pgNo + '쪽)</span> <button type="button" style="float:right; border:0; background:none; font-size:16px; cursor:pointer;" onclick="this.parentNode.remove()">✕</button><div style="margin:4px 0;"><button type="button" class="btn" id="pk-prev">◀ 이전 쪽</button> <button type="button" class="btn" id="pk-next">다음 쪽 ▶</button></div><div class="muted" id="pk-img">그림 만드는 중...</div>';
+      box.innerHTML = '<b>' + escapeHtml(secTitle(s)) + ' ' + n + '번</b> <span class="muted">— 정확한 위치를 못 찾아 정답 쪽을 보여드려요 (교재 ' + pgNo + '쪽)</span> <button type="button" style="float:right; border:0; background:none; font-size:16px; cursor:pointer;" onclick="this.parentNode.remove()">✕</button><div style="margin:4px 0;"><button type="button" class="btn" id="pk-prev">◀ 이전 쪽</button> <button type="button" class="btn" id="pk-next">다음 쪽 ▶</button> <button type="button" class="btn" id="pk-zo">－</button> <button type="button" class="btn" id="pk-zi">＋</button> <button type="button" class="btn" id="pk-big">⤢ 크게</button></div><div class="muted" id="pk-img">그림 만드는 중...</div>';
       box.querySelector('#pk-prev').onclick = () => { if (pgNo > s.aa) { pgNo--; draw(); } };
       box.querySelector('#pk-next').onclick = () => { if (pgNo < s.ab) { pgNo++; draw(); } };
-      try { const pgd = await bookDoc.getPage(pgNo), vp = pgd.getViewport({ scale: 1 }); const c = await BankCore.renderRect(bookDoc, pgNo, [0, 0, vp.width, vp.height], 1.6, false); box.querySelector('#pk-img').outerHTML = '<div style="max-height:62vh; overflow:auto;"><img src="' + c.toDataURL('image/png') + '" style="width:100%; display:block; border:1px solid #E5E7EB;"></div>'; } catch (e) { const el = box.querySelector('#pk-img'); if (el) el.textContent = '그림을 만들지 못했어요: ' + e.message; }
+      const zm = () => +(box.dataset.zoom || 100); const setZ = z => { box.dataset.zoom = Math.max(60, Math.min(400, z)); const im = box.querySelector('#pk-wrap img'); if (im) im.style.width = box.dataset.zoom + '%'; };
+      box.querySelector('#pk-zi').onclick = () => setZ(zm() + 30); box.querySelector('#pk-zo').onclick = () => setZ(zm() - 30);
+      box.querySelector('#pk-big').onclick = () => { const b = box.dataset.big !== '1'; box.dataset.big = b ? '1' : ''; box.style.width = b ? '96vw' : 'min(460px,92vw)'; box.style.right = b ? '2vw' : '12px'; box.style.bottom = b ? '2vh' : '12px'; const w = box.querySelector('#pk-wrap'); if (w) w.style.maxHeight = b ? '82vh' : '62vh'; };
+      try { const pgd = await bookDoc.getPage(pgNo), vp = pgd.getViewport({ scale: 1 }); const c = await BankCore.renderRect(bookDoc, pgNo, [0, 0, vp.width, vp.height], 2.6, false); box.querySelector('#pk-img').outerHTML = '<div id="pk-wrap" style="max-height:' + (box.dataset.big === '1' ? '82vh' : '62vh') + '; overflow:auto;"><img src="' + c.toDataURL('image/png') + '" style="width:' + (box.dataset.zoom || 100) + '%; max-width:none; display:block; border:1px solid #E5E7EB;"></div>'; } catch (e) { const el = box.querySelector('#pk-img'); if (el) el.textContent = '그림을 만들지 못했어요: ' + e.message; }
     };
     draw(); return;
   }
