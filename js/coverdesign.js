@@ -122,4 +122,4 @@ function unitInfoFor(secs) {
   const nameOf = {}; Object.keys(cnt).forEach(n => { nameOf[n] = Object.keys(cnt[n]).sort((a, b) => cnt[n][b] - cnt[n][a])[0]; });
   return s => { const n = numOf(s); return { no: n || s.unit, name: (n && nameOf[n]) || s.unitName || '' }; };
 }
-const toRoman = v => { const n = parseInt(v, 10); if (!/^\d+$/.test(String(v).trim()) || !n || n > 30) return v; const m = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]; let r = '', k = n; m.forEach(a => { while (k >= a[0]) { r += a[1]; k -= a[0]; } }); return r; };
+const toRoman = v => v;      // 단원 번호는 로마 숫자 대신 1, 2, 3 으로 쓴다(선생님 요청)
