@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180650">
+<link rel="stylesheet" href="css/style.css?v=202611180715">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180650"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180650"></script>
-<script src="js/config.js?v=202611180650"></script>
-<script src="js/api.js?v=202611180650"></script>
-<script src="js/common.js?v=202611180650"></script>
-<script src="js/bankcore.js?v=202611180650"></script>
-<script src="js/coverdesign.js?v=202611180650"></script>
+<script src="js/vendor/pdf.min.js?v=202611180715"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180715"></script>
+<script src="js/config.js?v=202611180715"></script>
+<script src="js/api.js?v=202611180715"></script>
+<script src="js/common.js?v=202611180715"></script>
+<script src="js/bankcore.js?v=202611180715"></script>
+<script src="js/coverdesign.js?v=202611180715"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -118,11 +118,13 @@ function upBar() {
   if (!el) {
     el = document.createElement('div'); el.id = 'up-bar';
     el.style.cssText = 'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#1c2333;color:#fff;padding:10px 14px;border-radius:12px;z-index:99999;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.3);width:min(560px,94vw);box-sizing:border-box;';
-    el.innerHTML = '<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;"><span id="up-msg"></span><button type="button" id="up-stop" style="background:#C1392B;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer;white-space:nowrap;">⛔ 모두 중단</button></div><div style="height:12px;background:#3a4258;border-radius:8px;overflow:hidden;margin-top:8px;"><div id="up-fill" style="height:100%;width:0;background:#4cc38a;transition:width .5s linear;"></div></div>';
+    el.innerHTML = '<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;"><span id="up-msg"></span><button type="button" id="up-stop" style="background:#C1392B;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer;white-space:nowrap;">⛔ 모두 중단</button></div><div style="height:12px;background:#3a4258;border-radius:8px;overflow:hidden;margin-top:8px;"><div id="up-fill" style="height:100%;width:0;background:#4cc38a;transition:width .5s linear;"></div></div><div id="up-list" style="margin-top:8px;font-size:13px;line-height:1.7;max-height:30vh;overflow:auto;"></div>';
     document.body.appendChild(el);
     el.querySelector('#up-stop').onclick = () => { UPGEN++; upBar._stopping = true; document.getElementById('up-msg').textContent = '중단하는 중... (지금 보내던 조각까지만 보내고 멈춰요)'; };
   }
   const st = upStats(); document.getElementById('up-fill').style.width = st.pct + '%';
+  document.getElementById('up-list').onpointerdown = e => { const b = e.target.closest('.up-one'); if (b && UPJOBS[b.dataset.k]) { UPJOBS[b.dataset.k].cancel = true; upBar(); } };
+  document.getElementById('up-list').innerHTML = Object.values(UPJOBS).map(j => '<div>' + (j.cancel ? '🚫 중단하는 중' : j.running ? '⬆️ <b>올리는 중 ' + Math.floor(j.frac * 100) + '%</b>' : '⏳ 대기') + ' · ' + String(j.label).replace(/[<>&]/g, '') + ' (' + (j.size / 1048576).toFixed(0) + 'MB) ' + (j.cancel ? '' : '<button type="button" class="up-one" data-k="' + j.k + '" style="background:#3a4258;color:#fff;border:0;border-radius:6px;padding:2px 8px;cursor:pointer;">✕ 이 파일 중단</button>') + '</div>').join('');
   if (!upBar._stopping) document.getElementById('up-msg').textContent = '서버에 올리는 중 ' + st.pct + '%' + st.eta + ' · 대기 포함 ' + UPLOADING.size + '개';
 }
 setInterval(() => { if (UPLOADING.size) upBar(); }, 1000);
@@ -130,9 +132,9 @@ setInterval(() => { if (UPLOADING.size) upBar(); }, 1000);
 async function serverUpload(rec, kind, blob, onProg) {
   const k = rec.id + '|' + kind; if (UPLOADING.has(k)) throw new Error('같은 파일을 이미 올리는 중이에요. 끝날 때까지 기다려 주세요.');
   if (!UPLOADING.size) { for (const x in UPJOBS) delete UPJOBS[x]; UPT0 = Date.now(); UPB0 = 0; }
-  UPJOBS[k] = { size: blob.size, frac: 0 }; UPLOADING.add(k); upBar(); const gen = UPGEN;
-  const prog = (i, n) => { UPJOBS[k].frac = n ? i / n : 1; upBar(); if (onProg) onProg(i, n); };
-  const run = UPQ.then(() => serverUploadRaw(rec, kind, blob, prog, false, gen));
+  UPJOBS[k] = { k: k, cancel: false, size: blob.size, frac: 0, running: false, label: (rec.name || '') + ' · ' + (/_orig$/.test(rec.id) ? '원본' : kind === 'student' ? '학생용' : '강사용') }; UPLOADING.add(k); upBar(); const gen = UPGEN;
+  const prog = (i, n) => { if (UPJOBS[k] && UPJOBS[k].cancel) throw new Error('이 파일 올리기를 중단했어요. (서버에 남은 조각은 🧹 정리로 지울 수 있어요)'); UPJOBS[k].frac = n ? i / n : 1; upBar(); if (onProg) onProg(i, n); };
+  const run = UPQ.then(() => { if (UPJOBS[k] && UPJOBS[k].cancel) throw new Error('이 파일 올리기를 중단했어요.'); if (UPJOBS[k]) { UPJOBS[k].running = true; upBar(); } return serverUploadRaw(rec, kind, blob, prog, false, gen); });
   UPQ = run.catch(() => {});
   try { return await run; } finally { UPLOADING.delete(k); if (!UPLOADING.size) { for (const x in UPJOBS) delete UPJOBS[x]; upBar._stopping = false; } upBar(); }
 }
