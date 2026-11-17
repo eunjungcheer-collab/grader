@@ -2163,7 +2163,7 @@
       const img = await doc.embedPng(b64ToBytes(it.base64));
       const wide = (it.naturalW || 0) > colW * 1.45, fullW = wide ? areaW : colW;
       let dw = Math.min(fullW, it.naturalW || fullW), dh = it.height * (dw / it.width);
-      const lab = wrongNoteLabelPng(it.entries, dw, opts.labelMode), labImg = await doc.embedPng(b64ToBytes(lab.base64));
+      const noLab = opts.labelMode === 'none', lab = noLab ? { h: -4 } : wrongNoteLabelPng(it.entries, dw, opts.labelMode), labImg = noLab ? null : await doc.embedPng(b64ToBytes(lab.base64));      // 다시풀기 학생용: 「N번」 띠 없음
       const tag = it.wrongTimes ? wrongNoteTagPng(it.wrongTimes) : null, tagH = tag ? tag.h + 2 : 0, tagImg = tag ? await doc.embedPng(b64ToBytes(tag.base64)) : null;      // 문제번호 위: 「N번 틀림」
       const extra = tagH + lab.h + 4 + (blank ? blank + 4 : 0);
       const limit = maxH - extra;
@@ -2180,7 +2180,7 @@
         if (t.length > 2) page.drawRectangle({ x: cx - tw / 2 - 5, y: cy - r, width: tw + 10, height: r * 2, color: RB }); else page.drawCircle({ x: cx, y: cy, size: r, color: RB });
         page.drawText(t, { x: cx - tw / 2, y: cy - fs * 0.34, size: fs, font: nfont, color: rgb(1, 1, 1) });
       }
-      page.drawImage(labImg, { x: p.x, y: pt - dh - 2 - lab.h, width: dw, height: lab.h });
+      if (labImg) page.drawImage(labImg, { x: p.x, y: pt - dh - 2 - lab.h, width: dw, height: lab.h });
       let used = tagH + dh + lab.h + 4;
       if (blank) {
         page.drawRectangle({ x: p.x, y: p.top - used - blank, width: dw, height: blank, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.6, borderDashArray: [3, 3] });

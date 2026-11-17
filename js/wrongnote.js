@@ -126,7 +126,7 @@ async function wnComposeDocs(s, g, kind, files, opt, qrBase64) {
     if (files.student) out.student = await C({ scoreText: sc, withExpl: !!opt.withExpl, labelMode: 'given', kindLabel: '오답노트' });
     if (files.teacher) out.teacher = await T('오답노트', true);
   } else {
-    if (files.student) out.student = await C({ withExpl: false, answersAtEnd: false, labelMode: 'none', kindLabel: '다시풀기' });
+    if (files.student) out.student = await C({ withExpl: false, answersAtEnd: false, labelMode: 'none', blank: 0, kindLabel: '다시풀기' });
     if (files.answers) out.answers = await C({ withExpl: true, part: 'answers', kindLabel: '정답·해설' });
     if (files.teacher) out.teacher = await T('다시풀기', false);
   }
