@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180625">
+<link rel="stylesheet" href="css/style.css?v=202611180640">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180625"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180625"></script>
-<script src="js/config.js?v=202611180625"></script>
-<script src="js/api.js?v=202611180625"></script>
-<script src="js/common.js?v=202611180625"></script>
-<script src="js/bankcore.js?v=202611180625"></script>
-<script src="js/coverdesign.js?v=202611180625"></script>
+<script src="js/vendor/pdf.min.js?v=202611180640"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180640"></script>
+<script src="js/config.js?v=202611180640"></script>
+<script src="js/api.js?v=202611180640"></script>
+<script src="js/common.js?v=202611180640"></script>
+<script src="js/bankcore.js?v=202611180640"></script>
+<script src="js/coverdesign.js?v=202611180640"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -370,7 +370,7 @@ async function applyEdit() {
         const dt = Math.max(0.5, (Date.now() - t0) / 1000); rate = (r.removed || 0) / dt; tot += r.removed || 0; if (all && tot > all) all = tot; fill.style.transitionDuration = '.4s'; show(); if (!r.removed) break;
       }
       fill.style.width = '100%'; m.textContent = '✅ 임시 조각 ' + tot + '개를 정리했어요.';
-    } catch (e) { m.innerHTML = '<span style="color:#C1392B;">정리하지 못했어요: ' + esc(e.message || e) + '</span>'; }
+    } catch (e) { bar.style.display = 'none'; m.innerHTML = '<span style="color:#C1392B;">정리하지 못했어요: ' + esc(e.message || e) + '</span>'; }
     b.disabled = false;
   };
   $('ce-ok').onclick = applyEdit;
