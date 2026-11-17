@@ -1245,6 +1245,8 @@ function actionMergeUpload_(p) {
   const idx = parseInt(p.idx, 10), total = parseInt(p.total, 10);
   if (!id || !(total >= 1) || !(idx >= 0 && idx < total)) return { ok: false, error: '잘못된 요청이에요.' };
   const folder = mergeFolder_();
+  // 첫 조각이면 예전에 올리다 만 조각을 먼저 치운다 (남은 조각이 새 조각과 섞여 파일이 깨지는 것을 막는다)
+  if (idx === 0) { const st = folder.searchFiles("title contains '__chunk__" + id + '_' + kind + "_'"); while (st.hasNext()) st.next().setTrashed(true); }
   folder.createFile('__chunk__' + id + '_' + kind + '_' + ('000' + idx).slice(-3) + '.txt', String(p.data || ''), MimeType.PLAIN_TEXT);
   if (idx < total - 1) return { ok: true, done: false };
   // 마지막 조각: 모아서 한 PDF로
@@ -1258,8 +1260,10 @@ function actionMergeUpload_(p) {
     files.push(it.next());
   }
   files.forEach(function (f) { const b = Utilities.base64Decode(f.getBlob().getDataAsString()); for (let k = 0; k < b.length; k++) bytes.push(b[k]); });
-  const old = folder.getFilesByName(id + '__' + kind + '.pdf'); while (old.hasNext()) old.next().setTrashed(true);
+  // 새 파일을 먼저 만든 뒤에 예전 파일을 지운다 (만들다 실패해도 예전 파일은 남는다)
+  const oldFiles = []; const old = folder.getFilesByName(id + '__' + kind + '.pdf'); while (old.hasNext()) oldFiles.push(old.next());
   const out = folder.createFile(Utilities.newBlob(bytes, 'application/pdf', id + '__' + kind + '.pdf'));
+  oldFiles.forEach(function (f) { f.setTrashed(true); });
   out.setDescription(JSON.stringify({ name: String(p.name || ''), date: new Date().toISOString() }));
   files.forEach(function (f) { f.setTrashed(true); });
   return { ok: true, done: true, size: bytes.length };
