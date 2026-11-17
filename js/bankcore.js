@@ -2134,14 +2134,18 @@
     const areaW = W - marginX * 2, colW = (areaW - colGap) / 2, colX = [marginX, marginX + colW + colGap];
     const hdr = wrongNoteHeaderPng((opts.studentName || '') + (opts.examTitle ? '  ·  ' + opts.examTitle : ''), '틀린 ' + (opts.wrongCount != null ? opts.wrongCount : items.length) + '문항' + (opts.scoreText ? '  ·  ' + opts.scoreText : ''), areaW, opts.kindLabel);
     const headImg = await doc.embedPng(b64ToBytes(hdr.base64));
-    const marginTop = 28 + hdr.h + 14, maxH = H - marginTop - marginBottom;
+    // QR은 시험지처럼 문제 쪽마다 오른쪽 위에 둔다 (머리글은 QR 자리만큼 좁게)
+    const QRS = 46, QRR = QRS + 8;
+    const hdrQ = opts.qrBase64 ? wrongNoteHeaderPng((opts.studentName || '') + (opts.examTitle ? '  ·  ' + opts.examTitle : ''), '틀린 ' + (opts.wrongCount != null ? opts.wrongCount : items.length) + '문항' + (opts.scoreText ? '  ·  ' + opts.scoreText : ''), areaW - QRR, opts.kindLabel) : hdr;
+    const headImgQ = hdrQ === hdr ? headImg : await doc.embedPng(b64ToBytes(hdrQ.base64));
+    const marginTop = 28 + (opts.qrBase64 ? Math.max(hdr.h, QRS) : hdr.h) + 14, maxH = H - marginTop - marginBottom;
     let qrImg = null, qrLab = null;
     if (opts.qrBase64) { try { qrImg = await doc.embedPng(b64ToBytes(opts.qrBase64)); const l = wrongNoteQrLabelPng('QR을 찍어 틀린 문항 다시 풀기', 150, 7.5); qrLab = { img: await doc.embedPng(b64ToBytes(l.base64)), w: l.w, h: l.h }; } catch (e) { qrImg = null; } }
     let page, ys, col;
     function newPage() {
       page = doc.addPage([W, H]);
-      page.drawImage(headImg, { x: marginX, y: H - 28 - hdr.h, width: areaW, height: hdr.h });
-      if (qrImg) { page.drawImage(qrImg, { x: marginX, y: 5, width: 30, height: 30 }); page.drawImage(qrLab.img, { x: marginX + 34, y: 14, width: qrLab.w, height: qrLab.h }); }
+      if (qrImg) { page.drawImage(headImgQ, { x: marginX, y: H - 28 - hdr.h, width: areaW - QRR, height: hdr.h }); page.drawImage(qrImg, { x: W - marginX - QRS, y: H - 28 - QRS, width: QRS, height: QRS }); }
+      else page.drawImage(headImg, { x: marginX, y: H - 28 - hdr.h, width: areaW, height: hdr.h });
       page.drawLine({ start: { x: marginX + colW + colGap / 2, y: H - marginTop + 4 }, end: { x: marginX + colW + colGap / 2, y: marginBottom - 4 }, thickness: 0.6, color: rgb(0.8, 0.8, 0.8) });
       ys = [H - marginTop, H - marginTop]; col = 0;
     }
