@@ -9,7 +9,7 @@ if (cfg.apiKey) {
   messaging.onBackgroundMessage(function (payload) {
     var d = payload.data || {};
     try { var n = Number(d.count) || 0; if (self.navigator && self.navigator.setAppBadge) { if (n > 0) self.navigator.setAppBadge(n); else self.navigator.clearAppBadge(); } } catch (e) {}
-    return self.registration.showNotification(d.title || '자동채점 (학생용)', { body: d.body || '', icon: d.icon || 'icons/stu-icon-192.png', badge: 'icons/stu-favicon-32.png', data: { url: d.url || '' } });
+    return self.registration.showNotification(d.title || '자동채점 (학생용)', { body: d.body || '', icon: d.icon || 'icons/stu-icon-192.png', badge: 'icons/stu-favicon-32.png', requireInteraction: d.sticky === '1', data: { url: d.url || '' } });
   });
 }
 self.addEventListener('notificationclick', function (event) {

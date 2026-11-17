@@ -2088,7 +2088,7 @@ function pushToTeacher_(title, body, link) {
   tokens.forEach(function (tk) {
     const res = UrlFetchApp.fetch('https://fcm.googleapis.com/v1/projects/' + pid + '/messages:send', {
       method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + at }, muteHttpExceptions: true,
-      payload: JSON.stringify({ message: { token: tk, data: { title: title, body: body, url: url, count: count, icon: 'icons/icon-192.png' } } })
+      payload: JSON.stringify({ message: { token: tk, data: { title: title, body: body, url: url, count: count, sticky: '1', icon: 'icons/icon-192.png' } } })
     });
     const code = res.getResponseCode();
     if (code !== 200) PUSH_LAST_ERR = 'FCM ' + code + ': ' + String(res.getContentText()).slice(0, 240); else okCount++;
