@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611172350">
+<link rel="stylesheet" href="css/style.css?v=202611180010">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -90,14 +90,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611172350"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611172350"></script>
-<script src="js/vendor/pdf.min.js?v=202611172350"></script>
-<script src="js/config.js?v=202611172350"></script>
-<script src="js/api.js?v=202611172350"></script>
-<script src="js/common.js?v=202611172350"></script>
-<script src="js/bankcore.js?v=202611172350"></script>
-<script src="js/pdfui.js?v=202611172350"></script>
+<script src="js/vendor/qrcode.min.js?v=202611180010"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180010"></script>
+<script src="js/vendor/pdf.min.js?v=202611180010"></script>
+<script src="js/config.js?v=202611180010"></script>
+<script src="js/api.js?v=202611180010"></script>
+<script src="js/common.js?v=202611180010"></script>
+<script src="js/bankcore.js?v=202611180010"></script>
+<script src="js/pdfui.js?v=202611180010"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -589,14 +589,19 @@ async function serverDownload(fileId, onProg) {
   }
   return new Blob(parts, { type: 'application/pdf' });
 }
-async function syncToServer(rec) {
+async function syncToServer(rec, only) {
   const st = $('sync-msg'); const say = t => { if (st) st.textContent = t; };
+  const LIM = 150e6, notes = [];
   try {
-    if ((rec.teacher ? rec.teacher.size : 0) + (rec.student ? rec.student.size : 0) > 150e6) { say('☁ 파일이 너무 커서(합쳐서 150MB 넘음) 서버 보관은 건너뛰었어요. 이 기기에는 저장돼 있어요.'); return; }
-    if (rec.teacher) await serverUpload(rec, 'teacher', rec.teacher, (i, n) => say('☁ 다른 기기에서도 받을 수 있게 서버(드라이브)에 보관하는 중... 강사용 ' + i + '/' + n));
-    if (rec.student) await serverUpload(rec, 'student', rec.student, (i, n) => say('☁ 서버(드라이브)에 보관하는 중... 학생용 ' + i + '/' + n));
-    say('☁ 서버(드라이브)에도 보관했어요. 다른 기기에서도 이 페이지에서 내려받을 수 있어요.');
-  } catch (e) { say('☁ 서버 보관은 못 했어요(' + e.message + '). 이 기기에는 저장돼 있어요.'); }
+    for (const kind of ['teacher', 'student']) {
+      if (only && only !== kind) continue;
+      const blob = rec[kind], lab = kind === 'teacher' ? '강사용' : '학생용'; if (!blob) continue;
+      if (blob.size > LIM) { notes.push(lab + '(' + (blob.size / 1048576).toFixed(0) + 'MB)는 너무 커서 서버 보관을 건너뛰었어요'); continue; }
+      await serverUpload(rec, kind, blob, (i, n) => say('☁ 서버(드라이브)에 보관하는 중... ' + lab + ' ' + i + '/' + n));
+      notes.push(lab + ' 보관 완료');
+    }
+    say('☁ ' + notes.join(' · ') + '. 강사용·학생용은 따로 보관돼요.');
+  } catch (e) { say('☁ 서버 보관은 못 했어요(' + e.message + '). 이 기기에는 저장돼 있어요.' + (notes.length ? ' (' + notes.join(' · ') + ')' : '')); }
   renderSaved();
 }
 function showDownloads(rec) { const box = $('dl-box'); box.innerHTML = ''; mergeBtns(rec, box); }
@@ -680,7 +685,7 @@ async function renderSaved() {
     all.forEach(rec => {
       const row = document.createElement('div'); row.style.cssText = 'padding:8px 0; border-top:1px solid var(--line);';
       const d = new Date(rec.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-      const t = document.createElement('div'); t.innerHTML = '<b>' + escapeHtml(rec.name) + '</b> <span class="muted">' + ds + (rec.sTeacher || rec.sStudent ? ' · ☁ 서버 보관' : ' · 이 기기에만') + '</span>'; row.appendChild(t);
+      const t = document.createElement('div'); t.innerHTML = '<b>' + escapeHtml(rec.name) + '</b> <span class="muted">' + ds + (rec.sTeacher || rec.sStudent ? ' · ☁ 서버 보관(' + (rec.sTeacher ? '강사용' : '') + (rec.sTeacher && rec.sStudent ? '·' : '') + (rec.sStudent ? '학생용' : '') + ')' : ' · 이 기기에만') + '</span>'; row.appendChild(t);
       const mk = (kind, label, local, srv) => {
         if (!local && !srv) return;
         const sz = local ? local.size : srv.size;
@@ -697,11 +702,12 @@ async function renderSaved() {
       };
       mk('teacher', '강사용', rec.teacher, rec.sTeacher); mk('student', '학생용', rec.student, rec.sStudent);
       if (rec.teacher || rec.student) { const ce = document.createElement('button'); ce.type = 'button'; ce.className = 'btn'; ce.style.cssText = 'margin:3px 6px 3px 0;'; ce.textContent = '🎨 표지 수정'; ce.title = '원본 교재의 표지로 바꾸고, 강사용/학생용 표시 위치·크기를 직접 정해요'; ce.onclick = () => editCover(rec); row.appendChild(ce); }
-      if (!(rec.sTeacher || rec.sStudent) && (rec.teacher || rec.student)) {
-        const up = document.createElement('button'); up.type = 'button'; up.className = 'btn'; up.style.cssText = 'margin:3px 6px 3px 0;'; up.textContent = '☁ 서버에 보관';
-        up.onclick = async () => { up.disabled = true; await syncToServer({ id: rec.id, name: rec.name, teacher: rec.teacher, student: rec.student }); };
+      [['teacher', '강사용', rec.teacher, rec.sTeacher], ['student', '학생용', rec.student, rec.sStudent]].forEach(a => {
+        if (!a[2] || a[3]) return;
+        const up = document.createElement('button'); up.type = 'button'; up.className = 'btn'; up.style.cssText = 'margin:3px 6px 3px 0;'; up.textContent = '☁ ' + a[1] + ' 서버에 보관';
+        up.onclick = async () => { up.disabled = true; await syncToServer({ id: rec.id, name: rec.name, date: rec.date, teacher: rec.teacher, student: rec.student }, a[0]); };
         row.appendChild(up);
-      }
+      });
       const del = document.createElement('button'); del.type = 'button'; del.className = 'btn'; del.style.cssText = 'margin:3px 0; color:#C1392B;'; del.textContent = '🗑 삭제';
       let armed = false, tm = null;
       del.onclick = async () => {
