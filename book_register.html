@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611170420">
+<link rel="stylesheet" href="css/style.css?v=202611171530">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -46,6 +46,7 @@
     <input type="file" id="book-file" accept="application/pdf">
     <label class="field-label-spaced">교재 이름 <span class="muted" style="font-weight:400;">(시험 이름·문제은행 배지·교재별 선택에 쓰여요. 예: 중2 내신대비교재 / 중1 핵심문제 교재)</span></label>
     <input type="text" id="book-name" placeholder="PDF 파일 이름이 자동으로 들어가요 — 원하면 고치세요">
+    <label style="display:flex; gap:8px; align-items:flex-start; margin-top:12px; font-size:13px;"><input type="checkbox" id="no-essay" style="margin-top:3px;"> <span><b>이 교재에는 서술형이 없어요</b> — 정답이 비어 있는 칸을 서술형(채점 안 함)으로 두지 않고 <b>못 읽은 것(?)</b>으로 표시해서 직접 채우게 해요.</span></label>
     <button type="button" class="btn primary" id="read-btn" style="width:100%; margin-top:14px;" disabled>1단계 · 목차와 정답 읽기</button>
     <p class="hint" id="read-msg" style="margin:8px 0 0;"></p>
   </div>
@@ -89,14 +90,14 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611170420"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611170420"></script>
-<script src="js/vendor/pdf.min.js?v=202611170420"></script>
-<script src="js/config.js?v=202611170420"></script>
-<script src="js/api.js?v=202611170420"></script>
-<script src="js/common.js?v=202611170420"></script>
-<script src="js/bankcore.js?v=202611170420"></script>
-<script src="js/pdfui.js?v=202611170420"></script>
+<script src="js/vendor/qrcode.min.js?v=202611171530"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611171530"></script>
+<script src="js/vendor/pdf.min.js?v=202611171530"></script>
+<script src="js/config.js?v=202611171530"></script>
+<script src="js/api.js?v=202611171530"></script>
+<script src="js/common.js?v=202611171530"></script>
+<script src="js/bankcore.js?v=202611171530"></script>
+<script src="js/pdfui.js?v=202611171530"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -393,7 +394,8 @@ $('read-btn').addEventListener('click', async () => {
       // 번호가 1번부터 다시 시작하는 덩어리 = 한 단원 (목차의 정답 쪽 번호가 어긋나도 맞춘다)
     sections.forEach((s, si) => {
       const essayTitle = /서술|논술/.test(String(s.name || '') + ' ' + String(s.tag || ''));
-      const rr = essayTitle ? [] : (byBlock ? byBlock[si] : rows.filter(r => r.p >= s.aa && r.p <= s.ab));      // 서술형 단원은 객관식 정답을 읽지 않는다(해설만 문제 밑에 붙임)
+      const rr = essayTitle ? [] : (byBlock ? byBlock[si] : rows.filter(r => r.p >= s.aa && r.p <= s.ab));
+      if ($('no-essay') && $('no-essay').checked) rr.forEach(r => { if (r.d === '-') r.d = '?'; });      // 서술형이 없는 교재: 빈 정답은 못 읽은 것      // 서술형 단원은 객관식 정답을 읽지 않는다(해설만 문제 밑에 붙임)
       if (byBlock && rr.length) { s.aa = Math.min.apply(null, rr.map(r => r.p)); s.ab = Math.max.apply(null, rr.map(r => r.p)); }
       s.rows = rr;
       const minN = rr.reduce((m, r) => Math.min(m, r.n), 1e9);
