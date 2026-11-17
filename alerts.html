@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 예약·알림 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611181130">
+<link rel="stylesheet" href="css/style.css?v=202611181200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -19,7 +19,9 @@
 
   <div class="card" id="al-box"><b>🔔 알림</b><div id="al-body" class="hint" style="margin-top:8px;">불러오는 중...</div></div>
 
-  <div class="card" id="fx-box" style="display:none;border:2px solid #1f6f4a;"><b id="fx-title">📝 방금 제출한 기록</b><div id="fx-body" class="hint" style="margin-top:8px;">불러오는 중...</div></div>
+  <div class="card" id="fx-box" style="border:2px solid #1f6f4a;"><b id="fx-title">🔎 학생 이름으로 기록 찾기 · 오답노트/다시풀기 받기</b>
+    <input id="fx-q" list="fx-names" placeholder="학생 이름 (일부만 써도 돼요)" autocomplete="off" style="display:block;width:100%;box-sizing:border-box;margin-top:8px;padding:9px 10px;font-size:15px;"><datalist id="fx-names"></datalist>
+    <div id="fx-body" class="hint" style="margin-top:8px;">이름을 쓰면 그 학생의 시험 기록만 나와요. 거기서 여러 시험을 골라 한꺼번에 받을 수 있어요.</div></div>
 
   <div class="card" id="wn-box">
     <b>📓 오답노트 · 🔁 오답문제 다시풀기</b>
@@ -80,16 +82,16 @@
     <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
   </div>
 </template>
-<script src="js/config.js?v=202611181130"></script>
-<script src="js/api.js?v=202611181130"></script>
-<script src="js/common.js?v=202611181130"></script>
-<script src="js/vendor/pdf.min.js?v=202611181130"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611181130"></script>
-<script src="js/vendor/qrcode.min.js?v=202611181130"></script>
-<script src="js/bankcore.js?v=202611181130"></script>
-<script src="js/wrongnote.js?v=202611181130"></script>
-<script src="js/pdfui.js?v=202611181130"></script>
-<script src="js/clockpicker.js?v=202611181130"></script>
+<script src="js/config.js?v=202611181200"></script>
+<script src="js/api.js?v=202611181200"></script>
+<script src="js/common.js?v=202611181200"></script>
+<script src="js/vendor/pdf.min.js?v=202611181200"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611181200"></script>
+<script src="js/vendor/qrcode.min.js?v=202611181200"></script>
+<script src="js/bankcore.js?v=202611181200"></script>
+<script src="js/wrongnote.js?v=202611181200"></script>
+<script src="js/pdfui.js?v=202611181200"></script>
+<script src="js/clockpicker.js?v=202611181200"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -291,7 +293,7 @@ async function runWn(kind, keys) {
   const msg = $('wn-msg'), bar = $('wn-bar'), fill = $('wn-fill');
   const files = { student: $('wn-f-student').checked, answers: $('wn-f-answers').checked && kind === 'retry', teacher: $('wn-f-teacher').checked };
   if (!files.student && !files.answers && !files.teacher) { alert('받을 파일을 하나 이상 골라 주세요.'); return; }
-  if (!keys.length) { alert('위 「새로 제출한 기록」에서 기록을 먼저 체크해 주세요.'); return; }
+  if (!keys.length) { alert('위에서 학생 기록을 먼저 체크해 주세요.'); return; }
   WN_BUSY = true; document.querySelectorAll('#wn-box button, .wn-one').forEach(b => b.disabled = true);
   bar.style.display = ''; fill.style.width = '0'; const T0 = Date.now(); let G = 1, gi = 0, frac = 0, last = '';
   const paint = () => { const f = (gi + frac) / G, el = (Date.now() - T0) / 1000; let eta = ''; if (f > 0.05 && el > 6) { const sec = Math.round(el * (1 - f) / f); eta = ' · 약 ' + (sec >= 60 ? Math.floor(sec / 60) + '분 ' + (sec % 60) + '초' : sec + '초') + ' 남음(대략)'; } fill.style.width = Math.min(100, Math.round(f * 100)) + '%'; msg.textContent = last + '  [' + Math.floor(f * 100) + '%' + eta + ']'; };
@@ -319,29 +321,41 @@ $('wn-go-note').addEventListener('click', () => runWn('note', Object.keys(WN_SEL
 $('wn-go-retry').addEventListener('click', () => runWn('retry', Object.keys(WN_SEL)));
 $('wn-clear').addEventListener('click', () => { Object.keys(WN_SEL).forEach(k => delete WN_SEL[k]); document.querySelectorAll('.wn-chk').forEach(c => { c.checked = false; }); });
 
-// ── 알림을 눌러 들어왔을 때: 그 학생 기록 + 이전 시험 기록 ──
-(async function focusStudent() {
-  const q = new URLSearchParams(location.search), stu = q.get('stu'), sub = q.get('sub'); if (!stu) return;
-  const box = $('fx-box'), body = $('fx-body'); box.style.display = '';
-  $('fx-title').textContent = '📝 ' + stu + ' 학생 기록';
+// ── 학생 이름 검색 / 알림을 눌러 들어왔을 때: 그 학생 기록만 보기 ──
+async function showStudent(q, sub) {
+  const body = $('fx-body'); if (!nk(q)) { body.innerHTML = '<span class="hint">이름을 쓰면 그 학생의 시험 기록만 나와요.</span>'; return; }
+  body.textContent = '기록을 불러오는 중...';
   try {
-    const all = await fullSubs(), nk = x => String(x).replace(/\s+/g, '').toLowerCase();
-    const mine = all.filter(x => nk(x.studentName) === nk(stu)).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-    if (!mine.length) { body.textContent = '이 학생의 제출 기록을 찾지 못했어요.'; return; }
-    const cur = mine.find(x => !sub || String(x.examId) === sub) || mine[0], rest = mine.filter(x => x !== cur);
+    const all = await fullSubs(), hit = all.filter(x => nk(x.studentName).includes(nk(q)));
+    const names = hit.map(x => x.studentName).filter((n, i, a) => a.indexOf(n) === i);
+    if (!names.length) { body.textContent = '「' + q + '」 학생의 제출 기록을 찾지 못했어요.'; return; }
+    const exact = names.find(n => nk(n) === nk(q));
+    if (names.length > 1 && !exact) {
+      body.innerHTML = '<div style="margin-bottom:6px;">여러 학생이 검색돼요. 누구인지 눌러 주세요.</div>' + names.map(n => '<button type="button" class="btn outline fx-pick" data-n="' + e(n) + '" style="padding:5px 12px;margin:0 6px 6px 0;">' + e(n) + '</button>').join('');
+      body.querySelectorAll('.fx-pick').forEach(b => b.addEventListener('click', () => { $('fx-q').value = b.dataset.n; showStudent(b.dataset.n); })); return;
+    }
+    const who = exact || names[0], mine = hit.filter(x => x.studentName === who).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    const cur = sub ? mine.find(x => String(x.examId) === sub) : null, rest = mine.filter(x => x !== cur);
     const row = (s, hl) => { const k = wnKey(s), bad = Number(s.score) < Number(s.total);
       return '<div style="border-top:1px solid var(--line);padding:6px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;' + (hl ? 'background:#f1f8f3;' : '') + '"><input type="checkbox" class="wn-chk" data-k="' + e(k) + '"' + (WN_SEL[k] ? ' checked' : '') + '><span style="flex:1;min-width:150px;"><b>' + e(s.examTitle) + '</b> · ' + s.score + '/' + s.total + '<span class="hint" style="margin:0 0 0 6px;">' + fmt(s.submittedAt) + '</span></span>' + (bad ? '<button type="button" class="btn outline wn-one" data-kind="note" data-k="' + e(k) + '" style="padding:4px 10px;">📓 오답노트</button><button type="button" class="btn outline wn-one" data-kind="retry" data-k="' + e(k) + '" style="padding:4px 10px;">🔁 다시풀기</button>' : '<span class="hint" style="margin:0;">만점</span>') + '</div>'; };
-    body.innerHTML = '<div style="font-weight:700;color:#1f6f4a;margin-bottom:2px;">⬇️ 이번에 제출한 시험</div>' + row(cur, true) +
-      '<div style="font-weight:700;margin:12px 0 2px;">🗂️ 이 학생의 이전 시험 기록 ' + rest.length + '건 <span class="hint" style="margin:0;">(체크해서 아래 합쳐 받기 버튼으로 여러 시험을 한 PDF로)</span></div>' + (rest.length ? rest.map(s => row(s, false)).join('') : '<div class="hint">이전 기록이 없어요.</div>') +
+    body.innerHTML = '<div style="font-weight:700;margin-bottom:2px;">👤 ' + e(who) + ' · 시험 기록 ' + mine.length + '건</div>' +
+      (cur ? '<div style="font-weight:700;color:#1f6f4a;margin-top:6px;">⬇️ 이번에 제출한 시험</div>' + row(cur, true) + '<div style="font-weight:700;margin:12px 0 2px;">🗂️ 이전 시험 기록 ' + rest.length + '건</div>' : '') +
+      rest.map(s => row(s, false)).join('') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="btn outline" id="fx-all" style="padding:6px 12px;">틀린 기록 전부 선택</button><button type="button" class="btn primary" id="fx-note" style="padding:6px 12px;">📓 선택 오답노트 합쳐 받기</button><button type="button" class="btn primary" id="fx-retry" style="padding:6px 12px;">🔁 선택 다시풀기 합쳐 받기</button></div><div class="hint" style="margin-top:6px;">받을 파일(학생용·정답해설·강사용)과 옵션은 아래 「오답노트·다시풀기」 카드에서 고르세요.</div>';
     body.querySelectorAll('.wn-chk').forEach(c => c.addEventListener('change', () => { if (c.checked) WN_SEL[c.dataset.k] = 1; else delete WN_SEL[c.dataset.k]; }));
     body.querySelectorAll('.wn-one').forEach(b => b.addEventListener('click', () => runWn(b.dataset.kind, [b.dataset.k])));
-    $('fx-all').addEventListener('click', () => body.querySelectorAll('.wn-chk').forEach(c => { if (!c.disabled) { c.checked = true; WN_SEL[c.dataset.k] = 1; } }));
-    $('fx-note').addEventListener('click', () => runWn('note', Object.keys(WN_SEL)));
-    $('fx-retry').addEventListener('click', () => runWn('retry', Object.keys(WN_SEL)));
-    box.scrollIntoView({ block: 'start' });
+    $('fx-all').addEventListener('click', () => body.querySelectorAll('.wn-chk').forEach(c => { c.checked = true; WN_SEL[c.dataset.k] = 1; }));
+    $('fx-note').addEventListener('click', () => runWn('note', Object.keys(WN_SEL).filter(k => mine.some(x => wnKey(x) === k))));
+    $('fx-retry').addEventListener('click', () => runWn('retry', Object.keys(WN_SEL).filter(k => mine.some(x => wnKey(x) === k))));
   } catch (err) { body.innerHTML = '<span style="color:#C1392B;">' + e(err.message || err) + '</span>'; }
-})();
+}
+let fxT = null, fxLoaded = false;
+$('fx-q').addEventListener('input', () => { clearTimeout(fxT); fxT = setTimeout(() => showStudent($('fx-q').value), 400); });
+$('fx-q').addEventListener('focus', async () => {
+  if (fxLoaded) return; fxLoaded = true;
+  try { const all = await fullSubs(); $('fx-names').innerHTML = all.map(x => x.studentName).filter((n, i, a) => n && a.indexOf(n) === i).sort().map(n => '<option value="' + e(n) + '">').join(''); } catch (x) { fxLoaded = false; }
+});
+(function () { const q = new URLSearchParams(location.search), stu = q.get('stu'); if (!stu) return; $('fx-q').value = stu; showStudent(stu, q.get('sub')).then(() => $('fx-box').scrollIntoView({ block: 'start' })); })();
 loadExams(); loadRosters(); loadAlerts(); loadAssign(); loadSettings();
 </script>
 </body>
