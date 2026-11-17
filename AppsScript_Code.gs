@@ -136,6 +136,7 @@ function handle_(e) {
       case 'deleteExams': result = actionDeleteExams_(params); break;
       case 'getExamPdf': result = actionGetExamPdf_(params); break;
       case 'mergeUpload': result = actionMergeUpload_(params); break;
+      case 'mergeCleanup': result = actionMergeCleanup_(params); break;
       case 'mergeList': result = actionMergeList_(params); break;
       case 'mergeGetPart': result = actionMergeGetPart_(params); break;
       case 'mergeDelete': result = actionMergeDelete_(params); break;
@@ -1299,14 +1300,25 @@ function actionMergeUpload_(p) {
 }
 function actionMergeList_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
-  const folder = mergeFolder_(), it = folder.getFiles(), by = {};
-  while (it.hasNext()) {
-    const f = it.next(), m = f.getName().match(/^([A-Za-z0-9_-]+)__(teacher|student)\.pdf$/); if (!m) continue;
-    let meta = {}; try { meta = JSON.parse(f.getDescription() || '{}'); } catch (e) {}
-    const r = by[m[1]] = by[m[1]] || { id: m[1], name: meta.name || m[1], date: meta.date || f.getDateCreated().toISOString() };
-    r[m[2]] = { fileId: f.getId(), size: f.getSize() };
-  }
+  // 폴더 전체를 훑지 않고 합본 PDF만 찾는다 (올리다 만 조각 파일이 많이 쌓여 있어도 느려지지 않게)
+  const folder = mergeFolder_(), by = {};
+  ['__teacher.pdf', '__student.pdf'].forEach(function (suf) {
+    const it = folder.searchFiles("title contains '" + suf + "'");
+    while (it.hasNext()) {
+      const f = it.next(), m = f.getName().match(/^([A-Za-z0-9_-]+)__(teacher|student)\.pdf$/); if (!m) continue;
+      let meta = {}; try { meta = JSON.parse(f.getDescription() || '{}'); } catch (e) {}
+      const r = by[m[1]] = by[m[1]] || { id: m[1], name: meta.name || m[1], date: meta.date || f.getDateCreated().toISOString() };
+      r[m[2]] = { fileId: f.getId(), size: f.getSize() };
+    }
+  });
   return { ok: true, merges: Object.keys(by).map(function (k) { return by[k]; }) };
+}
+// 올리다 만 임시 조각 파일 정리 (2시간 넘게 남아 있는 것만 지운다)
+function actionMergeCleanup_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const folder = mergeFolder_(), it = folder.searchFiles("title contains '__chunk__'"), limit = Date.now() - 2 * 3600 * 1000; let n = 0, t0 = Date.now();
+  while (it.hasNext() && Date.now() - t0 < 240000) { const f = it.next(); if (f.getDateCreated().getTime() < limit) { f.setTrashed(true); n++; } }
+  return { ok: true, removed: n };
 }
 function actionMergeGetPart_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180350">
+<link rel="stylesheet" href="css/style.css?v=202611180410">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -55,13 +55,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611180350"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180350"></script>
-<script src="js/config.js?v=202611180350"></script>
-<script src="js/api.js?v=202611180350"></script>
-<script src="js/common.js?v=202611180350"></script>
-<script src="js/bankcore.js?v=202611180350"></script>
-<script src="js/coverdesign.js?v=202611180350"></script>
+<script src="js/vendor/pdf.min.js?v=202611180410"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180410"></script>
+<script src="js/config.js?v=202611180410"></script>
+<script src="js/api.js?v=202611180410"></script>
+<script src="js/common.js?v=202611180410"></script>
+<script src="js/bankcore.js?v=202611180410"></script>
+<script src="js/coverdesign.js?v=202611180410"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -108,9 +108,9 @@ async function serverDownload(fileId, onProg) {
   return new Blob(parts, { type: 'application/pdf' });
 }
 
-let SERVER = [];
+let SERVER = []; try { SERVER = JSON.parse(localStorage.getItem('merge_srv_cache') || '[]'); } catch (e) { SERVER = []; }
 async function srvDelete(id, kind) { const r = await callApi('mergeDelete', { password: getTeacherPassword(), id: id, kind: kind }); if (!r || !r.ok) throw new Error((r && r.error) || '서버에서 지우지 못했어요(앱스스크립트를 새 버전으로 다시 배포해야 할 수 있어요)'); return r; }
-async function srvList() { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) { SERVER = r.merges || []; } return SERVER; }
+async function srvList() { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) { SERVER = r.merges || []; try { localStorage.setItem('merge_srv_cache', JSON.stringify(SERVER)); } catch (e) {} } return SERVER; }
 const pickPdf = () => new Promise(res => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/pdf'; i.onchange = () => res(i.files[0] || null); i.click(); });
 const mb = n => (n / 1048576).toFixed(0) + 'MB';
 let SERVER_LOADED = false, SERVER_ERR = '';
@@ -118,7 +118,7 @@ async function renderList(fresh) {
   let local = []; try { local = await mergeDbAll(); } catch (e) {}
   // 서버 목록(구글 서버라 몇 초 걸려요)은 기다리지 않고, 이 기기 목록을 먼저 보여 준 뒤 도착하면 다시 그린다
   if (fresh || !SERVER_LOADED) {
-    const loadSrv = async () => { try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) { SERVER = r.merges || []; SERVER_ERR = ''; } else SERVER_ERR = (r && r.error) || '서버 목록을 불러오지 못했어요'; } catch (e) { SERVER_ERR = '서버 목록을 불러오지 못했어요(' + e.message + ')'; } SERVER_LOADED = true; };
+    const loadSrv = async () => { try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) { SERVER = r.merges || []; SERVER_ERR = ''; try { localStorage.setItem('merge_srv_cache', JSON.stringify(SERVER)); } catch (e) {} callApi('mergeCleanup', { password: getTeacherPassword() }).catch(() => {}); } else SERVER_ERR = (r && r.error) || '서버 목록을 불러오지 못했어요'; } catch (e) { SERVER_ERR = '서버 목록을 불러오지 못했어요(' + e.message + ')'; } SERVER_LOADED = true; };
     if (!SERVER_LOADED) { loadSrv().then(() => renderList()); } else await loadSrv();
   }
   let srvErr = SERVER_ERR;
@@ -130,7 +130,7 @@ async function renderList(fresh) {
   const all = Object.keys(by).map(k => by[k]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const box = $('list');
   if (!all.length) { box.className = 'muted'; box.innerHTML = '저장된 교재가 없어요. 「교재 한 권 QR 합본 만들기」에서 교재를 만들면 여기에 나타나요.' + (srvErr ? '<br>' + esc(srvErr) : ''); return; }
-  box.className = ''; box.innerHTML = !SERVER_LOADED ? '<div class="muted">☁ 서버 보관 상태를 확인하는 중...</div>' : srvErr ? '<div class="muted" style="color:#B45309;">⚠ ' + esc(srvErr) + ' — 이 기기에 저장된 교재만 보여요.</div>' : '';
+  box.className = ''; box.innerHTML = !SERVER_LOADED ? '<div class="muted">☁ 서버 보관 상태를 확인하는 중... (아래는 마지막으로 확인한 상태예요)</div>' : srvErr ? '<div class="muted" style="color:#B45309;">⚠ ' + esc(srvErr) + ' — 이 기기에 저장된 교재만 보여요.</div>' : '';
   all.forEach(it => {
     const rec = it.rec, d = new Date(it.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
     const row = document.createElement('div'); row.className = 'ce-row'; row.style.display = 'block';
