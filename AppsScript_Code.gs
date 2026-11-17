@@ -136,6 +136,7 @@ function handle_(e) {
       case 'deleteExams': result = actionDeleteExams_(params); break;
       case 'getExamPdf': result = actionGetExamPdf_(params); break;
       case 'mergeUpload': result = actionMergeUpload_(params); break;
+      case 'retryWrongLog': result = actionRetryWrongLog_(params); break;
       case 'mergeSession': result = actionMergeSession_(params); break;
       case 'mergeDlCopy': result = actionMergeDlCopy_(params); break;
       case 'mergeCleanup': result = actionMergeCleanup_(params); break;
@@ -2286,10 +2287,18 @@ function actionRetryCheck_(p) {
     const sh = ensureSheet_(ss, 'Retries', ['examId', 'studentName', 'tried', 'correct', 'at']);
     sh.appendRow([p.id, String(p.studentName || '이름없음'), tried, okN, new Date().toISOString()]);
     if (p.studentName) { const cl = ensureSheet_(ss, 'Cleared', ['examId', 'name', 'n', 'at']), nowIso = new Date().toISOString(); Object.keys(results).forEach(function (n) { if (results[n] === 'ok') cl.appendRow([String(p.id), String(p.studentName).trim(), Number(n), nowIso]); else if (results[n] === 'x') ensureSheet_(ss, 'ReviewFail', ['examId', 'name', 'n', 'at']).appendRow([String(p.id), String(p.studentName).trim(), Number(n), nowIso]); }); }
+    if (p.studentName) { const rw = ensureSheet_(ss, 'RetryWrong', ['examId', 'name', 'n', 'at']), nowIso2 = new Date().toISOString(); Object.keys(results).forEach(function (n) { if (results[n] === 'x') rw.appendRow([p.id, String(p.studentName), Number(n), nowIso2]); }); }      // 다시 풀고도 틀린 문항: 「N번 틀림」 표시에 쓴다
   } catch (e) {}
   return { ok: true, results: results, tried: tried, correct: okN };
 }
 
+// 다시 풀기에서 또 틀린 문항 기록 (오답노트·다시풀기 PDF의 「N번 틀림」 표시용)
+function actionRetryWrongLog_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('RetryWrong');
+  if (!sh || sh.getLastRow() < 2) return { ok: true, rows: [] };
+  return { ok: true, rows: sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues().map(function (r) { return [String(r[0]), String(r[1]), Number(r[2])]; }) };
+}
 // 오답 다시 풀기 기록 조회 (강사용): 시험 기록 화면에 「오답노트」 배지로 함께 보여준다
 function actionRetryLog_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };

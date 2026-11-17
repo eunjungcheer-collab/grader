@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180945">
+<link rel="stylesheet" href="css/style.css?v=202611181000">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -47,14 +47,15 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611180945"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180945"></script>
-<script src="js/vendor/qrcode.min.js?v=202611180945"></script>
-<script src="js/config.js?v=202611180945"></script>
-<script src="js/api.js?v=202611180945"></script>
-<script src="js/common.js?v=202611180945"></script>
-<script src="js/bankcore.js?v=202611180945"></script>
-<script src="js/pdfui.js?v=202611180945"></script>
+<script src="js/vendor/pdf.min.js?v=202611181000"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611181000"></script>
+<script src="js/vendor/qrcode.min.js?v=202611181000"></script>
+<script src="js/config.js?v=202611181000"></script>
+<script src="js/api.js?v=202611181000"></script>
+<script src="js/common.js?v=202611181000"></script>
+<script src="js/bankcore.js?v=202611181000"></script>
+<script src="js/wrongnote.js?v=202611181000"></script>
+<script src="js/pdfui.js?v=202611181000"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -74,15 +75,7 @@ const $ = id => document.getElementById(id);
 const PER_PAGE = 20;
 let all = [], retries = [], examFilter = '', page = 1;
 
-function hydrate(res) {
-  const ex = res.exams || {};
-  return (res.submissions || []).map(r => {
-    const e = ex[String(r.examId)];
-    if (e) { if (r.examTitle === undefined) r.examTitle = e.title; if (!r.correctAnswers) r.correctAnswers = e.correctAnswers || []; if (!r.sourceQuestionIds) r.sourceQuestionIds = e.sourceQuestionIds || []; }
-    else if (r.examTitle === undefined) { r.examTitle = '(삭제된 시험)'; r.correctAnswers = r.correctAnswers || []; r.sourceQuestionIds = r.sourceQuestionIds || []; }
-    return r;
-  });
-}
+const hydrate = wnHydrate;      // js/wrongnote.js
 const REC_CACHE = 'rec_cache_v1';
 async function loadBankUnitsBg() {
   try {
@@ -143,11 +136,6 @@ function wrongUnits(s) {
   return { count: count, byUnit: byUnit };
 }
 // 학생이 푼 문항별 결과: [{n, given, correct, ok, subj}] (주관식 '-'은 자동 채점 제외)
-function itemResults(s) {
-  const correct = s.correctAnswers || [], given = String(s.answers || '').split(',');
-  return correct.map((c, i) => ({ n: i + 1, given: (given[i] || '').trim(), correct: c, subj: c === '-', skip: isSkipAns(given[i]), ok: c !== '-' && answerMatches(given[i], c) }));
-}
-function wrongNumsOf(s) { return itemResults(s).filter(r => !r.subj && !r.skip && !r.ok).map(r => r.n); }
 function resultPanelHtml(s) {
   const rs = itemResults(s);
   if (!rs.length) return '<div class="hint">이 시험의 정답 정보를 찾지 못했어요.</div>';
@@ -248,106 +236,12 @@ async function findTextMatches(s) {
 
 
 // ── 오답노트: 틀린 문항 그림 + 내 답/정답 + (해설) 을 PDF로 ──
-function rangeInfo(q, picks) {
-  const m = String(q.textPreview || '').match(/^\s*[\[(【]\s*(\d{1,2})\s*[~∼～\-–]\s*(\d{1,2})\s*(?:번)?\s*[\])】]/);
-  if (!m) return null;
-  const k = parseInt(m[2], 10) - parseInt(m[1], 10) + 1;
-  if (!(k >= 2 && k <= 4)) return null;
-  const a0 = parseInt(m[1], 10), b0 = parseInt(m[2], 10);
-  if (picks && picks.some(o => o !== q && o.source === q.source && o.num > a0 && o.num <= b0)) return null;
-  const ans = String(q.answer || '').trim();
-  let parts = null;
-  if (/^\d+$/.test(ans) && ans.length === k) parts = ans.split('');
-  else if (/^[\d\-]+([,\s]+[\d\-]+)+$/.test(ans)) parts = ans.split(/[,\s]+/);
-  return parts && parts.length === k ? { k: k } : null;
-}
+// 오답노트 만들기는 js/wrongnote.js (알림 화면과 같이 쓴다)
 async function buildWrongNote(s, opt, say) {
-  const wrong = itemResults(s).filter(r => !r.subj && !r.skip && !r.ok);
-  if (!wrong.length) throw new Error('틀린 문항이 없어요.');
-  const wrongBy = {}; wrong.forEach(r => { wrongBy[r.n] = r; });
-  const entryOf = r => ({ n: r.n, given: r.given, answer: r.correct });
-  const items = [], B = 5;
-  if (s.sourceQuestionIds && s.sourceQuestionIds.length) {
-    // 문제은행에서 출제한 시험: 은행의 문항 그림을 쓴다
-    say('문제은행 불러오는 중...');
-    const lq = await callApi('listQuestions', { password: getTeacherPassword() });
-    if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요');
-    const byId = {}; lq.questions.forEach(q => { byId[q.id] = q; });
-    let picks = s.sourceQuestionIds.map(id => byId[id]);
-    window.__wnNote = '';
-    if (picks.some(q => !q)) {
-      // 시험지에 적힌 문항 id가 은행에 없으면 ① 교재 시험지는 이름(출처)+번호로, ② 시험을 등록할 때 저장해 둔 문항 글자로 은행의 같은 문항을 찾아 쓴다
-      // (「중복 정리」로 같은 글자의 문항이 하나만 남은 경우에도 남은 문항이 같은 그림이라 그대로 쓸 수 있다)
-      const t = String(s.examTitle || '').trim(), by = {}, byText = {};
-      lq.questions.filter(q => q.kind === '교재' && q.num && (String(q.source || '').trim() === t || String(q.source || '').trim() + '공략' === t))
-        .sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt))).forEach(q => { by[q.num] = q; });
-      lq.questions.forEach(q => { const k = dupKey(q.textPreview); if (k.length >= 25 && (!byText[k] || q.kind === '교재')) byText[k] = q; });
-      let texts = [];
-      try { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: s.examId }); if (d.ok) texts = d.questionTexts || []; } catch (e) {}
-      picks = picks.map((q, i) => { if (q) return q; if (by[i + 1]) return by[i + 1]; const k = dupKey(texts[i]); return (k.length >= 25 && byText[k]) || null; });
-    }
-    const lostWrong = [];
-    picks = picks.map((q, i) => { if (q) return q; if (wrongBy[i + 1]) lostWrong.push(i + 1); return { __missing: true }; });
-    if (lostWrong.length) window.__wnNote = '문제은행에 없어서 빠진 문항: ' + lostWrong.join(', ') + '번';
-    if (lostWrong.length && lostWrong.length >= wrong.length) throw new Error('틀린 문항(' + lostWrong.join(', ') + '번)의 문제가 문제은행에 없어요. 같은 글자의 문항도 찾지 못했어요. 교재 등록에서 이 단원을 다시 등록하면 복구돼요.');
-    let n = 1; const need = [];
-    picks.forEach(q => {
-      if (q.__missing) { n++; return; }
-      const ri = rangeInfo(q, picks), k = ri ? ri.k : 1, entries = [];
-      for (let j = 0; j < k; j++) if (wrongBy[n + j]) entries.push(entryOf(wrongBy[n + j]));
-      if (entries.length) need.push({ q: q, entries: entries, num: k > 1 ? n + '~' + (n + k - 1) : String(n) });
-      n += k;
-    });
-    if (n - 1 !== (s.correctAnswers || []).length) throw new Error('문항 번호가 시험 정보와 맞지 않아 만들 수 없어요.');
-    const fetchImgs = async (ids, label) => {
-      const out = {};
-      for (let a = 0; a < ids.length; a += B) {
-        say(label + ' 불러오는 중... ' + Math.min(a + B, ids.length) + '/' + ids.length);
-        const r = await callApi('getQuestionImages', { password: getTeacherPassword(), fileIds: ids.slice(a, a + B) });
-        if (!r.ok) throw new Error(r.error || '이미지를 불러오지 못했어요');
-        for (const im of r.images) { const c = await BankCore.cleanImageBase64(im.base64); out[im.fileId] = c ? { b64: c.base64, w: c.width, h: c.height } : { b64: im.base64, w: pngSize(BankCore.b64ToBytes(im.base64)).width, h: pngSize(BankCore.b64ToBytes(im.base64)).height }; }
-      }
-      return out;
-    };
-    const qi = await fetchImgs(need.map(x => x.q.fileId), '문항 이미지');
-    const ei = opt.withExpl ? await fetchImgs(need.filter(x => x.q.explFileId).map(x => x.q.explFileId), '해설 이미지') : {};
-    need.forEach(x => {
-      const im = qi[x.q.fileId]; if (!im) return;
-      const it = { base64: im.b64, width: im.w, height: im.h, naturalW: im.w / BankCore.CROP_SCALE, entries: x.entries, num: x.num, numRect: x.q.numRect || null };
-      const ex = x.q.explFileId && ei[x.q.explFileId]; if (ex) { it.explBase64 = ex.b64; it.explW = ex.w; it.explH = ex.h; }
-      items.push(it);
-    });
-  } else {
-    // 새로 등록한 PDF 시험: 등록된 PDF에서 틀린 문항을 잘라 쓴다
-    say('시험지 PDF 불러오는 중...');
-    const pr = await callApi('getExamPdf', { password: getTeacherPassword(), id: s.examId });
-    if (!pr.ok) throw new Error(pr.error || 'PDF를 불러오지 못했어요.');
-    const doc = await pdfjsLib.getDocument({ data: BankCore.b64ToBytes(pr.base64) }).promise;
-    say('문항 찾는 중...');
-    const scan = await BankCore.scanPdf(doc);
-    const miss = [];
-    for (const r of wrong) {
-      const q = scan.questions.find(x => x.num === r.n);
-      if (!q) { miss.push(r.n); continue; }
-      say(r.n + '번 문항 자르는 중...');
-      const cv = await BankCore.renderQuestion(doc, q, BankCore.CROP_SCALE, true);
-      const it = { base64: BankCore.canvasToBase64(cv), width: cv.width, height: cv.height, naturalW: cv.width / BankCore.CROP_SCALE, entries: [entryOf(r)] };
-      const ex = opt.withExpl && scan.explanations && scan.explanations[r.n];
-      if (ex) { try { const ec = await BankCore.renderExplanation(doc, ex, 2.2); it.explBase64 = BankCore.canvasToBase64(ec); it.explW = ec.width; it.explH = ec.height; } catch (e) {} }
-      items.push(it);
-    }
-    if (!items.length) throw new Error('시험지에서 틀린 문항을 찾지 못했어요. (스캔·이미지 PDF는 지원이 어려워요)');
-    if (miss.length) say(miss.join(', ') + '번은 찾지 못해 빠졌어요');
-  }
-  say('PDF 만드는 중...');
-  let qrBase64 = '';
-  try {
-    const retryUrl = new URL('student_retry.html', location.href).href + '?id=' + encodeURIComponent(s.examId) + '&n=' + wrong.map(r => r.n).join(',') + '&name=' + encodeURIComponent(s.studentName);
-    qrBase64 = (await QRCode.toDataURL(retryUrl, { width: 300, margin: 1 })).split(',')[1];
-  } catch (e) { qrBase64 = ''; }
-  const ndoc = await BankCore.composeWrongNotePdf(PDFLib, items, { studentName: s.studentName, examTitle: s.examTitle, wrongCount: wrong.length, scoreText: s.total ? s.score100 + '점' : '', withExpl: opt.withExpl, blank: opt.blank, qrBase64: qrBase64 });
-  await BankCore.addPageNumbers(PDFLib, ndoc);
-  return await ndoc.save();
+  window.__wnNote = '';
+  const r = await wnBuild([s], 'note', { student: true }, Object.assign({}, opt, { subs: all }), say);
+  window.__wnNote = r.notes.join(' / ');
+  return r.student;
 }
 
 let bankUnitOf = {};   // 문항 id -> 단원 (문제은행 목록에서 한 번만 불러와 캐시)

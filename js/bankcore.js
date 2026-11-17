@@ -2003,7 +2003,7 @@
   // ── 오답노트: 학생이 틀린 문항만 모아서 (문제 그림 + 내 답/정답 + 해설 + 다시 풀 빈칸) PDF로 만든다 ──
   // items: [{ base64, width, height, naturalW, entries:[{n, given, answer}], explBase64?, explW?, explH? }]
   // opts: { studentName, examTitle, withExpl, blank(pt) }
-  function wrongNoteLabelPng(entries, widthPt) {
+  function wrongNoteLabelPng(entries, widthPt, mode) {
     const circ = '①②③④⑤⑥⑦⑧⑨', sc = 4, h = 18, FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
     const fmt = a => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '(무응답)'; if (t === '-') return '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
     const c = createCanvas(Math.round(widthPt * sc), h * sc), ctx = c.getContext('2d');
@@ -2013,20 +2013,33 @@
     let x = 8 * sc; const cy = c.height / 2 + 0.4 * sc;
     entries.forEach((e, i) => {
       const parts = [];
-      if (true) parts.push([e.n + '번  ', '#0B1F5C']);
-      parts.push(['내 답 ', '#6B7280'], [fmt(e.given), '#C1392B']);        // 정답은 맨 뒤 쪽에 모아서 보여 준다
+      parts.push([e.n + '번  ', '#0B1F5C']);
+      if (mode === 'none') { /* 다시풀기 학생용: 번호만 (내 답·정답 표시 없음) */ }
+      else if (mode === 'teacher') parts.push(['내 답 ', '#6B7280'], [fmt(e.given), '#C1392B'], ['   정답 ', '#6B7280'], [fmt(e.answer), '#145A32']);
+      else if (mode === 'teacherRetry') parts.push(['정답 ', '#6B7280'], [fmt(e.answer), '#145A32']);
+      else parts.push(['내 답 ', '#6B7280'], [fmt(e.given), '#C1392B']);        // 정답은 맨 뒤 쪽에 모아서 보여 준다
       if (i < entries.length - 1) parts.push(['      ', '#000']);
       parts.forEach(pt => { ctx.font = 'bold ' + (9.5 * sc) + 'px ' + FONT; ctx.fillStyle = pt[1]; ctx.fillText(pt[0], x, cy); x += ctx.measureText(pt[0]).width; });
     });
     return { base64: canvasToBase64(c), w: widthPt, h: h };
   }
-  function wrongNoteHeaderPng(title, sub, widthPt) {
+  // 문제번호 위에 붙이는 「N번 틀림」 표시 (같은 문제를 틀릴 때마다 숫자가 늘어난다)
+  function wrongNoteTagPng(times) {
+    const sc = 5, FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif', t = times + '번 틀림', fs = 8.5;
+    const m = createCanvas(10, 10).getContext('2d'); m.font = 'bold ' + (fs * sc) + 'px ' + FONT;
+    const w = Math.ceil(m.measureText(t).width / sc) + 12, h = 12;
+    const c = createCanvas(w * sc, h * sc), ctx = c.getContext('2d');
+    ctx.fillStyle = times >= 3 ? '#C1392B' : '#FDECEA'; ctx.beginPath(); ctx.roundRect(0, 0, c.width, c.height, 5 * sc); ctx.fill();
+    ctx.fillStyle = times >= 3 ? '#fff' : '#C1392B'; ctx.font = 'bold ' + (fs * sc) + 'px ' + FONT; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.fillText(t, c.width / 2, c.height / 2 + 0.4 * sc);
+    return { base64: canvasToBase64(c), w: w, h: h };
+  }
+  function wrongNoteHeaderPng(title, sub, widthPt, kindLabel) {
     const sc = 4, h = 30, FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
     const c = createCanvas(Math.round(widthPt * sc), h * sc), ctx = c.getContext('2d');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     ctx.fillStyle = '#0B1F5C'; ctx.fillRect(0, 0, 66 * sc, c.height);
     ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.font = 'bold ' + (13 * sc) + 'px ' + FONT;
-    ctx.fillText('오답노트', 33 * sc, c.height / 2 + 0.5 * sc);
+    { const kl = kindLabel || '오답노트'; let kf = 13; ctx.font = 'bold ' + (kf * sc) + 'px ' + FONT; while (kf > 8 && ctx.measureText(kl).width > 60 * sc) { kf -= 0.5; ctx.font = 'bold ' + (kf * sc) + 'px ' + FONT; } ctx.fillText(kl, 33 * sc, c.height / 2 + 0.5 * sc); }
     ctx.textAlign = 'left';
     let fs = 13, subW = 0;
     ctx.font = (9 * sc) + 'px ' + FONT; subW = ctx.measureText(sub).width / sc;
@@ -2119,7 +2132,7 @@
     const nfont = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
     const W = 595.28, H = 841.89, marginX = 30, marginBottom = 40, gap = 12, colGap = 14;
     const areaW = W - marginX * 2, colW = (areaW - colGap) / 2, colX = [marginX, marginX + colW + colGap];
-    const hdr = wrongNoteHeaderPng((opts.studentName || '') + (opts.examTitle ? '  ·  ' + opts.examTitle : ''), '틀린 ' + (opts.wrongCount != null ? opts.wrongCount : items.length) + '문항' + (opts.scoreText ? '  ·  ' + opts.scoreText : ''), areaW);
+    const hdr = wrongNoteHeaderPng((opts.studentName || '') + (opts.examTitle ? '  ·  ' + opts.examTitle : ''), '틀린 ' + (opts.wrongCount != null ? opts.wrongCount : items.length) + '문항' + (opts.scoreText ? '  ·  ' + opts.scoreText : ''), areaW, opts.kindLabel);
     const headImg = await doc.embedPng(b64ToBytes(hdr.base64));
     const marginTop = 28 + hdr.h + 14, maxH = H - marginTop - marginBottom;
     let qrImg = null, qrLab = null;
@@ -2142,26 +2155,29 @@
     function advance(p, used) { if (p.wide) ys[0] = ys[1] = p.top - used - gap; else ys[col] = p.top - used - gap; }
     newPage();
     const blank = opts.blank || 0;
-    for (const it of items) {
+    for (const it of (opts.part === 'answers' ? [] : items)) {      // part 'answers': 정답표·해설만 (문제 쪽 없음)
       const img = await doc.embedPng(b64ToBytes(it.base64));
       const wide = (it.naturalW || 0) > colW * 1.45, fullW = wide ? areaW : colW;
       let dw = Math.min(fullW, it.naturalW || fullW), dh = it.height * (dw / it.width);
-      const lab = wrongNoteLabelPng(it.entries, dw), labImg = await doc.embedPng(b64ToBytes(lab.base64));
-      const extra = lab.h + 4 + (blank ? blank + 4 : 0);
+      const lab = wrongNoteLabelPng(it.entries, dw, opts.labelMode), labImg = await doc.embedPng(b64ToBytes(lab.base64));
+      const tag = it.wrongTimes ? wrongNoteTagPng(it.wrongTimes) : null, tagH = tag ? tag.h + 2 : 0, tagImg = tag ? await doc.embedPng(b64ToBytes(tag.base64)) : null;      // 문제번호 위: 「N번 틀림」
+      const extra = tagH + lab.h + 4 + (blank ? blank + 4 : 0);
       const limit = maxH - extra;
       if (dh > limit) { dw *= limit / dh; dh = limit; }
       const p = place(dh + extra, wide);
-      page.drawImage(img, { x: p.x, y: p.top - dh, width: dw, height: dh });
+      const pt = p.top - tagH;
+      if (tagImg) page.drawImage(tagImg, { x: p.x, y: p.top - tag.h, width: tag.w, height: tag.h });
+      page.drawImage(img, { x: p.x, y: pt - dh, width: dw, height: dh });
       if (it.numRect && it.naturalW && it.num) {          // 문제은행 문항: 옛 번호를 지우고 시험지 번호(진한 파란 원)를 덮는다
         const RB = rgb(0.043, 0.122, 0.361), t = String(it.num), fs = t.length > 2 ? 9 : (t.length > 1 ? 10.5 : 12), tw = nfont.widthOfTextAtSize(t, fs);
-        const k = dw / it.naturalW, nr = it.numRect, left = p.x + nr[0] * k, right = p.x + nr[2] * k, top = p.top - nr[1] * k, bottom = p.top - nr[3] * k;
+        const k = dw / it.naturalW, nr = it.numRect, left = p.x + nr[0] * k, right = p.x + nr[2] * k, top = pt - nr[1] * k, bottom = pt - nr[3] * k;
         page.drawRectangle({ x: left - 1.5, y: bottom - 1.5, width: (right - left) + 3, height: (top - bottom) + 3, color: rgb(1, 1, 1) });
         const cx = (left + right) / 2, cy = top - (top - bottom) * 0.46, r = Math.max(9.5, Math.min(12, (top - bottom) * 0.62));
         if (t.length > 2) page.drawRectangle({ x: cx - tw / 2 - 5, y: cy - r, width: tw + 10, height: r * 2, color: RB }); else page.drawCircle({ x: cx, y: cy, size: r, color: RB });
         page.drawText(t, { x: cx - tw / 2, y: cy - fs * 0.34, size: fs, font: nfont, color: rgb(1, 1, 1) });
       }
-      page.drawImage(labImg, { x: p.x, y: p.top - dh - 2 - lab.h, width: dw, height: lab.h });
-      let used = dh + lab.h + 4;
+      page.drawImage(labImg, { x: p.x, y: pt - dh - 2 - lab.h, width: dw, height: lab.h });
+      let used = tagH + dh + lab.h + 4;
       if (blank) {
         page.drawRectangle({ x: p.x, y: p.top - used - blank, width: dw, height: blank, borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.6, borderDashArray: [3, 3] });
         used += blank + 4;
@@ -2174,7 +2190,8 @@
       all.sort((x, y) => x.n - y.n);
       const withEx = !!opts.withExpl && items.some(it => it.explBase64);
       // 정답·해설은 뒤쪽에 따로 모은다. 양면으로 인쇄하면 오답노트가 홀수 쪽에서 끝날 때 해설이 그 뒷면에 붙어 버리니, 빈 쪽을 한 장 끼워 해설이 새 장의 앞면부터 시작하게 한다.
-      if (withEx && doc.getPageCount() % 2 === 1) doc.addPage([W, H]);
+      if (opts.part === 'answers') doc.removePage(0);
+      else if (withEx && doc.getPageCount() % 2 === 1) doc.addPage([W, H]);
       if (all.length) await wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, all, qrImg, opts);
       if (withEx) {
         newPage();
