@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611180555">
+<link rel="stylesheet" href="css/style.css?v=202611180610">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,15 +97,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611180555"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611180555"></script>
-<script src="js/vendor/pdf.min.js?v=202611180555"></script>
-<script src="js/config.js?v=202611180555"></script>
-<script src="js/api.js?v=202611180555"></script>
-<script src="js/common.js?v=202611180555"></script>
-<script src="js/bankcore.js?v=202611180555"></script>
-<script src="js/coverdesign.js?v=202611180555"></script>
-<script src="js/pdfui.js?v=202611180555"></script>
+<script src="js/vendor/qrcode.min.js?v=202611180610"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611180610"></script>
+<script src="js/vendor/pdf.min.js?v=202611180610"></script>
+<script src="js/config.js?v=202611180610"></script>
+<script src="js/api.js?v=202611180610"></script>
+<script src="js/common.js?v=202611180610"></script>
+<script src="js/bankcore.js?v=202611180610"></script>
+<script src="js/coverdesign.js?v=202611180610"></script>
+<script src="js/pdfui.js?v=202611180610"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -607,7 +607,21 @@ $('go-btn').addEventListener('click', async () => {
   if (bad.length) { alert('정답을 확인해야 하는 단원이 있어요:\n' + bad.slice(0, 8).map(s => '· ' + secTitle(s) + ' (' + rowIssue(s) + ')').join('\n') + '\n\n표의 정답 칸에서 고치거나, 그 단원은 선택을 빼 주세요.'); return; }
   if (!confirm(regList.length + '개 단원을 시험으로 등록하고 QR 합본 PDF를 만들까요?\n(이미 같은 이름으로 등록된 단원은 새로 만들지 않고 그 시험의 QR을 써요)')) return;
   $('go-btn').disabled = true;
-  const msg = t => { $('go-msg').textContent = t; };
+  // 진행 바 + 예상 시간: 단계마다 구간을 정해 두고, 문구의 "i/n"으로 구간 안의 위치를 정한다(대략적인 값)
+  let pbar = $('go-bar'); if (!pbar) { pbar = document.createElement('div'); pbar.id = 'go-bar'; pbar.style.cssText = 'height:16px;background:#e6e1d6;border-radius:8px;overflow:hidden;margin:8px 0 0;'; pbar.innerHTML = '<div style="height:100%;width:0;background:#1f6f4a;transition:width .5s linear;"></div>'; $('go-msg').parentNode.insertBefore(pbar, $('go-msg')); }
+  const pfill = pbar.firstChild; pbar.style.display = ''; pfill.style.width = '0';
+  const PH = [[/^(등록된 시험|정답이 바뀐|문제은행에 같은|교재 PDF를 여는)/, 0, 3], [/^문제 쪽을 읽는/, 3, 13], [/^(모자란 문제|문제은행에 다시|문제 저장|시험 등록)/, 13, 48], [/^(교재 PDF에 QR|QR 찍는)/, 48, 58], [/^강사용 해설서/, 58, 73], [/^정답 동그라미/, 73, 83], [/^(교재에 원래|원래 쪽 번호)/, 83, 88], [/^강사용 전체 합본/, 88, 95], [/^학생용 합본/, 95, 99]];
+  const T0 = Date.now(); let pct = 0, lastTxt = '', pdone = false;
+  const paintMsg = () => {
+    if (pdone || !$('go-btn').disabled) { if (!$('go-btn').disabled) { clearInterval(ptick); pbar.style.display = 'none'; } return; } const el = (Date.now() - T0) / 1000; let eta = '';
+    if (pct >= 5 && el > 8) { const sec = Math.round(el * (100 - pct) / pct); eta = ' · 약 ' + (sec >= 60 ? Math.floor(sec / 60) + '분 ' + (sec % 60) + '초' : sec + '초') + ' 남음(대략)'; }
+    $('go-msg').textContent = lastTxt + '  [' + Math.floor(pct) + '%' + eta + ']';
+  };
+  const ptick = setInterval(paintMsg, 1000);
+  const msg = t => {
+    lastTxt = t; for (const [re, a, b] of PH) if (re.test(t)) { const m = /(\d+)\/(\d+)/.exec(t); const f = m && +m[2] ? Math.min(1, +m[1] / +m[2]) : 0; pct = Math.max(pct, a + (b - a) * f); break; }
+    pfill.style.width = pct + '%'; paintMsg();
+  };
   try {
     msg('등록된 시험 목록을 확인하는 중...');
     const ex = await callApi('listExams', { password: getTeacherPassword() });
@@ -1040,11 +1054,13 @@ $('go-btn').addEventListener('click', async () => {
     renderSaved();
     syncToServer(rec);
     const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
+    pdone = true; pfill.style.width = '100%';
     $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (refilled ? ' · 빠졌던 문제 ' + refilled + '개 다시 채움' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (savedOk ? '합본 PDF는 아래 버튼으로 내려받아요(이 기기에 저장돼 나중에도 받을 수 있어요).' : '합본 PDF는 아래 버튼으로 내려받아요. (이 기기에는 저장하지 못했어요)') + '<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (teacherSkip.length ? '<br><b style="color:#C1392B;">강사용에 정답·해설을 못 붙인 단원(문항 번호와 정답이 안 맞음): ' + teacherSkip.map(escapeHtml).join(' / ') + '</b>' : '') + (linkWarn ? '<br><b style="color:#C1392B;">이미 있던 시험을 이 교재 QR에 연결하지 못했어요(' + escapeHtml(linkWarn) + '). Apps Script를 새 버전으로 다시 배포했는지 확인해 주세요.</b>' : '') + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
   } catch (e) {
     err.innerHTML = '<div class="banner error">' + escapeHtml(e.message) + '</div>';
-    $('go-msg').textContent = '';
+    pdone = true; pbar.style.display = 'none'; $('go-msg').textContent = '';
   }
+  clearInterval(ptick); pdone = true;
   $('go-btn').disabled = false;
 });
 (function () { const f = () => { const c = document.getElementById('to-bank'); if (c) c.checked = true; }; f(); window.addEventListener('pageshow', f); })();
