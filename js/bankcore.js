@@ -1872,15 +1872,15 @@
 
   // ── 강사용 시험지: 문제 바로 밑에 정답(빨간 글씨)과 해설을 붙이고, 객관식 정답 번호에는 빨간 동그라미를 친다 ──
   // items: [{ base64, width, height, naturalW, num, answer, explBase64?, explW?, explH?, tag? }]
-  function answerLabelPng(answer, widthPt, numStart) {
+  function answerLabelPng(answer, widthPt, numStart, nums, given) {
     const circ = '①②③④⑤⑥⑦⑧⑨', sc = 4, h = 16;
     const one = a => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '?'; if (t === '-') return '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
     const t = Array.isArray(answer) ? 'multi' : String(answer == null ? '' : answer).replace(/[^0-9\-\/]/g, '');
     let txt;
-    if (Array.isArray(answer)) txt = '정답  ' + answer.map((a, i) => (numStart + i) + '번 ' + one(a)).join('    ');
+    if (Array.isArray(answer)) txt = '정답  ' + answer.map((a, i) => ((nums && nums[i] != null ? nums[i] : numStart + i)) + '번 ' + one(a)).join('    ');
     else if (!t) txt = '정답: (입력 안 됨)';
     else if (t === '-') txt = '정답: 서술형 (아래 해설 참고)';
-    else txt = '정답  ' + t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join('  또는  ');
+    else txt = '정답  ' + t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join('  또는  ') + (given !== undefined ? '      학생 답  ' + one(given) : '');
     const c = createCanvas(Math.round(widthPt * sc), h * sc), ctx = c.getContext('2d');
     ctx.fillStyle = '#FDECEA'; ctx.fillRect(0, 0, c.width, c.height);
     ctx.fillStyle = '#C1392B'; ctx.fillRect(0, 0, 2.5 * sc, c.height);
@@ -1931,14 +1931,14 @@
       const wide = (it.naturalW || 0) > colW * 1.45;
       const fullW = wide ? areaW : colW;
       let dw = Math.min(fullW, it.naturalW || fullW), dh = it.height * (dw / it.width);
-      const lab = answerLabelPng(it.subAnswers || it.answer, dw, it.numStart), labImg = await doc.embedPng(b64ToBytes(lab.base64));
-      const TAGH = it.tag ? 13 : 0;                                     // 기출 배지 줄 높이
+      const lab = answerLabelPng(it.subAnswers || it.answer, dw, it.numStart, it.subNums, it.givenAns), labImg = await doc.embedPng(b64ToBytes(lab.base64));
+      const TAGH = (it.tag || it.wrongTimes) ? 13 : 0;                                     // 기출 배지 줄 높이
       const limit = maxH - lab.h - 4 - TAGH;
       if (dh > limit) { dw *= limit / dh; dh = limit; }
       // 문제 + 정답 줄은 한 덩어리 (떨어지지 않게)
       const p = place(dh + lab.h + 4 + TAGH, wide);
-      if (it.tag) {                                                        // 학생용 시험지와 같은 "2024년 ○○중2-1 중간 기출" 배지: 그림 위 오른쪽 끝
-        const tg = tagPng(it.tag), timg = await doc.embedPng(b64ToBytes(tg.base64));
+      if (it.tag || it.wrongTimes) {                                           // 학생용 시험지와 같은 "2024년 ○○중2-1 중간 기출" 배지: 그림 위 오른쪽 끝
+        const tg = it.wrongTimes ? wrongNoteTagPng(it.wrongTimes) : tagPng(it.tag), timg = await doc.embedPng(b64ToBytes(tg.base64));
         page.drawImage(timg, { x: p.x + dw - tg.w, y: p.top - tg.h, width: tg.w, height: tg.h });
         p.top -= TAGH;
       }

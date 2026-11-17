@@ -114,14 +114,21 @@ async function wnGather(s, opt, say, ctx) {
 //  kind 'retry' : 오답문제 다시풀기(내 답·정답 표시 없음) — student: 틀린 문제만 / answers: 정답표+해설 / teacher: 문제 아래 정답 표시 + 해설
 async function wnComposeDocs(s, g, kind, files, opt, qrBase64) {
   const base = { studentName: s.studentName, examTitle: s.examTitle, wrongCount: g.wrong.length, blank: opt.blank || 0, qrBase64: qrBase64 }, out = {}, C = o => BankCore.composeWrongNotePdf(PDFLib, g.items, Object.assign({}, base, o));
+  // 강사용: 다른 시험지 강사용과 똑같이 — 문제 바로 밑에 정답(빨간 글씨)+해설, 객관식 정답 번호에 빨간 동그라미
+  const T = (label, withGiven) => BankCore.composeTeacherPdf(PDFLib, s.studentName + ' · ' + s.examTitle + ' ' + label, g.items.map(it => {
+    const es = it.entries || [], single = es.length === 1 && !/~/.test(String(it.num || ''));
+    const o = { base64: it.base64, width: it.width, height: it.height, naturalW: it.naturalW, num: it.num, numRect: it.numRect, explBase64: it.explBase64, explW: it.explW, explH: it.explH, wrongTimes: it.wrongTimes };
+    if (single) { o.answer = es[0].answer; if (withGiven) o.givenAns = es[0].given; } else { o.subAnswers = es.map(x => x.answer); o.subNums = es.map(x => x.n); o.numStart = es.length ? es[0].n : 1; }
+    return o;
+  }), { keepTitle: false });
   if (kind === 'note') {
     const sc = s.total ? s.score100 + '점' : '';
     if (files.student) out.student = await C({ scoreText: sc, withExpl: !!opt.withExpl, labelMode: 'given', kindLabel: '오답노트' });
-    if (files.teacher) out.teacher = await C({ scoreText: sc, withExpl: true, labelMode: 'teacher', kindLabel: '오답노트 강사용' });
+    if (files.teacher) out.teacher = await T('오답노트', true);
   } else {
     if (files.student) out.student = await C({ withExpl: false, answersAtEnd: false, labelMode: 'none', kindLabel: '다시풀기' });
     if (files.answers) out.answers = await C({ withExpl: true, part: 'answers', kindLabel: '정답·해설' });
-    if (files.teacher) out.teacher = await C({ withExpl: true, labelMode: 'teacherRetry', kindLabel: '다시풀기 강사용' });
+    if (files.teacher) out.teacher = await T('다시풀기', false);
   }
   return out;
 }
@@ -159,14 +166,20 @@ async function wnBuild(records, kind, files, opt, say, prog) {
   }
   if (!used.length) throw new Error(notes.join(' / ') || '만들 수 있는 기록이 없어요.');
   const out = { notes: notes, used: used };
+  const one = kind === 'retry' && opt.oneFile && parts.student.length && parts.answers.length;
+  if (one) {      // 학생용 + 정답·해설을 한 파일로: 정답·해설은 새 장의 앞면(홀수 쪽)에서 시작 — 학생용이 5쪽이면 6쪽은 빈 쪽, 7쪽부터 정답
+    say('학생용과 정답·해설을 한 파일로 합치는 중...');
+    const st = parts.student.length > 1 ? await wnMerge(parts.student) : parts.student[0], an = parts.answers.length > 1 ? await wnMerge(parts.answers) : parts.answers[0];
+    const m = await wnMerge([st, an]); await BankCore.addPageNumbers(PDFLib, m); out.combined = await m.save();
+  }
   for (const k of ['student', 'answers', 'teacher']) {
-    if (!parts[k].length) continue;
+    if (!parts[k].length || (one && k !== 'teacher')) continue;
     say('PDF 합치는 중...'); const m = parts[k].length > 1 ? await wnMerge(parts[k]) : parts[k][0];
     await BankCore.addPageNumbers(PDFLib, m); out[k] = await m.save();
   }
   return out;
 }
-const WN_NAME = { note: { student: '오답노트', teacher: '오답노트_강사용' }, retry: { student: '다시풀기_학생용', answers: '다시풀기_정답해설', teacher: '다시풀기_강사용' } };
+const WN_NAME = { note: { student: '오답노트', teacher: '오답노트_강사용' }, retry: { combined: '다시풀기_학생용+정답해설', student: '다시풀기_학생용', answers: '다시풀기_정답해설', teacher: '다시풀기_강사용' } };
 function wnFileName(kind, file, records) {
   const sorted = records.slice().sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt)), who = sorted[0].studentName, what = records.length > 1 ? '합본(' + sorted[0].examTitle + ' 외 ' + (records.length - 1) + '개)' : sorted[0].examTitle;
   return (who + '_' + what + '_' + WN_NAME[kind][file]).replace(/[\\/:*?"<>|]/g, ' ') + '.pdf';
