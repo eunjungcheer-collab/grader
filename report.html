@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>학생 리포트 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190610">
+<link rel="stylesheet" href="css/style.css?v=202611190625">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -34,9 +34,9 @@
   <div id="st" class="hint">불러오는 중...</div>
   <div id="paper" style="display:none;"></div>
 </template>
-<script src="js/config.js?v=202611190610"></script>
-<script src="js/api.js?v=202611190610"></script>
-<script src="js/common.js?v=202611190610"></script>
+<script src="js/config.js?v=202611190625"></script>
+<script src="js/api.js?v=202611190625"></script>
+<script src="js/common.js?v=202611190625"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -68,27 +68,27 @@ function makeMsgs(name, last, prev, avg, pavg, best, w, label, isM) {
   function build(kind) {
     const P = kind === 'parent';     // 학부모용: ~습니다 / 학생용: ~한다
     const T = (a, b) => P ? a : b;
-    if (!n) return P ? fn + ' 학생은 ' + label + ' 제출한 시험이 아직 없습니다.' : label + ' 제출한 시험이 아직 없다.';
+    if (!n) return P ? fn + ' 학생은 ' + label + ' 제출한 시험이 아직 없습니다.' : label + ' 제출한 시험이 아직 없어요.';
     let t = '[' + fn + (P ? ' 학생 ' : ' ') + label + ' 학습 리포트]\n';
-    t += label + (isM ? ' 한 달 동안 ' : ' 시험 기준 ') + n + '회 시험을 ' + T('보았고', '보았고') + ' 평균 ' + avg + '점, 최고 ' + best + T('점입니다.', '점이다.');
-    if (diff != null) t += ' ' + (isM ? '지난달보다 ' : '이전 기록보다 ') + (diff > 0 ? diff + '점 올랐' + T('습니다.', '다.') : diff < 0 ? Math.abs(diff) + '점 내려갔' + T('습니다.', '다.') : '비슷한 수준을 유지했' + T('습니다.', '다.'));
+    t += label + (isM ? ' 한 달 동안 ' : ' 시험 기준 ') + n + '회 시험을 ' + T('보았고', '보았고') + ' 평균 ' + avg + '점, 최고 ' + best + T('점입니다.', '점이에요.');
+    if (diff != null) t += ' ' + (isM ? '지난달보다 ' : '이전 기록보다 ') + (diff > 0 ? diff + '점 올랐' + T('습니다.', '어요.') : diff < 0 ? Math.abs(diff) + '점 내려갔' + T('습니다.', '어요.') : '비슷한 수준을 유지했' + T('습니다.', '어요.'));
     t += '\n\n✅ ' + T('잘한 점', '잘한 점') + '\n';
     const g = [];
-    good.forEach(x => g.push(x.u + ' 단원 평균 ' + x.a + '점으로 ' + T('개념 이해가 탄탄합니다.', '개념 이해가 탄탄하다.')));
-    if (hi) g.push(n + '회 중 ' + hi + '회에서 90점 이상을 ' + T('받았습니다.', '받았다.'));
-    if (first != null && lastS - first >= 8) g.push('첫 시험(' + first + '점)보다 최근 시험(' + lastS + '점)이 ' + (lastS - first) + '점 올라 ' + T('꾸준히 성장하고 있습니다.', '성장하고 있다.'));
-    if (n >= 4) g.push(label + ' 동안 ' + n + '회 ' + T('꾸준히 시험에 응시하는 성실함이 돋보입니다.', '꾸준히 응시한 성실함이 돋보인다.'));
-    if (!g.length) g.push(T('시험에 꾸준히 참여하며 학습 습관을 만들어 가고 있습니다.', '시험에 꾸준히 참여하며 학습 습관을 만들어 가고 있다.'));
+    good.forEach(x => g.push(x.u + ' 단원 평균 ' + x.a + '점으로 ' + T('개념 이해가 탄탄합니다.', '개념 이해가 탄탄해요.')));
+    if (hi) g.push(n + '회 중 ' + hi + '회에서 90점 이상을 ' + T('받았습니다.', '받았어요.'));
+    if (first != null && lastS - first >= 8) g.push('첫 시험(' + first + '점)보다 최근 시험(' + lastS + '점)이 ' + (lastS - first) + '점 올라 ' + T('꾸준히 성장하고 있습니다.', '성장하고 있어요.'));
+    if (n >= 4) g.push(label + ' 동안 ' + n + '회 ' + T('꾸준히 시험에 응시하는 성실함이 돋보입니다.', '꾸준히 응시한 성실함이 돋보여요.'));
+    if (!g.length) g.push(T('시험에 꾸준히 참여하며 학습 습관을 만들어 가고 있습니다.', '시험에 꾸준히 참여하며 학습 습관을 만들어 가고 있어요.'));
     t += g.slice(0, 4).map(x => '- ' + x).join('\n');
     t += '\n\n📌 ' + T('보완할 점', '보완할 점') + '\n';
     const b = [];
-    low.forEach(x => b.push(x.u + ' 단원 평균 ' + x.a + '점으로 ' + T('복습이 더 필요합니다.', '복습이 더 필요하다.')));
-    weakUn.forEach(x => { if (!low.some(l => l.u === x.unit)) b.push(x.unit + ' 단원은 반복해서 정답률이 낮은 편(' + x.avg + '%)' + T('입니다.', '이다.')); });
-    if (rep.length) b.push('반복해서 틀린 문제: ' + rep.map(q => ((q.title || q.examTitle || '').trim() + ' ' + q.n + '번').trim()).join(', ') + T(' — 같은 유형을 다시 점검해 주세요.', ' — 같은 유형을 다시 점검하자.'));
-    if (!b.length) b.push(T('뚜렷하게 약한 단원은 없으며, 지금의 학습 흐름을 유지하면 좋겠습니다.', '뚜렷하게 약한 단원은 없다. 지금의 학습 흐름을 유지하자.'));
+    low.forEach(x => b.push(x.u + ' 단원 평균 ' + x.a + '점으로 ' + T('복습이 더 필요합니다.', '복습이 더 필요해요.')));
+    weakUn.forEach(x => { if (!low.some(l => l.u === x.unit)) b.push(x.unit + ' 단원은 반복해서 정답률이 낮은 편(' + x.avg + '%)' + T('입니다.', '이에요.')); });
+    if (rep.length) b.push('반복해서 틀린 문제: ' + rep.map(q => ((q.title || q.examTitle || '').trim() + ' ' + q.n + '번').trim()).join(', ') + T(' — 같은 유형을 다시 점검해 주세요.', ' — 같은 유형을 다시 점검해 봐요.'));
+    if (!b.length) b.push(T('뚜렷하게 약한 단원은 없으며, 지금의 학습 흐름을 유지하면 좋겠습니다.', '뚜렷하게 약한 단원은 없어요. 지금처럼만 해요.'));
     t += b.slice(0, 5).map(x => '- ' + x).join('\n');
     t += '\n\n💡 ' + T('다음 달 계획', '다음 목표') + '\n';
-    t += (low.length || weakUn.length || rep.length) ? '- ' + T('보완 단원은 오답노트와 다시풀기로 복습하고, 수업에서 해당 개념을 한 번 더 짚어 드리겠습니다.', '오답노트와 다시풀기로 약한 단원을 복습하자.') : '- ' + T('현재 수준을 유지하면서 심화·서술형 문항까지 도전해 보겠습니다.', '심화·서술형 문항에도 도전해 보자.');
+    t += (low.length || weakUn.length || rep.length) ? '- ' + T('보완 단원은 오답노트와 다시풀기로 복습하고, 수업에서 해당 개념을 한 번 더 짚어 드리겠습니다.', '오답노트와 다시풀기로 약한 단원을 복습해 봐요.') : '- ' + T('현재 수준을 유지하면서 심화·서술형 문항까지 도전해 보겠습니다.', '심화·서술형 문항에도 도전해 봐요.');
     return t;
   }
   return { parent: build('parent'), student: build('student') };
