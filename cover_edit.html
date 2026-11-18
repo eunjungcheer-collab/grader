@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611181700">
+<link rel="stylesheet" href="css/style.css?v=202611181800">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -57,13 +57,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611181700"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611181700"></script>
-<script src="js/config.js?v=202611181700"></script>
-<script src="js/api.js?v=202611181700"></script>
-<script src="js/common.js?v=202611181700"></script>
-<script src="js/bankcore.js?v=202611181700"></script>
-<script src="js/coverdesign.js?v=202611181700"></script>
+<script src="js/vendor/pdf.min.js?v=202611181800"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611181800"></script>
+<script src="js/config.js?v=202611181800"></script>
+<script src="js/api.js?v=202611181800"></script>
+<script src="js/common.js?v=202611181800"></script>
+<script src="js/bankcore.js?v=202611181800"></script>
+<script src="js/coverdesign.js?v=202611181800"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -148,6 +148,7 @@ function dlBarMake(label) {
   wrap.appendChild(el); const t0 = Date.now(), tx = el.querySelector('.t'), fl = el.querySelector('.f');
   tx.textContent = '⬇ ' + label + ' · 서버에 요청 중...';
   return {
+    rm: () => el.remove(),
     set: (done, total) => { if (!(total > 0)) return; const pct = Math.floor(done / total * 100), el2 = (Date.now() - t0) / 1000; let eta = ''; if (done >= 2 && el2 > 3 && done < total) { const sec = Math.round(el2 * (total - done) / done); eta = ' · 약 ' + (sec >= 60 ? Math.floor(sec / 60) + '분 ' + (sec % 60) + '초' : sec + '초') + ' 남음(대략)'; } fl.style.width = pct + '%'; tx.textContent = '⬇ ' + label + ' · 받는 중 ' + pct + '% (' + done + '/' + total + ')' + eta; },
     end: ok => { if (!ok) { tx.textContent = '⬇ ' + label + ' · 받지 못했어요'; fl.style.background = '#C1392B'; } else { fl.style.width = '100%'; tx.textContent = '✅ ' + label + ' · 받기 완료'; } setTimeout(() => { el.remove(); }, ok ? 2500 : 5000); }
   };
@@ -218,7 +219,20 @@ async function renderList(fresh) {
       if (!f.loc && f.key === 'original' && rec) add('📎 원본 교재 PDF 저장 (이 기기에)', async () => { const file = await pickPdf(); if (!file) return; const cur = (await mergeDbGet(it.id)) || rec; cur.original = file; await mergeDbPut(cur); });
       if (f.loc && !f.srv) add('☁ 서버에 보관', async b => { tooBig(); await upload(b, '올리는 중...'); alert(f.lab + ' 서버 보관 완료'); });
       if (f.loc && f.srv) add('☁ 서버 파일을 이 기기 파일로 교체', async b => { tooBig(); if (!confirm('서버에 보관된 ' + f.lab + ' 파일을 지금 이 기기의 파일로 바꿔요. (기존 서버 파일은 지워져요)')) return; await upload(b, '교체 중...'); alert(f.lab + ' 서버 파일을 교체했어요'); });
-      if (f.srv && f.srv.fileId) add('⚡ 구글 드라이브에서 바로 받기', async bt => { const w = window.open('', '_blank'); try { bt.textContent = '파일 이름 준비 중...'; const r = await callApi('mergeDlCopy', { password: getTeacherPassword(), fileId: f.srv.fileId, name: (it.name || '교재') + ' ' + f.lab }); if (!r || !r.ok) throw new Error((r && r.error) || '서버를 새 버전으로 배포했는지 확인해 주세요'); const url = 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(r.fileId); if (w) w.location.href = url; else location.href = url; } catch (e) { if (w) w.close(); throw e; } });
+      if (f.srv && f.srv.fileId) add('⚡ 구글 드라이브에서 바로 받기', async bt => {
+        // ① 구글 드라이브에서 직접 받아 우리가 파일 이름을 정해 저장 (이름이 깨지지 않음)
+        const nice = ((it.name || '교재') + ' ' + f.lab).replace(/[\\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) + '.pdf', bar = dlBarMake(nice);
+        try {
+          bt.textContent = '받는 중...';
+          const tk = await callApi('driveToken', { password: getTeacherPassword() }); if (!tk || !tk.ok || !tk.token) throw new Error('NOTOKEN');
+          const resp = await fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(f.srv.fileId) + '?alt=media&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + tk.token } });
+          if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
+          const tot = parseInt(resp.headers.get('Content-Length') || '0', 10) || (f.srv.size || 0), rd = resp.body.getReader(), chunks = []; let got = 0;
+          for (;;) { const r = await rd.read(); if (r.done) break; chunks.push(r.value); got += r.value.length; bar.set(got, tot || got + 1); }
+          bar.end(true); blobDl(new Blob(chunks, { type: 'application/pdf' }), nice); return;
+        } catch (e0) { bar.rm(); console.warn('direct drive download failed', e0); }
+        // ② 안 되면 예전 방식(구글 드라이브 링크) — 파일 이름이 깨질 수 있어요
+        const w = window.open('', '_blank'); try { bt.textContent = '파일 이름 준비 중...'; const r = await callApi('mergeDlCopy', { password: getTeacherPassword(), fileId: f.srv.fileId, name: (it.name || '교재') + ' ' + f.lab }); if (!r || !r.ok) throw new Error((r && r.error) || '서버를 새 버전으로 배포했는지 확인해 주세요'); const url = 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(r.fileId); if (w) w.location.href = url; else location.href = url; } catch (e) { if (w) w.close(); throw e; } });
       if (f.srv) add('🗑 서버 파일 삭제', async b => {
         const o = f.other;
         if (o && o[2] && !o[3]) { alert('서버에 있는 ' + o[1] + ' 파일이 이 기기에는 없어요. 서버 파일 삭제 중 함께 지워질 위험을 막기 위해, 먼저 ' + o[1] + '을 「이 기기로 내려받아 저장」해 두세요.'); return; }

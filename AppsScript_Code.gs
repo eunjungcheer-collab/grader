@@ -139,6 +139,7 @@ function handle_(e) {
       case 'retryWrongLog': result = actionRetryWrongLog_(params); break;
       case 'mergeSession': result = actionMergeSession_(params); break;
       case 'mergeDlCopy': result = actionMergeDlCopy_(params); break;
+      case 'driveToken': result = checkPassword_(params.password) ? { ok: true, token: ScriptApp.getOAuthToken() } : { ok: false, error: '로그인이 필요해요.' }; break;
       case 'mergeCleanup': result = actionMergeCleanup_(params); break;
       case 'mergeList': result = actionMergeList_(params); break;
       case 'mergeGetPart': result = actionMergeGetPart_(params); break;
