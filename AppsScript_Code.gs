@@ -1657,8 +1657,7 @@ function afterSubmit_(ss, found, p, score, objective, score100) {
   } catch (e) {}
   // 선생님 알림을 가장 먼저(느린 분석보다 앞서) 보낸다 — 반복 오답 문구는 뒤쪽 이메일에 들어간다.
   let early = false; try { early = !!CacheService.getScriptCache().get('ep_' + String(p.id) + '|' + name); } catch (e) {}
-  if (early) {      // 이미 제출 직후에 알림을 보냈으면 중복으로 보내지 않고, 점수 하락이 있을 때만 덧붙여 알린다
-    if (lowText.indexOf('하락') >= 0) { try { pushToTeacher_('📉 ' + name + ' 학생 · ' + lowText, title, '?sub=' + encodeURIComponent(String(p.id)) + '&stu=' + encodeURIComponent(name)); } catch (e) {} }
+  if (early) {      // 이미 제출 직후에 알림을 보냈으면 중복으로 보내지 않는다 (점수 하락 알림은 따로 보내지 않는다)
   } else try { pushToTeacher_((lowText ? '📉 ' : '📝 ') + name + ' 학생 제출 · ' + score100 + '점' + (lowText ? ' (' + lowText + ')' : ''), title + '\n' + score + '/' + objective + (late ? ' · 기한 지남' : ''), '?sub=' + encodeURIComponent(String(p.id)) + '&stu=' + encodeURIComponent(name)); } catch (e) {}
   let repText = '';
   try {
