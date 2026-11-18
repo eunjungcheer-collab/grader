@@ -518,8 +518,22 @@ function actionSubmitAnswer_(p) {
 
   return {
     ok: true, score: score, total: objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: skipped,
-    results: results, studentAnswers: studentAnswers, submittedAt: submittedAt,
+    results: results, studentAnswers: studentAnswers, submittedAt: submittedAt, shiftSuspect: shiftSuspect_(correctAnswers, studentAnswers),
   };
+}
+
+// 답이 한 줄(몇 칸)씩 밀려 입력된 것 같은지: 학생 답을 몇 칸 옮겼을 때 정답과 훨씬 많이 맞으면 true (정답 자체는 알려 주지 않고 참/거짓만 쓴다)
+function shiftSuspect_(correct, student) {
+  const idx = []; for (let i = 0; i < correct.length; i++) if (!isSubjective_(correct[i]) && student[i] !== undefined && student[i] !== '~' && student[i] !== '') idx.push(i);
+  if (idx.length < 8) return false;
+  const hit = function (k) { let c = 0, n = 0; idx.forEach(function (i) { const j = i + k; if (j < 0 || j >= correct.length || isSubjective_(correct[j])) return; n++; if (ansMatches_(student[i], correct[j])) c++; }); return { c: c, n: n }; };
+  const base = hit(0);
+  for (let k = -3; k <= 3; k++) {
+    if (!k) continue;
+    const h = hit(k);
+    if (h.n >= 8 && h.c >= h.n * 0.5 && h.c >= base.c + 4) return true;
+  }
+  return false;
 }
 
 // 채점: 주관식·안 푼 문항('~')은 빼고 객관식만 센다. results 는 문항별 'subj'·'skip'·'ok'·'x'
@@ -558,6 +572,16 @@ function actionEditSubmission_(p) {
     }
     if (hit < 0) return { ok: false, error: '고칠 기록을 찾지 못했어요. (선생님이 기록을 지웠거나 이름이 달라요)' };
     if (Date.now() - want > EDIT_WINDOW_MS_) return { ok: false, error: '제출한 지 3일이 지나서 더 고칠 수 없어요. 선생님께 말씀해 주세요.' };
+    // 이미 입력한 답을 바꾸는 것은 「밀려 쓴 것 같을 때」에 30분 안에 한 번만 (결과를 보고 답을 바꿔 찍는 것을 막는다). 비워 둔('~') 문항을 채우는 것은 3일 안이면 언제든 된다.
+    const oldAns = String(data[hit][2]).split(','), nOld = oldAns.length;
+    let changed = 0; for (let i = 0; i < nOld; i++) { const o0 = String(oldAns[i]).trim(), n0 = String(studentAnswers[i] === undefined ? '' : studentAnswers[i]).trim(); if (o0 !== '~' && o0 !== '' && o0 !== n0) changed++; }
+    if (changed) {
+      const cnt = Number(sheet.getRange(hit + 2, 8).getValue()) || 0;
+      if (cnt >= 1) return { ok: false, error: '답안은 한 번만 고칠 수 있어요. 선생님께 말씀해 주세요.' };
+      if (Date.now() - want > 30 * 60 * 1000) return { ok: false, error: '이미 입력한 답은 제출한 지 30분 안에만 고칠 수 있어요. 선생님께 말씀해 주세요.' };
+      if (!shiftSuspect_(correctAnswers, oldAns.map(function (a) { return String(a).trim(); }))) return { ok: false, error: '이미 입력한 답은 고칠 수 없어요. 답이 밀려 입력된 것 같으면 선생님께 말씀해 주세요.' };
+      sheet.getRange(hit + 2, 8).setValue(cnt + 1);
+    }
     const g = gradeAnswers_(correctAnswers, studentAnswers), score100 = g.objective ? Math.round(g.score / g.objective * 100) : 0;
     sheet.getRange(hit + 2, 3).setValue(studentAnswers.join(','));
     sheet.getRange(hit + 2, 4, 1, 2).setValues([[g.score, g.objective]]);

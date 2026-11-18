@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190625">
+<link rel="stylesheet" href="css/style.css?v=202611190700">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,9 +41,9 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611190625"></script>
-<script src="js/api.js?v=202611190625"></script>
-<script src="js/common.js?v=202611190625"></script>
+<script src="js/config.js?v=202611190700"></script>
+<script src="js/api.js?v=202611190700"></script>
+<script src="js/common.js?v=202611190700"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -76,6 +76,15 @@ function advanceFrom(q) {
   for (let i = q + 1; i < rows.length; i++) if (!isSub(i) && !skipSet.has(i + 1) && !studentAnswers[i]) { rows[i].scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
 }
 
+// ── 이어서 입력 / 답안 고치기 ──
+// EDIT: 이전에 낸 기록을 고치는 중일 때 {mode:'fill'|'fix', submittedAt, answers, name}. 'fill'=비워 둔 문항만 채움(이미 입력한 답은 잠김), 'fix'=밀려 쓴 답을 한 번 고침
+let EDIT = null; try { EDIT = JSON.parse(sessionStorage.getItem('sx_edit_' + examId) || 'null'); sessionStorage.removeItem('sx_edit_' + examId); } catch (e) {}
+const lockedQ = i => !!(EDIT && EDIT.mode === 'fill' && EDIT.answers && EDIT.answers[i] && EDIT.answers[i] !== '~');
+let chipOff = new Set();      // 30문항이 넘는 시험에서 「지금은 입력하지 않을」 구간(0부터)
+const CHUNK = 30;
+function rangeText(list) { const a = list.slice().sort((x, y) => x - y), out = []; let st = null, pv = null; a.forEach(k => { if (st === null) { st = pv = k; } else if (k === pv + 1) { pv = k; } else { out.push(st === pv ? dnOf(st) + '번' : dnOf(st) + '~' + dnOf(pv) + '번'); st = pv = k; } }); if (st !== null) out.push(st === pv ? dnOf(st) + '번' : dnOf(st) + '~' + dnOf(pv) + '번'); return out.join(', '); }
+function goEdit(mode, subm, answers, name) { try { sessionStorage.setItem('sx_edit_' + examId, JSON.stringify({ mode: mode, submittedAt: subm, answers: answers, name: name })); } catch (e) {} location.reload(); }
+
 async function loadExam() {
   const area = document.getElementById('content-area');
   if (!examId) { area.innerHTML = '<div class="banner error">잘못된 링크예요.</div>'; return; }
@@ -96,11 +105,13 @@ async function loadExam() {
       ${res.book ? '<a class="btn outline" href="student_multi.html?book=' + encodeURIComponent(res.book) + '" style="width:100%; margin-bottom:10px;">📚 같은 교재의 다른 단원도 함께 채점하기</a>' : ''}
       <div class="sx-prog" id="sx-prog"><div class="row"><span id="sx-ptxt">답 입력 0 / 0</span><span id="sx-pleft" style="color:var(--muted);font-weight:600;"></span></div><div class="bar"><i id="sx-pbar"></i></div></div>
       <form id="answer-form" class="card">
+        <div id="edit-banner" style="display:none; margin-bottom:10px; padding:10px 12px; border-radius:10px; font-size:14px; line-height:1.5;"></div>
         <label>이름</label>
         <input type="text" id="student-name" required autocomplete="off" value="${escapeHtml(STU_NAME)}">
         <div id="dl-box" style="display:none; margin-top:8px; padding:8px 10px; border-radius:8px; background:#FFF4E0; border:1px solid #F3D9A4; color:#7A4A00; font-size:14px;"></div>
         <label style="margin-top:12px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 또는 1-10, 15 · 풀지 않는 번호는 채점에서 빠져요)</span></label>
         <input type="text" id="skip-input" placeholder="예: 1-10" inputmode="numeric" autocomplete="off">
+        <div id="range-box" style="display:none; margin-top:12px; padding:10px 12px; border-radius:10px; background:#F0F6FF; border:1px solid #BBD3F5;"></div>
         <div id="answer-grid" style="margin-top:16px;"></div>
         <div class="sx-submit"><button type="submit" class="btn primary" style="width:100%; font-size:17px; padding:15px;">제출하고 채점받기</button></div>
       </form>
@@ -141,6 +152,40 @@ async function loadExam() {
     document.getElementById('sx-prog').style.display = 'block'; updateProgress();
 
     document.getElementById('skip-input').addEventListener('input', applySkip);
+    // 문항이 30개를 넘으면: 지금 입력할 구간을 고르게 한다 (고르지 않은 구간은 채점에서 빠지고, 나중에 「이어서 입력」으로 채울 수 있다)
+    if (answerCount > CHUNK) {
+      const box = document.getElementById('range-box'), nC = Math.ceil(answerCount / CHUNK);
+      const paint = () => {
+        box.innerHTML = '<div style="font-weight:700; margin-bottom:6px;">📑 지금 입력할 구간 고르기 <span class="hint" style="font-weight:400;">(문항이 많아요 · 안 고른 구간은 나중에 이어서 입력할 수 있어요)</span></div><div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+          Array.from({ length: nC }, (_, c) => { const a = c * CHUNK, b = Math.min(answerCount, a + CHUNK) - 1, on = !chipOff.has(c); return '<button type="button" class="btn ' + (on ? 'primary' : 'outline') + '" data-c="' + c + '" style="padding:8px 14px;">' + (on ? '✅ ' : '') + dn(a) + '~' + dn(b) + '번</button>'; }).join('') + '</div>';
+        box.querySelectorAll('button').forEach(bt => bt.addEventListener('click', () => { const c = +bt.dataset.c; if (chipOff.has(c)) chipOff.delete(c); else if (chipOff.size < nC - 1) chipOff.add(c); else return; paint(); applySkip(); }));
+      };
+      box.style.display = ''; paint();
+    }
+    // 이어서 입력/고치기 모드: 이전 답을 채워 넣는다
+    if (EDIT && EDIT.answers) {
+      const nm = document.getElementById('student-name'); nm.value = EDIT.name || nm.value; nm.readOnly = true;
+      EDIT.answers.forEach((v, i) => {
+        if (!v || v === '~' || isSub(i)) return;
+        studentAnswers[i] = v;
+        String(v).split('').forEach(d => { const b = grid.querySelector('.ans-btn[data-q="' + i + '"][data-v="' + d + '"]'); if (b) b.classList.add('selected'); });
+      });
+      const eb = document.getElementById('edit-banner'); eb.style.display = '';
+      if (EDIT.mode === 'fill') { eb.style.background = '#EEF7F1'; eb.style.border = '1px solid #9AD3B0'; eb.innerHTML = '📝 <b>이어서 입력하는 중이에요.</b> 이미 낸 답은 잠겨 있고, 비워 둔 문항만 입력할 수 있어요. 오늘 안 풀 구간은 위에서 빼 두면 돼요.'; }
+      else { eb.style.background = '#FDECEA'; eb.style.border = '1px solid #E8A8A0'; eb.innerHTML = '✏️ <b>답안을 고치는 중이에요.</b> 밀려 쓴 답을 바르게 고쳐서 다시 제출해요. <b>한 번만</b> 고칠 수 있어요.'; }
+      document.querySelector('#answer-form button[type=submit]').textContent = EDIT.mode === 'fill' ? '이어서 낸 답 제출하기' : '고친 답안 제출하기';
+      applySkip();
+    } else {
+      // 며칠 안에 비워 둔 문항이 있는 기록이 이 기기에 있으면 이어서 입력하라고 알려 준다
+      try {
+        const last = JSON.parse(localStorage.getItem('sx_last_' + examId) || 'null');
+        if (last && last.skipped && last.skipped.length && Date.now() - last.t < 3 * 24 * 3600 * 1000) {
+          const eb = document.getElementById('edit-banner'); eb.style.display = ''; eb.style.background = '#FFF4E0'; eb.style.border = '1px solid #F3D9A4';
+          eb.innerHTML = '📝 <b>' + escapeHtml(last.name) + '</b>님이 낸 답안 중 비워 둔 문항(' + escapeHtml(rangeText(last.skipped)) + ')이 있어요. <button type="button" class="btn primary" id="resume-btn" style="padding:6px 12px; margin-left:6px;">이어서 입력하기</button>';
+          document.getElementById('resume-btn').addEventListener('click', () => goEdit('fill', last.submittedAt, last.answers, last.name));
+        }
+      } catch (e) {}
+    }
     document.getElementById('answer-form').addEventListener('submit', submitAnswers);
     // 선생님이 예약해 둔 학생이면 이름을 적을 때 제출 기한을 보여 준다
     (function () {
@@ -187,11 +232,13 @@ async function loadExam() {
 let skipSet = new Set();
 function applySkip() {
   skipSet = parseNumSetLabeled(document.getElementById('skip-input').value, nums, answerCount);
+  chipOff.forEach(c => { for (let i = c * CHUNK; i < Math.min(answerCount, (c + 1) * CHUNK); i++) skipSet.add(i + 1); });
+  for (let i = 0; i < answerCount; i++) if (lockedQ(i)) skipSet.delete(i + 1);
   const grid = document.getElementById('answer-grid');
   grid.querySelectorAll('.qrow').forEach((row, i) => {
     const off = skipSet.has(i + 1) && !isSub(i);
-    row.style.opacity = off ? '0.35' : '';
-    row.querySelectorAll('.ans-btn').forEach(b => { b.disabled = off; if (off) b.classList.remove('selected'); });
+    row.style.opacity = off ? '0.35' : lockedQ(i) ? '0.75' : '';
+    row.querySelectorAll('.ans-btn').forEach(b => { b.disabled = off || lockedQ(i); if (off) b.classList.remove('selected'); });
     if (off) studentAnswers[i] = '';
   });
   updateProgress();
@@ -200,7 +247,7 @@ async function submitAnswers(e) {
   e.preventDefault();
   const name = document.getElementById('student-name').value.trim();
   if (!name) return;
-  const skipAll = Array.from({ length: answerCount }, (_, i) => skipSet.has(i + 1) && !isSub(i));
+  const skipAll = Array.from({ length: answerCount }, (_, i) => skipSet.has(i + 1) && !isSub(i) && !lockedQ(i));
   const miss = studentAnswers.findIndex((a, i) => !isSub(i) && !skipAll[i] && !a);
   if (miss >= 0) {
     const rows = document.querySelectorAll('#answer-grid .qrow');
@@ -215,9 +262,12 @@ async function submitAnswers(e) {
   btn.textContent = '채점 중...';
 
   try {
-    const res = await callApi('submitAnswer', { defer: true, id: examId, studentName: name, answers: studentAnswers.map((a, i) => skipAll[i] ? '~' : a) });
+    const arr = studentAnswers.map((a, i) => skipAll[i] ? '~' : a);
+    const res = EDIT ? await callApi('editSubmission', { id: examId, studentName: name, submittedAt: EDIT.submittedAt, answers: arr })
+                     : await callApi('submitAnswer', { defer: true, id: examId, studentName: name, answers: arr });
     if (!res.ok) { alert(res.error || '제출에 실패했어요.'); btn.disabled = false; btn.textContent = '제출하고 채점받기'; return; }
-    callApi('afterSubmit', { id: examId, studentName: name }).catch(() => {});      // 알림은 결과를 보여 준 뒤 따로 보낸다
+    if (!EDIT) callApi('afterSubmit', { id: examId, studentName: name }).catch(() => {});
+    try { localStorage.setItem('sx_last_' + examId, JSON.stringify({ name: name, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], answers: res.studentAnswers })); } catch (e) {}      // 알림은 결과를 보여 준 뒤 따로 보낸다
 
     const sc100 = res.total ? to100(res.score, res.total) : null;
     const wrongN = res.results.filter(r => r === 'x').length;
@@ -234,6 +284,8 @@ async function submitAnswers(e) {
       <div class="sx-chips">
         ${res.results.map((rs, i) => rs === 'ok' ? '<div class="sx-chip ok">' + dn(i) + '번<small>⭕ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : rs === 'x' ? '<div class="sx-chip x">' + dn(i) + '번<small>❌ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : '<div class="sx-chip na">' + dn(i) + '번<small>' + (rs === 'subj' ? '주관식' : '안 품') + '</small></div>').join('')}
       </div>
+      ${res.skipped && res.skipped.length ? '<div class="card" style="margin:14px 0; border:2px solid #F3D9A4; background:#FFF9EC;"><b>📝 아직 입력하지 않은 문항이 ' + res.skipped.length + '개 있어요</b> (' + escapeHtml(rangeText(res.skipped)) + ')<p class="hint" style="margin:4px 0 8px;">지금까지 입력한 답으로만 점수가 나왔어요. 나머지는 나중에 이어서 입력하면 점수가 합쳐져요. (3일 안에)</p><button type="button" class="btn primary" id="continue-btn" style="width:100%;">이어서 입력하기</button></div>' : ''}
+      ${res.shiftSuspect ? '<div class="card" style="margin:14px 0; border:2px solid #E8A8A0; background:#FFF5F4;"><b>⚠️ 답이 한 칸씩 밀려 입력된 것 같아요</b><p class="hint" style="margin:4px 0 8px;">번호를 잘못 맞춰 눌렀다면 제출한 지 30분 안에 <b>한 번만</b> 고칠 수 있어요. 헷갈려서 바꿔 찍는 용도는 아니에요.</p><button type="button" class="btn outline" id="fix-btn" style="width:100%;">✏️ 답안 수정하기</button></div>' : ''}
       ${wrongN ? '<div id="retry-card" class="card" style="margin:14px 0;"><h2 style="margin:0 0 4px;">❌ 틀린 문제 다시 입력하기</h2><p class="hint" style="margin:0 0 10px;">틀린 ' + wrongN + '문항만 다시 답을 골라 「다시 채점」을 누르세요. 정답은 알려 주지 않고 맞았는지만 알려 줘요. 이 연습은 점수에 들어가지 않아요.</p><div id="retry-grid"></div><div id="retry-msg" class="hint" style="margin:8px 0 0;font-weight:700;"></div><button type="button" id="retry-btn" class="btn primary" style="width:100%;margin-top:8px;">다시 채점</button></div>' : ''}
       <p class="hint">❌ 표시한 문항은 다시 풀어 보세요. ${FROM_APP ? '「오답 복습」에서 틀린 문제만 모아서 다시 풀 수 있어요.' : ''}</p>
       <div class="actions">
@@ -242,6 +294,7 @@ async function submitAnswers(e) {
       </div>
     `;
     window.scrollTo(0, 0);
+    { const cb = document.getElementById('continue-btn'); if (cb) cb.addEventListener('click', () => goEdit('fill', res.submittedAt, res.studentAnswers, name)); const fb = document.getElementById('fix-btn'); if (fb) fb.addEventListener('click', () => goEdit('fix', res.submittedAt, res.studentAnswers, name)); }
     if (wrongN) setupRetry(res);
   } catch (err) {
     alert('오류가 발생했어요: ' + err.message);
