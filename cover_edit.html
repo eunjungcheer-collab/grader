@@ -26,6 +26,7 @@
   <span class="backlink"><a href="index.html">← 홈으로</a></span>
   <h1>🎨 교재 관리</h1>
   <p class="muted">이 기기에 저장된 교재(QR 합본)의 <b>표지만</b> 바꿔서 다시 저장해요. 표지 도안·색을 고르고, <b>강사용/학생용 표시</b>를 화면에서 끌어 옮기며 결과를 미리 보세요. 시험지·QR·문제은행은 건드리지 않아요.</p>
+  <div style="margin:6px 0;"><button type="button" class="btn outline" id="book-rename">✏️ 교재 이름 바꾸기</button> <span class="muted">시험지 제목과 문제은행의 교재 이름이 함께 바뀌어요. 이미 나눠 준 QR은 그대로 동작해요. (아래 교재 파일 이름은 바뀌지 않아요)</span></div>
   <div style="margin:6px 0;"><button type="button" class="btn" id="srv-clean">🧹 서버 임시 파일 정리</button> <span class="muted" id="srv-clean-msg">서버 보관을 올리다 실패해서 남은 임시 조각을 지워요. <b>지금 올리는 중인 것이 없을 때만</b> 눌러 주세요.</span></div>
   <div id="list-card" class="card"><div id="list" class="muted">불러오는 중...</div></div>
 
@@ -405,6 +406,23 @@ async function applyEdit(saveIt) {
   $('ce-sz').addEventListener('input', e => { ST.wd = +e.target.value; paint(); });
   $('ce-auto').onclick = applyAuto; $('ce-tl').onclick = () => { ST.x = 20; ST.top = 14; paint(); };
   $('ce-close').onclick = () => { $('editor').style.display = 'none'; };
+  $('book-rename').onclick = async () => {      // 교재 이름 바꾸기 (시험지 목록에서 옮겨 옴): 등록된 교재 합본 시험지의 교재 이름 중에서 고른다
+    const b = $('book-rename'); b.disabled = true; const t0 = b.textContent; b.textContent = '교재 목록 불러오는 중...';
+    try {
+      const le = await callApi('listExams', { password: getTeacherPassword() });
+      const cnt = {}; ((le && le.exams) || []).forEach(ex => { if (ex.bookTitle && !ex.hasRecipe) cnt[ex.bookTitle] = (cnt[ex.bookTitle] || 0) + 1; });
+      const names = Object.keys(cnt).sort((x, y) => x.localeCompare(y, 'ko'));
+      if (!names.length) { alert('이름을 바꿀 교재가 없어요. (교재 합본으로 등록한 시험지가 있어야 해요)'); return; }
+      let oldN = names[0];
+      if (names.length > 1) {
+        const pick = prompt('이름을 바꿀 교재 번호를 입력하세요.\n' + names.map((n, i) => (i + 1) + '. ' + n + ' (시험지 ' + cnt[n] + '개)').join('\n'), '1');
+        const k = parseInt(pick, 10); if (!(k >= 1 && k <= names.length)) return;
+        oldN = names[k - 1];
+      }
+      if (await renameBookFlow(oldN)) { try { sessionStorage.removeItem('list_filter'); } catch (e) {} }
+    } catch (e) { alert('교재 이름을 바꾸지 못했어요: ' + e.message); }
+    finally { b.disabled = false; b.textContent = t0; }
+  };
   $('srv-clean').onclick = async () => {
     if (!confirm('서버에 남은 임시 조각 파일을 모두 지울까요?\n(올리는 중인 것이 있다면 실패하니, 모두 끝난 뒤에 눌러 주세요. 보관된 합본 파일은 지워지지 않아요)')) return;
     const b = $('srv-clean'), m = $('srv-clean-msg'); b.disabled = true; m.textContent = '정리하는 중...';

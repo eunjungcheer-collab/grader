@@ -17,7 +17,7 @@
   <h1>등록된 시험지</h1>
   <div id="filter-bar" class="card" style="display:none; padding:12px 14px; margin-bottom:10px;">
     <div id="kind-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
-    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;"><select id="book-sel" style="display:none; max-width:100%;"></select><button type="button" class="btn outline" id="book-rename" style="display:none; padding:6px 12px; font-size:13px;">✏️ 교재 이름 바꾸기</button><button type="button" class="btn danger" id="book-del" style="display:none; padding:6px 12px; font-size:13px;">🗑 교재 삭제</button></div>
+    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;"><select id="book-sel" style="display:none; max-width:100%;"></select><button type="button" class="btn danger" id="book-del" style="display:none; padding:6px 12px; font-size:13px;">🗑 교재 삭제</button></div>
     <div id="grade-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
       <select id="unit-sel" style="flex:1 1 180px; min-width:150px;"><option value="">단원 전체</option></select>
@@ -119,7 +119,6 @@ renderHeader();
       if (st.book && !cnt[st.book]) st.book = '';
       sel.innerHTML = '<option value="">📚 교재 전체</option>' + names.map(n => '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + ' (' + cnt[n] + ')</option>').join('');
       sel.value = st.book;
-      document.getElementById('book-rename').style.display = names.length ? '' : 'none';
       bookNames = names;
       document.getElementById('book-del').style.display = names.length ? '' : 'none';
     }
@@ -190,25 +189,6 @@ renderHeader();
     }
     kindChips.addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (!b) return; st.kind = b.dataset.k; st.unit = ''; render(); });
     gradeChips.addEventListener('click', e => { const b = e.target.closest('button[data-g]'); if (!b) return; st.grade = b.dataset.g; st.unit = ''; render(); });
-    document.getElementById('book-rename').addEventListener('click', async () => {
-      let oldN = st.book;
-      if (!oldN) {
-        if (!bookNames.length) return;
-        const pick = prompt('이름을 바꿀 교재 번호를 입력하세요.\n' + bookNames.map((n, i) => (i + 1) + '. ' + n).join('\n'), '1');
-        const k = parseInt(pick, 10); if (!(k >= 1 && k <= bookNames.length)) return;
-        oldN = bookNames[k - 1];
-      }
-      const nn = prompt('"' + oldN + '"의 새 교재 이름을 입력하세요.\n(시험지 제목과 문제은행 교재 이름이 함께 바뀌어요. 이미 나눠 준 QR은 그대로 동작해요.)\n예: 중1 내신대비교재', oldN);
-      if (!nn || !nn.trim() || nn.trim() === oldN) return;
-      const btn = document.getElementById('book-rename'); btn.disabled = true; btn.textContent = '바꾸는 중...';
-      try {
-        const r = await callApi('renameBook', { password: getTeacherPassword(), oldName: oldN, newName: nn.trim() });
-        if (!r.ok) throw new Error(r.error || '바꾸지 못했어요');
-        alert('바꿨어요: 시험지 ' + r.exams + '개, 문제은행 문항 ' + r.questions + '개');
-        try { sessionStorage.removeItem('list_filter'); } catch (e) {}
-        location.reload();
-      } catch (e) { alert('교재 이름을 바꾸지 못했어요: ' + e.message + '\n(Apps Script를 새 버전으로 배포했는지 확인해 주세요)'); btn.disabled = false; btn.textContent = '✏️ 교재 이름 바꾸기'; }
-    });
     document.getElementById('book-sel').addEventListener('change', e => { st.book = e.target.value; st.unit = ''; render(); });
     unitSel.addEventListener('change', () => { st.unit = unitSel.value; render(); });
     sortSel.addEventListener('change', () => { st.sort = sortSel.value; render(); });
