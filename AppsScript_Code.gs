@@ -141,6 +141,7 @@ function handle_(e) {
       case 'deleteQuestions': result = actionDeleteQuestions_(params); break;
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
+      case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
       case 'setExamSources': result = actionSetExamSources_(params); break;
       case 'renameBook': result = actionRenameBook_(params); break;
       case 'deleteExam': result = actionDeleteExam_(params); break;
@@ -338,6 +339,12 @@ function findExamRow_(sheet, examId) {
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === String(examId)) return { rowIndex: i + 1, row: data[i] };
   }
+  // 삭제하고 다시 등록한 시험지: 예전 QR(예전 시험 번호)이 새 시험지로 이어지게 한다 (recipe 의 aliases)
+  for (let i = 1; i < data.length; i++) {
+    const t = String(data[i][8] || ''); if (t.indexOf('"aliases"') < 0) continue;
+    const rc = safeJson_(t, null);
+    if (rc && (rc.aliases || []).map(String).indexOf(String(examId)) >= 0) return { rowIndex: i + 1, row: data[i] };
+  }
   return null;
 }
 
@@ -507,7 +514,7 @@ function actionSubmitAnswer_(p) {
 
   const scoresSheet = ss.getSheetByName(SHEET_SCORES);
   scoresSheet.appendRow([
-    p.id, p.studentName || '이름없음', studentAnswers.join(','),
+    String(found.row[0]), p.studentName || '이름없음', studentAnswers.join(','),
     score, objective, new Date().toISOString(), score100,
   ]);
   if (!p.defer) { try { afterSubmit_(ss, found, p, score, objective, score100); } catch (e) {} }      // 알림 때문에 제출이 실패하면 안 된다. defer면 학생에게 결과부터 보내고 알림은 따로(afterSubmit) 보낸다
@@ -2857,4 +2864,35 @@ function actionListHomework_(p) {
   sh.getRange(2, 1, last - 1, HW_HEADERS.length).getValues().forEach(function (r) { if (new Date(r[2]).getTime() >= cut) out.push({ name: String(r[1]), date: hwStr_(r[3]), bookLesson: hwStr_(r[4]), homework: String(r[5]), doneAt: hwStr_(r[7]), dueAt: hwStr_(r[9], "yyyy-MM-dd'T'HH:mm:ss") }); });
   out.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   return { ok: true, items: out.slice(0, 300) };
+}
+
+
+// 삭제한 뒤 같은 단원으로 다시 등록한 시험지를 찾아, 예전 QR(예전 시험 번호)이 새 시험지로 열리게 이어 준다.
+// 휴지통(30일)에 있는 삭제된 시험지의 교재 번호+단원 이름이 지금 시험지와 같으면 짝으로 본다.
+function actionRelinkOldQr_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  const done = [], none = [];
+  try {
+    const tr = trashRead_(ss), data = exams.getDataRange().getValues(), live = [];
+    for (let i = 1; i < data.length; i++) { const rc = safeJson_(data[i][8], null); if (rc && rc.book) live.push({ i: i, id: String(data[i][0]), rc: rc, title: String(data[i][1]) }); }
+    const have = {}; data.slice(1).forEach(function (r) { have[String(r[0])] = 1; });
+    const seen = {};
+    tr.items.forEach(function (it) {
+      if (it.type !== 'exam') return;
+      let row; try { row = JSON.parse(it.parts.join('')); } catch (e) { return; }
+      const oldId = String(row[0]); if (have[oldId] || seen[oldId]) return; seen[oldId] = 1;
+      const orc = safeJson_(row[8], null); if (!orc || !orc.book) return;
+      const books = [String(orc.book)].concat((orc.books || []).map(String));
+      const label = String(orc.label || row[1]);
+      const cand = live.filter(function (x) { const xb = [String(x.rc.book)].concat((x.rc.books || []).map(String)); return xb.some(function (b) { return books.indexOf(b) >= 0; }) && String(x.rc.label || x.title) === label; });
+      if (cand.length !== 1) { none.push(label + (cand.length > 1 ? ' (같은 단원이 여러 개)' : ' (다시 등록된 시험지를 못 찾음)')); return; }
+      const c = cand[0], al = (c.rc.aliases || []).map(String);
+      if (al.indexOf(oldId) < 0) { al.push(oldId); c.rc.aliases = al; exams.getRange(c.i + 1, 9).setValue(JSON.stringify(c.rc)); }
+      done.push(label);
+    });
+  } finally { lock.releaseLock(); }
+  if (done.length) bustCache_();
+  return { ok: true, linked: done.length, done: done, none: none };
 }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190520">
+<link rel="stylesheet" href="css/style.css?v=202611190530">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -24,7 +24,13 @@
     </div>
     <div id="bk-msg" class="hint" style="margin-top:6px;"></div>
   </div>
-  <div class="card" id="pc-card">
+  <div class="card" id="rq-card">
+      <b>🔗 삭제 후 다시 등록한 시험지의 예전 QR 이어붙이기</b>
+      <p class="hint" style="margin:6px 0 8px;">시험지를 삭제하고 같은 단원으로 다시 등록하면, 이미 나눠 준 교재의 그 단원 QR은 「존재하지 않는 시험」이 돼요. 이 버튼을 누르면 휴지통(30일)에 있는 예전 시험지를 찾아, 예전 QR이 새로 등록한 시험지로 열리게 이어 줘요. 여러 번 눌러도 안전해요.</p>
+      <button type="button" class="btn primary" id="rq-btn">🔗 예전 QR 이어붙이기</button>
+      <div class="hint" id="rq-msg" style="margin-top:8px;"></div>
+    </div>
+    <div class="card" id="pc-card">
       <b>💾 인쇄용 PDF 보관 (이 컴퓨터)</b>
       <p class="hint" id="pc-info" style="margin:6px 0;"></p>
       <p class="hint" style="margin:0 0 8px;">같은 시험지를 다시 인쇄할 때 빨라져요. 최근 10개만 이 컴퓨터(브라우저)에 두고, 구글 드라이브·서버 용량은 쓰지 않아요.</p>
@@ -57,10 +63,10 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611190520"></script>
-<script src="js/api.js?v=202611190520"></script>
-<script src="js/common.js?v=202611190520"></script>
-<script src="js/pdfui.js?v=202611190520"></script>
+<script src="js/config.js?v=202611190530"></script>
+<script src="js/api.js?v=202611190530"></script>
+<script src="js/common.js?v=202611190530"></script>
+<script src="js/pdfui.js?v=202611190530"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -121,6 +127,15 @@ load();
   on.addEventListener('change', () => { try { localStorage.setItem('pdfCache', on.checked ? 'on' : 'off'); } catch (e) {} $('pc-msg').textContent = on.checked ? '켰어요.' : '껐어요 (이미 보관한 PDF는 그대로예요).'; });
   $('pc-clear').addEventListener('click', async () => { const n = await pdfCacheClear(); $('pc-msg').textContent = n + '개를 지웠어요.'; show(); });
   show(); })();
+$('rq-btn').addEventListener('click', async () => {
+  const b = $('rq-btn'), m = $('rq-msg'); b.disabled = true; m.textContent = '찾는 중...';
+  try {
+    const r = await callApi('relinkOldQr', { password: getTeacherPassword() });
+    if (!r.ok) { m.textContent = r.error || '실패했어요'; }
+    else m.innerHTML = (r.linked ? '✅ ' + r.linked + '개 단원의 예전 QR을 이어 줬어요.<br>' + r.done.map(e).join('<br>') : '이어 줄 시험지가 없어요.') + (r.none.length ? '<br><span style="color:#B45309;">이어 주지 못한 것: ' + r.none.map(e).join(' / ') + '</span>' : '');
+  } catch (x) { m.textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
+  b.disabled = false;
+});
 loadUsage(); loadNames();
 </script>
 </body>
