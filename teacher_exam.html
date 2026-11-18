@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611182300">
+<link rel="stylesheet" href="css/style.css?v=202611182330">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,13 +17,15 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611182300"></script>
-<script src="js/config.js?v=202611182300"></script>
-<script src="js/api.js?v=202611182300"></script>
-<script src="js/common.js?v=202611182300"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611182300"></script>
-<script src="js/bankcore.js?v=202611182300"></script>
-<script src="js/pdfui.js?v=202611182300"></script>
+<script src="js/vendor/qrcode.min.js?v=202611182330"></script>
+<script src="js/config.js?v=202611182330"></script>
+<script src="js/api.js?v=202611182330"></script>
+<script src="js/common.js?v=202611182330"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611182330"></script>
+<script src="js/bankcore.js?v=202611182330"></script>
+<script src="js/vendor/pdf.min.js?v=202611182330"></script>
+<script src="js/printpdf.js?v=202611182330"></script>
+<script src="js/pdfui.js?v=202611182330"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -210,9 +212,10 @@ async function makeTeacherFromBank(exam, say) {
       <p class="muted">${res.answers.length}문항${res.answers.some(a => a === '-') ? ' (주관식 ' + res.answers.filter(a => a === '-').length + ')' : ''} · ${formatDate(res.createdAt)} 등록</p>
       <div class="card center">
         <div id="qr-holder" class="qr-preview"></div>
-        ${res.pdfUrl ? '' : '<div class="banner" style="text-align:left; margin:0 0 10px;">📚 <b>교재 PDF에 이 단원의 QR이 찍혀 있어요.</b> (교재 QR 합본 만들기에서 받은 PDF) 이 시험의 학생 제출 링크·QR은 아래에 있어요.</div>'}
+        ${res.pdfUrl ? '' : '<div class="banner" style="text-align:left; margin:0 0 10px;">📚 <b>교재 PDF에 이 단원의 QR이 찍혀 있어요.</b> (교재 만들기에서 받은 PDF) 이 시험의 학생 제출 링크·QR은 아래에 있어요.</div>'}
         <div style="font-weight:700; margin:2px 0 8px; text-align:left;${res.pdfUrl ? '' : ' display:none;'}">⬇️ 받을 파일 고르기</div>
         <a class="btn primary" id="dl-student" href="${res.pdfUrl}" target="_blank" style="width:100%;${res.pdfUrl ? '' : ' display:none;'}">📄 학생용만 받기${res.explUrl ? ' (QR 찍힌 PDF)' : ' (해설 포함)'}</a>
+        <button type="button" class="btn outline" id="print-student" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">🖨️ 학생용 바로 인쇄</button>
         <button type="button" class="btn primary" id="dl-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📄📘 학생용 + 강사용 둘 다 받기</button>
         <button type="button" class="btn outline" id="dl-teacher-only" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📘 강사용만 받기 (정답 동그라미·문제 밑 정답·해설)</button>
         <div id="dl-bank" style="display:none; text-align:left; margin-top:6px;">
@@ -277,6 +280,17 @@ async function makeTeacherFromBank(exam, say) {
         if (stuId) { noteEl.textContent = '학생용 PDF를 받는 중...'; const b = await driveDirectBlob(stuId, (g, tot) => { noteEl.textContent = '학생용 PDF를 받는 중... ' + (tot ? Math.floor(g / tot * 100) + '%' : Math.round(g / 1048576) + 'MB'); }); if (b) { saveBlob(b, stuName); noteEl.textContent = '학생용 PDF를 받았어요.'; return true; } }
         window.open(res.pdfUrl, '_blank'); return false;
       }
+      const prBtn = document.getElementById('print-student');
+      if (prBtn) prBtn.addEventListener('click', async () => {
+        prBtn.disabled = true; try {
+          noteEl.textContent = '인쇄할 PDF를 받는 중...';
+          const b = stuId ? await driveDirectBlob(stuId, (g, tot) => { noteEl.textContent = '인쇄할 PDF를 받는 중... ' + (tot ? Math.floor(g / tot * 100) + '%' : ''); }) : null;
+          if (!b) throw new Error('PDF를 받지 못했어요. 서버를 새 버전으로 배포했는지 확인하거나, 「학생용만 받기」로 받아서 인쇄해 주세요.');
+          setupPdfJs(); const ok = await printPdfBytes(new Uint8Array(await b.arrayBuffer()), (i, n) => { noteEl.textContent = '🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽'; });
+          noteEl.textContent = ok ? '🖨️ 인쇄 창으로 보냈어요.' : '';
+        } catch (err) { noteEl.textContent = '⚠️ ' + err.message; }
+        prBtn.disabled = false;
+      });
       const stuLink = document.getElementById('dl-student');
       if (stuLink && stuId) stuLink.addEventListener('click', ev => { ev.preventDefault(); saveStudent(); });
       const run = async (withStudent, btn) => {

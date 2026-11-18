@@ -25,7 +25,7 @@ async function fullSubs() {
   const res = await callApi('listSubmissions', { password: getTeacherPassword() }); if (!res.ok) throw new Error(res.error || '제출 기록을 불러오지 못했어요');
   FULL = wnHydrate(res); FULL_AT = Date.now(); return FULL;
 }
-async function runWn(kind, keys) {
+async function runWn(kind, keys, doPrint) {
   if (WN_BUSY) { alert('지금 만드는 중이에요. 끝난 뒤에 눌러 주세요.'); return; }
   const msg = g('wn-msg'), bar = g('wn-bar'), fill = g('wn-fill');
   const files = { student: g('wn-f-student').checked, answers: g('wn-f-answers').checked && kind === 'retry', teacher: g('wn-f-teacher').checked };
@@ -34,7 +34,7 @@ async function runWn(kind, keys) {
   WN_BUSY = true; document.querySelectorAll('#fx-box button, .wn-one').forEach(b => b.disabled = true);
   bar.style.display = ''; fill.style.width = '0'; const T0 = Date.now(); let G = 1, gi = 0, frac = 0, last = '';
   const paint = () => { const f = (gi + frac) / G, el = (Date.now() - T0) / 1000; let eta = ''; if (f > 0.05 && el > 6) { const sec = Math.round(el * (1 - f) / f); eta = ' · 약 ' + (sec >= 60 ? Math.floor(sec / 60) + '분 ' + (sec % 60) + '초' : sec + '초') + ' 남음(대략)'; } fill.style.width = Math.min(100, Math.round(f * 100)) + '%'; msg.textContent = last + '  [' + Math.floor(f * 100) + '%' + eta + ']'; };
-  const tick = setInterval(paint, 1000);
+  const tick = setInterval(paint, 1000), say = t => { last = t; paint(); };
   try {
     last = '제출 기록을 불러오는 중...'; paint();
     const subs = await subsForKeys(keys), recs = [];
@@ -46,10 +46,10 @@ async function runWn(kind, keys) {
       const gr = groups[names[gi]]; frac = 0;
       const out = await wnBuild(gr, kind, files, { oneFile: g('wn-one').checked, withExpl: g('wn-expl').checked, blank: parseInt(g('wn-blank').value, 10) || 0, subs: subs }, t => { last = names[gi] + ' · ' + t; paint(); }, f => { frac = f; paint(); });
       notes.push.apply(notes, out.notes);
-      for (const f of ['combined', 'student', 'answers', 'teacher']) if (out[f]) { wnDownload(out[f], wnFileName(kind, f, out.used)); done.push(wnFileName(kind, f, out.used)); await new Promise(r => setTimeout(r, 1300)); }
+      for (const f of ['combined', 'student', 'answers', 'teacher']) if (out[f]) { if (doPrint && f !== 'teacher') { say('🖨️ 인쇄 준비 중... (' + wnFileName(kind, f, out.used) + ')'); await printPdfBytes(out[f], (i, n) => say('🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽')); done.push('🖨️ ' + wnFileName(kind, f, out.used)); continue; } wnDownload(out[f], wnFileName(kind, f, out.used)); done.push(wnFileName(kind, f, out.used)); await new Promise(r => setTimeout(r, 1300)); }
     }
     fill.style.width = '100%'; clearInterval(tick);
-    msg.innerHTML = '✅ ' + done.length + '개 파일을 내려받았어요.<br>' + done.map(E).join('<br>') + (notes.length ? '<br><span style="color:#B45309;">참고: ' + notes.map(E).join(' / ') + '</span>' : '');
+    msg.innerHTML = '✅ ' + done.length + '개를 처리했어요 (🖨️는 인쇄 창으로 보냈어요).<br>' + done.map(E).join('<br>') + (notes.length ? '<br><span style="color:#B45309;">참고: ' + notes.map(E).join(' / ') + '</span>' : '');
     setTimeout(() => { bar.style.display = 'none'; }, 3000);
   } catch (err) { clearInterval(tick); bar.style.display = 'none'; msg.innerHTML = '<span style="color:#C1392B;">⚠️ ' + E(err.message || err) + '</span>'; }
   WN_BUSY = false; document.querySelectorAll('#fx-box button, .wn-one').forEach(b => b.disabled = false);
@@ -74,7 +74,7 @@ async function showStudent(q, sub) {
     body.innerHTML = '<div style="font-weight:700;margin-bottom:2px;">👤 ' + E(who) + ' · 시험 기록 ' + mine.length + '건</div>' +
       (cur ? '<div style="font-weight:700;color:#1f6f4a;margin-top:6px;">⬇️ 이번에 제출한 시험</div>' + row(cur, true) + '<div style="font-weight:700;margin:12px 0 2px;">🗂️ 이전 시험 기록 ' + rest.length + '건</div>' : '') +
       rest.map(s => row(s, false)).join('') +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="btn outline" id="fx-all" style="padding:6px 12px;">틀린 기록 전부 체크</button></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="btn primary" id="fx-note" style="padding:10px 16px;font-size:15px;">📓 체크한 시험 오답노트 받기</button><button type="button" class="btn primary" id="fx-retry" style="padding:10px 16px;font-size:15px;">🔁 체크한 시험 다시풀기 받기</button></div>';
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="btn outline" id="fx-all" style="padding:6px 12px;">틀린 기록 전부 체크</button></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="btn primary" id="fx-note" style="padding:10px 16px;font-size:15px;">📓 체크한 시험 오답노트 받기</button><button type="button" class="btn primary" id="fx-retry" style="padding:10px 16px;font-size:15px;">🔁 체크한 시험 다시풀기 받기</button></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"><button type="button" class="btn outline" id="fx-note-p" style="padding:8px 14px;">🖨️ 오답노트 바로 인쇄</button><button type="button" class="btn outline" id="fx-retry-p" style="padding:8px 14px;">🖨️ 다시풀기 바로 인쇄</button></div><div class="hint" style="margin-top:4px;">🖨️는 학생용만 인쇄 창으로 보내요 (강사용은 파일로 받아져요).</div>';
     body.querySelectorAll('.wn-chk').forEach(c => c.addEventListener('change', () => { if (c.checked) WN_SEL[c.dataset.k] = 1; else delete WN_SEL[c.dataset.k]; }));
     body.querySelectorAll('.wn-one').forEach(b => b.addEventListener('click', () => runWn(b.dataset.kind, [b.dataset.k])));
     const allBtn = g('fx-all'), chks = () => Array.from(body.querySelectorAll('.wn-chk')).filter(c => !c.disabled);
@@ -83,6 +83,9 @@ async function showStudent(q, sub) {
     body.querySelectorAll('.wn-chk').forEach(c => c.addEventListener('change', sync)); sync();
     g('fx-note').addEventListener('click', () => runWn('note', Object.keys(WN_SEL).filter(k => mine.some(x => wnKey(x) === k))));
     g('fx-retry').addEventListener('click', () => runWn('retry', Object.keys(WN_SEL).filter(k => mine.some(x => wnKey(x) === k))));
+    const mk = () => Object.keys(WN_SEL).filter(k => mine.some(x => wnKey(x) === k));
+    g('fx-note-p').addEventListener('click', () => runWn('note', mk(), true));
+    g('fx-retry-p').addEventListener('click', () => runWn('retry', mk(), true));
   } catch (err) { body.innerHTML = '<span style="color:#C1392B;">' + E(err.message || err) + '</span>'; }
 }
 
