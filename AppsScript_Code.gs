@@ -517,6 +517,13 @@ function actionSubmitAnswer_(p) {
     String(found.row[0]), p.studentName || '이름없음', studentAnswers.join(','),
     score, objective, submittedAt, score100,
   ]);
+  if (p.defer) {      // 가장 빠른 알림: 제출을 받자마자 이름·점수만 먼저 보낸다 (자세한 분석은 뒤의 afterSubmit 에서)
+    try {
+      const nm0 = String(p.studentName || '이름없음');
+      CacheService.getScriptCache().put('ep_' + String(found.row[0]) + '|' + nm0, '1', 300);
+      pushToTeacher_((objective > 0 && score100 < 70 ? '📉 ' : '📝 ') + nm0 + ' 학생 제출 · ' + score100 + '점' + (objective > 0 && score100 < 70 ? ' (70점 미만)' : ''), String(found.row[1]) + '\n' + score + '/' + objective, '?sub=' + encodeURIComponent(String(found.row[0])) + '&stu=' + encodeURIComponent(nm0));
+    } catch (e) {}
+  }
   if (!p.defer) { try { afterSubmit_(ss, found, p, score, objective, score100); } catch (e) {} }      // 알림 때문에 제출이 실패하면 안 된다. defer면 학생에게 결과부터 보내고 알림은 따로(afterSubmit) 보낸다
 
   return {
@@ -1649,7 +1656,10 @@ function afterSubmit_(ss, found, p, score, objective, score100) {
     }
   } catch (e) {}
   // 선생님 알림을 가장 먼저(느린 분석보다 앞서) 보낸다 — 반복 오답 문구는 뒤쪽 이메일에 들어간다.
-  try { pushToTeacher_((lowText ? '📉 ' : '📝 ') + name + ' 학생 제출 · ' + score100 + '점' + (lowText ? ' (' + lowText + ')' : ''), title + '\n' + score + '/' + objective + (late ? ' · 기한 지남' : ''), '?sub=' + encodeURIComponent(String(p.id)) + '&stu=' + encodeURIComponent(name)); } catch (e) {}
+  let early = false; try { early = !!CacheService.getScriptCache().get('ep_' + String(p.id) + '|' + name); } catch (e) {}
+  if (early) {      // 이미 제출 직후에 알림을 보냈으면 중복으로 보내지 않고, 점수 하락이 있을 때만 덧붙여 알린다
+    if (lowText.indexOf('하락') >= 0) { try { pushToTeacher_('📉 ' + name + ' 학생 · ' + lowText, title, '?sub=' + encodeURIComponent(String(p.id)) + '&stu=' + encodeURIComponent(name)); } catch (e) {} }
+  } else try { pushToTeacher_((lowText ? '📉 ' : '📝 ') + name + ' 학생 제출 · ' + score100 + '점' + (lowText ? ' (' + lowText + ')' : ''), title + '\n' + score + '/' + objective + (late ? ' · 기한 지남' : ''), '?sub=' + encodeURIComponent(String(p.id)) + '&stu=' + encodeURIComponent(name)); } catch (e) {}
   let repText = '';
   try {
     const wk = weakOfStudent_(ss, name); repText = weakText_(wk, title);
