@@ -7,6 +7,18 @@ const WN_SEL = window.WN_SEL, wnKey = window.wnKey;
 let GETALL = null;
 // ── 오답노트 · 오답문제 다시풀기 만들기 ──
 let FULL = null, FULL_AT = 0, WN_BUSY = false;
+// 학생 이름으로 거른 기록만 서버에서 받는다 (서버가 옛날 버전이면 전체를 받아 여기서 거른다)
+async function subsOf(q) {
+  if (GETALL) return fullSubs();
+  const res = await callApi('listSubmissions', { password: getTeacherPassword(), student: q }); if (!res.ok) throw new Error(res.error || '제출 기록을 불러오지 못했어요');
+  const arr = wnHydrate(res); LAST = arr; if (!res.filtered) { FULL = arr; FULL_AT = Date.now(); } return arr;
+}
+let LAST = [];
+// 만들 기록들이 이미 불러온 학생 기록 안에 다 있으면 그걸 쓰고, 없으면 전체를 불러온다
+async function subsForKeys(keys) {
+  const have = {}; LAST.forEach(x => { have[wnKey(x)] = 1; });
+  return keys.every(k => have[k]) ? LAST : fullSubs();
+}
 async function fullSubs() {
   if (GETALL) { const a = await GETALL(); if (a && a.length) return a; }
   if (FULL && Date.now() - FULL_AT < 60000) return FULL;
@@ -25,7 +37,7 @@ async function runWn(kind, keys) {
   const tick = setInterval(paint, 1000);
   try {
     last = '제출 기록을 불러오는 중...'; paint();
-    const subs = await fullSubs(), recs = [];
+    const subs = await subsForKeys(keys), recs = [];
     keys.forEach(k => { const hit = subs.find(x => wnKey(x) === k) || subs.find(x => String(x.examId) === k.split('|')[0] && x.studentName === k.split('|')[1] && Math.abs(new Date(x.submittedAt) - new Date(k.split('|')[2])) < 1000); if (hit) recs.push(hit); });
     if (!recs.length) throw new Error('선택한 기록을 찾지 못했어요. 화면을 새로고침한 뒤 다시 해 주세요.');
     const groups = {}; recs.forEach(x => { (groups[x.studentName] = groups[x.studentName] || []).push(x); });
@@ -47,7 +59,7 @@ async function showStudent(q, sub) {
   const body = g('fx-body'); if (!nk(q)) { body.innerHTML = '<span class="hint">이름을 쓰면 그 학생의 시험 기록만 나와요.</span>'; return; }
   body.textContent = '기록을 불러오는 중...';
   try {
-    const all = await fullSubs(), hit = all.filter(x => nk(x.studentName).includes(nk(q)));
+    const all = await subsOf(q), hit = all.filter(x => nk(x.studentName).includes(nk(q)));
     const names = hit.map(x => x.studentName).filter((n, i, a) => a.indexOf(n) === i);
     if (!names.length) { body.textContent = '「' + q + '」 학생의 제출 기록을 찾지 못했어요.'; return; }
     const exact = names.find(n => nk(n) === nk(q));
@@ -85,7 +97,11 @@ let fxT = null, fxLoaded = false;
 g('fx-q').addEventListener('input', () => { clearTimeout(fxT); fxT = setTimeout(() => showStudent(g('fx-q').value), 400); });
 g('fx-q').addEventListener('focus', async () => {
   if (fxLoaded) return; fxLoaded = true;
-  try { const all = await fullSubs(); g('fx-names').innerHTML = all.map(x => x.studentName).filter((n, i, a) => n && a.indexOf(n) === i).sort().map(n => '<option value="' + E(n) + '">').join(''); } catch (x) { fxLoaded = false; }
+  try {
+    let names; const r = GETALL ? null : await callApi('studentNames', { password: getTeacherPassword() });
+    if (r && r.ok) names = r.names; else { const all = await fullSubs(); names = all.map(x => x.studentName).filter((n, i, a) => n && a.indexOf(n) === i).sort(); }
+    g('fx-names').innerHTML = names.map(n => '<option value="' + E(n) + '">').join('');
+  } catch (x) { fxLoaded = false; }
 });
 setTimeout(function () { const q = new URLSearchParams(location.search), stu = q.get('stu'); if (!stu) return; g('fx-q').value = stu; showStudent(stu, q.get('sub')).then(() => g('fx-box').scrollIntoView({ block: 'start' })); }, 0);
 

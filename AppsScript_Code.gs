@@ -169,6 +169,9 @@ function handle_(e) {
       case 'setPushConfig': result = actionSetPushConfig_(params); break;
       case 'approveStudent': result = actionApproveStudent_(params); break;
       case 'installBackup': result = actionInstallBackup_(params); break;
+      case 'studentNames': result = actionStudentNames_(params); break;
+      case 'dataStatus': result = actionDataStatus_(params); break;
+      case 'dataTrim': result = actionDataTrim_(params); break;
       case 'retryCheck': result = actionRetryCheck_(params); break;
       case 'retryLog': result = actionRetryLog_(params); break;
       case 'weakReport': result = actionWeakReport_(params); break;
@@ -939,8 +942,21 @@ function actionBankUnitMap_(p) {
 }
 function actionListSubmissions_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
-  const ck = 'ls_' + dataVer_(), hit = bigGet_(ck); if (hit) return hit;
-  const out = listSubmissionsBuild_(); bigPut_(ck, out, 300); return out;
+  const ck = 'ls_' + dataVer_();
+  let out = bigGet_(ck); if (!out) { out = listSubmissionsBuild_(); bigPut_(ck, out, 300); }
+  if (p.student) {       // 학생 이름(일부)으로 거른 기록만 보낸다 — 기록이 많아도 빠르게
+    const q = histName_(p.student).toLowerCase(), subs = (out.submissions || []).filter(function (r) { return histName_(r.studentName).toLowerCase().indexOf(q) >= 0; }), ex = {};
+    subs.forEach(function (r) { const id = String(r.examId); if (out.exams && out.exams[id]) ex[id] = out.exams[id]; });
+    const o2 = {}; Object.keys(out).forEach(function (k) { o2[k] = out[k]; }); o2.submissions = subs; o2.exams = ex; o2.filtered = true; return o2;
+  }
+  return out;
+}
+// 학생 이름 목록만 가볍게 (검색창 자동완성용)
+function actionStudentNames_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ck = 'ls_' + dataVer_(); let out = bigGet_(ck); if (!out) { out = listSubmissionsBuild_(); bigPut_(ck, out, 300); }
+  const seen = {}, names = []; (out.submissions || []).forEach(function (r) { const n = String(r.studentName || '').trim(); if (n && !seen[n]) { seen[n] = 1; names.push(n); } });
+  names.sort(); return { ok: true, names: names };
 }
 function listSubmissionsBuild_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2195,6 +2211,29 @@ function actionInstallBackup_(p) {
     if (!hasTrigger_('autoBackup_')) ScriptApp.newTrigger('autoBackup_').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
     return { ok: true };
   } catch (e) { return { ok: false, error: '자동 백업을 켜지 못했어요: ' + e.message + ' (편집기에서 setupAlerts를 한 번 실행해 권한을 허용해 주세요)' }; }
+}
+// ── 데이터 관리: 백업·드라이브 사용 현황, 오래된 백업 정리 ──
+function backupFiles_() {
+  const it = DriveApp.getFoldersByName('자동채점 백업'); if (!it.hasNext()) return [];
+  const out = [], fi = it.next().getFiles();
+  while (fi.hasNext()) { const f = fi.next(); out.push(f); }
+  out.sort(function (a, b) { return b.getDateCreated() - a.getDateCreated(); });
+  return out;
+}
+function actionDataStatus_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), t0 = Date.now();
+  let rows = 0, cells = 0; ss.getSheets().forEach(function (sh) { rows += Math.max(0, sh.getLastRow() - 1); cells += sh.getLastRow() * sh.getLastColumn(); });
+  const bk = backupFiles_().map(function (f) { return { id: f.getId(), name: f.getName(), at: f.getDateCreated().toISOString(), auto: / 자동$/.test(f.getName()) }; });
+  let pdfBytes = 0, pdfCount = 0, chunks = 0;
+  try { const it = mergeFolder_().getFiles(); while (it.hasNext() && Date.now() - t0 < 12000) { const f = it.next(), n = f.getName(); if (n.indexOf('__chunk__') >= 0) chunks++; else { pdfCount++; pdfBytes += f.getSize(); } } } catch (e) {}
+  return { ok: true, rows: rows, cells: cells, sheetCount: ss.getSheets().length, backups: bk, autoOn: hasTrigger_('autoBackup_'), pdfCount: pdfCount, pdfBytes: pdfBytes, chunks: chunks, partial: Date.now() - t0 >= 12000 };
+}
+function actionDataTrim_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const keep = Math.max(1, Math.min(parseInt(p.keep, 10) || 4, 20)); let n = 0;
+  backupFiles_().filter(function (f) { return / 자동$/.test(f.getName()); }).slice(keep).forEach(function (f) { f.setTrashed(true); n++; });
+  return { ok: true, removed: n, keep: keep };
 }
 function lev_(a, b) {
   const m = a.length, n = b.length; if (!m) return n; if (!n) return m;

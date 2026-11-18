@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611181830">
+<link rel="stylesheet" href="css/style.css?v=202611182200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,13 +17,13 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611181830"></script>
-<script src="js/config.js?v=202611181830"></script>
-<script src="js/api.js?v=202611181830"></script>
-<script src="js/common.js?v=202611181830"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611181830"></script>
-<script src="js/bankcore.js?v=202611181830"></script>
-<script src="js/pdfui.js?v=202611181830"></script>
+<script src="js/vendor/qrcode.min.js?v=202611182200"></script>
+<script src="js/config.js?v=202611182200"></script>
+<script src="js/api.js?v=202611182200"></script>
+<script src="js/common.js?v=202611182200"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611182200"></script>
+<script src="js/bankcore.js?v=202611182200"></script>
+<script src="js/pdfui.js?v=202611182200"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -130,7 +130,7 @@ async function makeStudentFromBank(exam, say) {
   say('학생용 시험지 만드는 중...');
   const doc = await BankCore.composeExamPdf(PDFLib, exam.title, imgs, { qrReserve: 62, keepTitle: picks.every(q => q.kind === '기출') });
   await stampQrOnDoc(doc, studentLinkFor(exam.id), { size: 50, corner: 'top-right', margin: 4 });
-  // 교재 단원 시험지는 교재처럼 문제 뒤에 「정답 및 해설」을 붙여 준다 (교재 합본 PDF의 학생용도 정답편이 뒤에 있다)
+  // 교재 단원 시험지는 교재처럼 문제 뒤에 「정답 및 해설」을 붙여 준다 (교재 PDF의 학생용도 정답편이 뒤에 있다)
   if (exam.composeRecipe && exam.composeRecipe.book) {
     try {
       const withExpl = picks.filter(q => q.explFileId), map = {};
@@ -210,7 +210,7 @@ async function makeTeacherFromBank(exam, say) {
       <p class="muted">${res.answers.length}문항${res.answers.some(a => a === '-') ? ' (주관식 ' + res.answers.filter(a => a === '-').length + ')' : ''} · ${formatDate(res.createdAt)} 등록</p>
       <div class="card center">
         <div id="qr-holder" class="qr-preview"></div>
-        ${res.pdfUrl ? '' : '<div class="banner" style="text-align:left; margin:0 0 10px;">📚 <b>교재 합본 PDF에 이 단원의 QR이 찍혀 있어요.</b> (교재 QR 합본 만들기에서 받은 PDF) 이 시험의 학생 제출 링크·QR은 아래에 있어요.</div>'}
+        ${res.pdfUrl ? '' : '<div class="banner" style="text-align:left; margin:0 0 10px;">📚 <b>교재 PDF에 이 단원의 QR이 찍혀 있어요.</b> (교재 QR 합본 만들기에서 받은 PDF) 이 시험의 학생 제출 링크·QR은 아래에 있어요.</div>'}
         <div style="font-weight:700; margin:2px 0 8px; text-align:left;${res.pdfUrl ? '' : ' display:none;'}">⬇️ 받을 파일 고르기</div>
         <a class="btn primary" id="dl-student" href="${res.pdfUrl}" target="_blank" style="width:100%;${res.pdfUrl ? '' : ' display:none;'}">📄 학생용만 받기${res.explUrl ? ' (QR 찍힌 PDF)' : ' (해설 포함)'}</a>
         <button type="button" class="btn primary" id="dl-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📄📘 학생용 + 강사용 둘 다 받기</button>

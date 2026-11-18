@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B1F5C">
+<title>데이터 관리 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611182200">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+</head>
+<body>
+<template id="page-content">
+  <span class="backlink"><a href="index.html">← 홈으로</a></span>
+  <h1>🗄️ 데이터 관리</h1>
+  <p class="muted">학생 기록 백업과 드라이브 정리를 한곳에서 해요. 백업은 <b>구글 시트(글자 기록)만</b> 복사해 두는 거라 용량이 아주 작아요. 교재·시험지 PDF는 백업 대상이 아니에요.</p>
+  <div class="card"><b>💾 기록 백업</b>
+    <div id="bk-info" class="hint" style="margin-top:8px;">불러오는 중...</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <button type="button" class="btn primary" id="bk-now" style="padding:8px 14px;">지금 백업하기</button>
+      <button type="button" class="btn outline" id="bk-auto" style="padding:8px 14px;">자동 백업 켜기 (매주 일요일 새벽)</button>
+      <button type="button" class="btn outline" id="bk-trim" style="padding:8px 14px;">자동 백업 최근 4개만 남기기</button>
+    </div>
+    <div id="bk-msg" class="hint" style="margin-top:6px;"></div>
+  </div>
+  <div class="card"><b>📦 드라이브에 쌓인 교재 PDF</b>
+    <div id="dv-info" class="hint" style="margin-top:8px;">불러오는 중...</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="btn outline" id="dv-clean" style="padding:8px 14px;">올리다 남은 임시 조각 지우기</button><a class="btn outline" href="cover_edit.html" style="padding:8px 14px;text-decoration:none;">🎨 교재 관리에서 안 쓰는 교재 지우기</a></div>
+    <div id="dv-msg" class="hint" style="margin-top:6px;"></div>
+  </div>
+</template>
+<script src="js/config.js?v=202611182200"></script>
+<script src="js/api.js?v=202611182200"></script>
+<script src="js/common.js?v=202611182200"></script>
+<script>
+requireLogin();
+renderHeader({});
+const $ = id => document.getElementById(id), e = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const D = iso => { const d = new Date(iso); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const MB = b => b >= 1073741824 ? (b / 1073741824).toFixed(1) + 'GB' : (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + 'MB';
+async function load() {
+  try {
+    const r = await callApi('dataStatus', { password: getTeacherPassword() });
+    if (!r.ok) { $('bk-info').textContent = r.error || '불러오지 못했어요'; return; }
+    const auto = r.backups.filter(b => b.auto), last = r.backups[0];
+    $('bk-info').innerHTML = '기록 ' + r.rows.toLocaleString() + '줄 · 시트 ' + r.sheetCount + '개<br>자동 백업: <b style="color:' + (r.autoOn ? '#1f7a4d' : '#C1392B') + ';">' + (r.autoOn ? '켜져 있어요' : '꺼져 있어요 (아래 버튼으로 켜세요)') + '</b><br>보관 중인 백업 ' + r.backups.length + '개 (자동 ' + auto.length + '개)' + (last ? ' · 가장 최근 ' + D(last.at) + ' ' + e(last.name.replace('자동채점 백업 ', '')) : ' · 아직 없어요');
+    $('dv-info').innerHTML = '교재 PDF ' + r.pdfCount + '개 · 합계 <b>' + MB(r.pdfBytes) + '</b>' + (r.partial ? ' (일부만 센 값)' : '') + '<br>올리다 남은 임시 조각 ' + r.chunks + '개' + (r.chunks ? ' — 지워도 돼요' : '');
+  } catch (err) { $('bk-info').textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
+}
+$('bk-now').addEventListener('click', async () => { $('bk-msg').textContent = '백업 중...'; try { const r = await callApi('backupNow', { password: getTeacherPassword(), label: '수동' }); $('bk-msg').textContent = r.ok ? '✅ 백업했어요: ' + r.backup.name : '⚠️ ' + r.error; load(); } catch (x) { $('bk-msg').textContent = '⚠️ ' + x.message; } });
+$('bk-auto').addEventListener('click', async () => { try { const r = await callApi('installBackup', { password: getTeacherPassword() }); $('bk-msg').textContent = r.ok ? '✅ 자동 백업을 켰어요' : '⚠️ ' + r.error; load(); } catch (x) { $('bk-msg').textContent = '⚠️ ' + x.message; } });
+$('bk-trim').addEventListener('click', async () => { if (!confirm('자동 백업을 최근 4개만 남기고 오래된 것은 휴지통으로 보낼까요?')) return; try { const r = await callApi('dataTrim', { password: getTeacherPassword(), keep: 4 }); $('bk-msg').textContent = r.ok ? '✅ 오래된 자동 백업 ' + r.removed + '개를 정리했어요' : '⚠️ ' + r.error; load(); } catch (x) { $('bk-msg').textContent = '⚠️ ' + x.message; } });
+$('dv-clean').addEventListener('click', async () => { if (!confirm('올리다 남은 임시 조각을 지울까요?\n(지금 올리는 중인 교재가 있다면 끝난 뒤에 눌러 주세요)')) return; $('dv-msg').textContent = '지우는 중...'; let tot = 0; try { for (let i = 0; i < 40; i++) { const r = await callApi('mergeCleanup', { password: getTeacherPassword(), all: true }); if (!r.ok) throw new Error(r.error); tot += r.removed; $('dv-msg').textContent = '지우는 중... ' + tot + '개'; if (!r.removed) break; } $('dv-msg').textContent = '✅ 임시 조각 ' + tot + '개를 정리했어요'; load(); } catch (x) { $('dv-msg').textContent = '⚠️ ' + x.message; } });
+load();
+</script>
+</body>
+</html>

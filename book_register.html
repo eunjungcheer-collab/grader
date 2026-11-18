@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611181830">
+<link rel="stylesheet" href="css/style.css?v=202611182200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -36,7 +36,7 @@
 
   <div class="card" id="saved-card" style="display:none;">
     <details id="saved-drawer">
-      <summary style="cursor:pointer; font-weight:700; padding:2px 0;">📁 저장된 교재 (QR 합본 PDF) <span class="muted" id="saved-count" style="font-weight:400;"></span> <span class="muted" style="font-weight:400;">— 눌러서 열기 (강사용/학생용 따로 내려받아요)</span></summary>
+      <summary style="cursor:pointer; font-weight:700; padding:2px 0;">📁 저장된 교재 <span class="muted" id="saved-count" style="font-weight:400;"></span> <span class="muted" style="font-weight:400;">— 눌러서 열기 (강사용/학생용 따로 내려받아요)</span></summary>
       <div id="saved-list" style="margin-top:8px;"></div>
     </details>
   </div>
@@ -89,7 +89,7 @@
       </div>
       <label class="field-label-spaced"><input type="checkbox" id="new-toc"> <b>목차를 새로 만들기</b> — 체크하면 교재에 있던 목차 쪽을 지우고 새 목차(눌러서 이동)를 넣어요. 체크 안 하면 교재 목차를 그대로 써요(목차가 없는 교재는 자동으로 만들어요)</label>
       <label class="field-label-spaced"><input type="checkbox" id="multi-qr" checked> 목차 쪽에 「여러 단원 한꺼번에 채점」 QR도 찍기</label>
-      <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 QR 합본 PDF 만들기</button>
+      <button type="button" class="btn primary" id="go-btn" style="width:100%; margin-top:14px;">3단계 · 등록하고 교재 만들기</button>
       <p class="hint" id="go-msg" style="margin:8px 0 0;"></p>
       <div id="dl-box" style="margin-top:10px;"></div>
       <p class="hint" id="sync-msg" style="margin:4px 0 0;"></p>
@@ -97,15 +97,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611181830"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611181830"></script>
-<script src="js/vendor/pdf.min.js?v=202611181830"></script>
-<script src="js/config.js?v=202611181830"></script>
-<script src="js/api.js?v=202611181830"></script>
-<script src="js/common.js?v=202611181830"></script>
-<script src="js/bankcore.js?v=202611181830"></script>
-<script src="js/coverdesign.js?v=202611181830"></script>
-<script src="js/pdfui.js?v=202611181830"></script>
+<script src="js/vendor/qrcode.min.js?v=202611182200"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611182200"></script>
+<script src="js/vendor/pdf.min.js?v=202611182200"></script>
+<script src="js/config.js?v=202611182200"></script>
+<script src="js/api.js?v=202611182200"></script>
+<script src="js/common.js?v=202611182200"></script>
+<script src="js/bankcore.js?v=202611182200"></script>
+<script src="js/coverdesign.js?v=202611182200"></script>
+<script src="js/pdfui.js?v=202611182200"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -453,7 +453,7 @@ function updateRow(tr, s) {
   tr.querySelector('.bk-st').innerHTML = issue ? '<span class="bk-st-bad">확인 필요 — 눌러서 정답 보기<br>' + badNums.slice(0, 12).map(n => '<button type="button" class="btn bk-fix" data-n="' + n + '" style="padding:1px 7px; margin:1px; color:#C1392B;">' + n + '번</button>').join('') + (badNums.length > 12 ? ' …' : '') + '</span>' : (subj ? '<span class="bk-st-warn">서술형 ' + subj + '개</span>' : '<span class="bk-st-ok">OK</span>');
 }
 
-// ── 3단계: 등록하고 QR 합본 만들기 ──
+// ── 3단계: 등록하고 교재 만들기 ──
 // ── 만들어 둔 합본 PDF를 이 기기(IndexedDB)에 저장해 두고, 강사용/학생용을 따로 내려받는다 ──
 const mergeDb = () => new Promise((res, rej) => { const rq = indexedDB.open('qr_merges_db', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('m', { keyPath: 'id' }); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
 const mergeDbOp = async (mode, fn) => { const db = await mergeDb(); return new Promise((res, rej) => { const tx = db.transaction('m', mode), st = tx.objectStore('m'), rq = fn(st); tx.oncomplete = () => res(rq && rq.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); }); };
@@ -637,7 +637,7 @@ $('go-btn').addEventListener('click', async () => {
   if ($('new-cover').checked && !coverConfirmed) { alert('새 표지를 만들도록 체크하셨어요.\n표지 미리보기를 보고 "✔ 이 표지로 확정" 버튼을 먼저 눌러 주세요.'); const bx = $('cover-design-box'); if (bx) bx.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   const bad = regList.filter(s => rowIssue(s));
   if (bad.length) { alert('정답을 확인해야 하는 단원이 있어요:\n' + bad.slice(0, 8).map(s => '· ' + secTitle(s) + ' (' + rowIssue(s) + ')').join('\n') + '\n\n표의 정답 칸에서 고치거나, 그 단원은 선택을 빼 주세요.'); return; }
-  if (!confirm(regList.length + '개 단원을 시험으로 등록하고 QR 합본 PDF를 만들까요?\n(이미 같은 이름으로 등록된 단원은 새로 만들지 않고 그 시험의 QR을 써요)')) return;
+  if (!confirm(regList.length + '개 단원을 시험으로 등록하고 교재를 만들까요?\n(이미 같은 이름으로 등록된 단원은 새로 만들지 않고 그 시험의 QR을 써요)')) return;
   $('go-btn').disabled = true;
   // 진행 바 + 예상 시간: 단계마다 구간을 정해 두고, 문구의 "i/n"으로 구간 안의 위치를 정한다(대략적인 값)
   let pbar = $('go-bar'); if (!pbar) { pbar = document.createElement('div'); pbar.id = 'go-bar'; pbar.style.cssText = 'height:16px;background:#e6e1d6;border-radius:8px;overflow:hidden;margin:8px 0 0;'; pbar.innerHTML = '<div style="height:100%;width:0;background:#1f6f4a;transition:width .5s linear;"></div>'; $('go-msg').parentNode.insertBefore(pbar, $('go-msg')); }
