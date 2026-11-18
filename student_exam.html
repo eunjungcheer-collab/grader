@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190800">
+<link rel="stylesheet" href="css/style.css?v=202611190830">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,9 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611190800"></script>
-<script src="js/api.js?v=202611190800"></script>
-<script src="js/common.js?v=202611190800"></script>
+<script src="js/config.js?v=202611190830"></script>
+<script src="js/api.js?v=202611190830"></script>
+<script src="js/common.js?v=202611190830"></script>
+<script src="js/confirmans.js?v=202611190830"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -172,14 +173,18 @@ async function loadExam() {
       });
       const eb = document.getElementById('edit-banner'); eb.style.display = '';
       if (EDIT.mode === 'fill') { eb.style.background = '#EEF7F1'; eb.style.border = '1px solid #9AD3B0'; eb.innerHTML = '📝 <b>이어서 입력하는 중이에요.</b> 이미 낸 답은 잠겨 있고, 비워 둔 문항만 입력할 수 있어요. 오늘 안 풀 구간은 위에서 빼 두면 돼요.'; }
-      else { eb.style.background = '#FDECEA'; eb.style.border = '1px solid #E8A8A0'; eb.innerHTML = EDIT.shift ? '✏️ <b>답안을 고치는 중이에요.</b> 밀려 쓴 답을 바르게 고쳐서 다시 제출해요. <b>한 번만</b> 고칠 수 있어요.' : '✏️ <b>답안을 고치는 중이에요.</b> 마킹을 잘못한 문항을 <b>최대 3개까지</b> 고칠 수 있어요. <b>한 번만</b>, 제출한 지 30분 안에만 돼요.'; }
+      else { eb.style.background = '#FDECEA'; eb.style.border = '1px solid #E8A8A0'; eb.innerHTML = EDIT.shift ? '✏️ <b>답안을 고치는 중이에요.</b> 밀려 쓴 답을 바르게 고쳐서 다시 제출해요. <b>한 번만</b> 고칠 수 있어요.' : '✏️ <b>답안을 고치는 중이에요.</b> 선생님이 승인해 준 <b>마킹 실수</b>를 고쳐요. <b>한 번만</b> 고칠 수 있고, 승인 후 하루 안에 제출해야 해요.'; }
       document.querySelector('#answer-form button[type=submit]').textContent = EDIT.mode === 'fill' ? '이어서 낸 답 제출하기' : '고친 답안 제출하기';
       applySkip();
     } else {
       // 며칠 안에 비워 둔 문항이 있는 기록이 이 기기에 있으면 이어서 입력하라고 알려 준다
       try {
         const last = JSON.parse(localStorage.getItem('sx_last_' + examId) || 'null');
-        if (last && last.skipped && last.skipped.length) {
+        if (last && last.fixReq && last.submittedAt) {
+          const eb = document.getElementById('edit-banner'); eb.style.display = ''; eb.style.background = '#FFF4E0'; eb.style.border = '1px solid #F3D9A4';
+          eb.innerHTML = '✏️ <b>' + escapeHtml(last.name) + '</b>님이 보낸 수정 요청이 있어요. <button type="button" class="btn primary" id="fixchk-btn" style="padding:6px 12px; margin-left:6px;">승인 확인</button> <span id="fixchk-msg" class="hint"></span>';
+          document.getElementById('fixchk-btn').addEventListener('click', () => sxCheckFix(examId, last.name, last.submittedAt, document.getElementById('fixchk-msg'), () => goEdit('fix', last.submittedAt, last.answers, last.name, false)));
+        } else if (last && last.skipped && last.skipped.length) {
           const eb = document.getElementById('edit-banner'); eb.style.display = ''; eb.style.background = '#FFF4E0'; eb.style.border = '1px solid #F3D9A4';
           eb.innerHTML = '📝 <b>' + escapeHtml(last.name) + '</b>님이 낸 답안 중 비워 둔 문항(' + escapeHtml(rangeText(last.skipped)) + ')이 있어요. <button type="button" class="btn primary" id="resume-btn" style="padding:6px 12px; margin-left:6px;">이어서 입력하기</button>';
           document.getElementById('resume-btn').addEventListener('click', () => goEdit('fill', last.submittedAt, last.answers, last.name));
@@ -257,6 +262,7 @@ async function submitAnswers(e) {
   }
   if (skipAll.every((x, i) => x || isSub(i))) { alert('풀 문항이 하나도 없어요. 「안 푸는 문항」을 확인해 주세요.'); return; }
 
+  { const ok = await confirmAnswers([{ items: studentAnswers.map((a, i) => ({ label: dn(i) + '번', ans: (isSub(i) || skipAll[i]) ? '' : fmtAnswer(a), skip: isSub(i) || skipAll[i] })) }]); if (!ok) return; }
   const btn = e.target.querySelector('button[type=submit]');
   btn.disabled = true;
   btn.textContent = '채점 중...';
@@ -285,7 +291,7 @@ async function submitAnswers(e) {
         ${res.results.map((rs, i) => rs === 'ok' ? '<div class="sx-chip ok">' + dn(i) + '번<small>⭕ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : rs === 'x' ? '<div class="sx-chip x">' + dn(i) + '번<small>❌ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : '<div class="sx-chip na">' + dn(i) + '번<small>' + (rs === 'subj' ? '주관식' : '안 품') + '</small></div>').join('')}
       </div>
       ${res.skipped && res.skipped.length ? '<div class="card" style="margin:14px 0; border:2px solid #F3D9A4; background:#FFF9EC;"><b>📝 아직 입력하지 않은 문항이 ' + res.skipped.length + '개 있어요</b> (' + escapeHtml(rangeText(res.skipped)) + ')<p class="hint" style="margin:4px 0 8px;">지금까지 입력한 답으로만 점수가 나왔어요. 나머지는 나중에 이어서 입력하면 점수가 합쳐져요. (기간 제한 없어요)</p><button type="button" class="btn primary" id="continue-btn" style="width:100%;">이어서 입력하기</button></div>' : ''}
-      ${(EDIT && EDIT.mode === 'fix') ? '' : (res.shiftSuspect ? '<div class="card" style="margin:14px 0; border:2px solid #E8A8A0; background:#FFF5F4;"><b>⚠️ 답이 한 칸씩 밀려 입력된 것 같아요</b><p class="hint" style="margin:4px 0 8px;">번호를 잘못 맞춰 눌렀다면 제출한 지 30분 안에 <b>한 번만</b> 고칠 수 있어요. 헷갈려서 바꿔 찍는 용도는 아니에요.</p><button type="button" class="btn primary" id="fix-btn" style="width:100%;">✏️ 답안 수정하기</button></div>' : '<div class="card" style="margin:14px 0;"><b>✏️ 마킹을 잘못 눌렀나요?</b><p class="hint" style="margin:4px 0 8px;">제출한 지 30분 안에 <b>한 번만</b>, 최대 3문항까지 고칠 수 있어요. 헷갈려서 바꿔 찍는 용도는 아니에요.</p><button type="button" class="btn outline" id="fix-btn" style="width:100%;">✏️ 답안 수정하기</button></div>')}
+      ${(EDIT && EDIT.mode === 'fix') ? '' : (res.shiftSuspect ? '<div class="card" style="margin:14px 0; border:2px solid #E8A8A0; background:#FFF5F4;"><b>⚠️ 답이 한 칸씩 밀려 입력된 것 같아요</b><p class="hint" style="margin:4px 0 8px;">번호를 잘못 맞춰 눌렀다면 제출한 지 30분 안에 <b>한 번만</b> 고칠 수 있어요. 헷갈려서 바꿔 찍는 용도는 아니에요.</p><button type="button" class="btn primary" id="fix-btn" style="width:100%;">✏️ 답안 수정하기</button></div>' : '<div class="card" style="margin:14px 0;"><b>✏️ 마킹을 잘못 눌렀나요?</b><p class="hint" style="margin:4px 0 8px;">선생님께 수정 요청을 보내고, <b>선생님이 승인하면</b> 한 번만 고칠 수 있어요. 헷갈려서 바꿔 찍는 용도는 아니에요.</p><button type="button" class="btn outline" id="fixreq-btn" style="width:100%;">✏️ 수정 요청하기</button><button type="button" class="btn primary" id="fixchk-btn" style="width:100%; margin-top:6px; display:none;">🔍 승인 확인</button><div id="fixreq-msg" class="hint" style="margin-top:6px; font-weight:700;"></div></div>')}
       ${wrongN ? '<div id="retry-card" class="card" style="margin:14px 0;"><h2 style="margin:0 0 4px;">❌ 틀린 문제 다시 입력하기</h2><p class="hint" style="margin:0 0 10px;">틀린 ' + wrongN + '문항만 다시 답을 골라 「다시 채점」을 누르세요. 정답은 알려 주지 않고 맞았는지만 알려 줘요. 이 연습은 점수에 들어가지 않아요.</p><div id="retry-grid"></div><div id="retry-msg" class="hint" style="margin:8px 0 0;font-weight:700;"></div><button type="button" id="retry-btn" class="btn primary" style="width:100%;margin-top:8px;">다시 채점</button></div>' : ''}
       <p class="hint">❌ 표시한 문항은 다시 풀어 보세요. ${FROM_APP ? '「오답 복습」에서 틀린 문제만 모아서 다시 풀 수 있어요.' : ''}</p>
       <div class="actions">
@@ -294,7 +300,9 @@ async function submitAnswers(e) {
       </div>
     `;
     window.scrollTo(0, 0);
-    { const cb = document.getElementById('continue-btn'); if (cb) cb.addEventListener('click', () => goEdit('fill', res.submittedAt, res.studentAnswers, name)); const fb = document.getElementById('fix-btn'); if (fb) fb.addEventListener('click', () => goEdit('fix', res.submittedAt, res.studentAnswers, name, res.shiftSuspect)); }
+    { const cb = document.getElementById('continue-btn'); if (cb) cb.addEventListener('click', () => goEdit('fill', res.submittedAt, res.studentAnswers, name)); const fb = document.getElementById('fix-btn'); if (fb) fb.addEventListener('click', () => goEdit('fix', res.submittedAt, res.studentAnswers, name, true));
+      const rq = document.getElementById('fixreq-btn'), ck = document.getElementById('fixchk-btn'), fm = document.getElementById('fixreq-msg');
+      if (rq) { rq.addEventListener('click', async () => { if (await sxRequestFix(examId, name, res.submittedAt, fm)) { rq.style.display = 'none'; ck.style.display = ''; } }); ck.addEventListener('click', () => sxCheckFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false))); } }
     if (wrongN) setupRetry(res);
   } catch (err) {
     alert('오류가 발생했어요: ' + err.message);

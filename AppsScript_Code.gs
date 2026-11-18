@@ -143,6 +143,9 @@ function handle_(e) {
       case 'linkBook': result = actionLinkBook_(params); break;
       case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
       case 'editSubmission': result = actionEditSubmission_(params); break;
+      case 'requestFix': result = actionRequestFix_(params); break;
+      case 'getFixStatus': result = actionGetFixStatus_(params); break;
+      case 'approveFix': result = actionApproveFix_(params); break;
       case 'unlinkOldQr': result = actionUnlinkOldQr_(params); break;
       case 'setExamSources': result = actionSetExamSources_(params); break;
       case 'renameBook': result = actionRenameBook_(params); break;
@@ -552,6 +555,40 @@ function gradeAnswers_(correctAnswers, studentAnswers) {
 // 학생이 제출한 답안을 나중에 고치거나(밀려 쓴 경우) 비워 둔 구간을 이어서 채울 때: 기록을 새로 만들지 않고 그 기록을 고친다.
 // 제출했을 때 받은 시각(submittedAt)과 이름이 맞아야 한다. 비워 둔 문항을 채우는 것은 기간 제한이 없고, 이미 입력한 답을 고치는 것은 30분 안에 한 번만 된다. 정답은 알려 주지 않는다.
 const EDIT_WINDOW_MS_ = 3 * 24 * 3600 * 1000;
+// 학생이 마킹 실수 수정을 요청한다 (선생님 승인 전에는 고칠 수 없다)
+function actionRequestFix_(p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const sheet = ss.getSheetByName(SHEET_SCORES), row = fixRow_(sheet, String(found.row[0]), p.studentName, p.submittedAt);
+  if (!row) return { ok: false, error: '기록을 찾지 못했어요.' };
+  if ((Number(sheet.getRange(row, 8).getValue()) || 0) >= 1) return { ok: false, error: '이미 한 번 고쳐서 더 고칠 수 없어요. 선생님께 말씀해 주세요.' };
+  sheet.getRange(row, 9).setValue(Date.now());
+  return { ok: true };
+}
+function actionGetFixStatus_(p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const sheet = ss.getSheetByName(SHEET_SCORES), row = fixRow_(sheet, String(found.row[0]), p.studentName, p.submittedAt);
+  if (!row) return { ok: false, error: '기록을 찾지 못했어요.' };
+  const m = sheet.getRange(row, 8, 1, 3).getValues()[0], ok = Number(m[2]) || 0;
+  return { ok: true, edited: (Number(m[0]) || 0) >= 1, requested: !!m[1], approved: !!ok && Date.now() - ok <= 24 * 3600 * 1000 };
+}
+function actionApproveFix_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SCORES), row = fixRow_(sheet, String(p.examId), p.studentName, p.submittedAt);
+  if (!row) return { ok: false, error: '기록을 찾을 수 없어요.' };
+  sheet.getRange(row, 10).setValue(p.approve === false ? '' : Date.now());
+  if (p.approve === false) sheet.getRange(row, 9).setValue('');
+  return { ok: true };
+}
+// 시험 id·이름·제출 시각이 모두 맞는 기록의 행 번호 (제출 시각은 시트 값(Date)과 밀리초까지 비교)
+function fixRow_(sheet, examId, name, submittedAt) {
+  const last = sheet.getLastRow(); if (last < 2) return 0;
+  const want = new Date(submittedAt).getTime(); if (!isFinite(want)) return 0;
+  const d = sheet.getRange(2, 1, last - 1, 6).getValues(), nm = String(name || '').trim();
+  for (let i = d.length - 1; i >= 0; i--) if (String(d[i][0]) === String(examId) && String(d[i][1]).trim() === nm && new Date(d[i][5]).getTime() === want) return i + 2;
+  return 0;
+}
 function actionEditSubmission_(p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
@@ -571,15 +608,25 @@ function actionEditSubmission_(p) {
       if (new Date(data[i][5]).getTime() === want) { hit = i; break; }
     }
     if (hit < 0) return { ok: false, error: '고칠 기록을 찾지 못했어요. (선생님이 기록을 지웠거나 이름이 달라요)' };
-    // 이미 입력한 답을 바꾸는 것은 30분 안에 딱 한 번만, 밀려 쓴 것 같으면 몇 개든, 아니면 마킹 실수 정도(3문항까지)만 (결과를 보고 답을 바꿔 찍는 것을 막는다). 비워 둔('~') 문항을 채우는 것은 기간 제한 없이 된다.
+    // 이미 입력한 답을 바꾸는 것은 딱 한 번만 (결과를 보고 답을 바꿔 찍는 것을 막는다).
+    //  · 답이 밀려 입력된 것으로 감지되면: 제출한 지 30분 안에 학생이 바로 고칠 수 있다.
+    //  · 그 밖의 마킹 실수: 선생님이 승인(10열)해 준 뒤 24시간 안에만 고칠 수 있다.
+    // 비워 둔('~') 문항을 채우는 것은 기간 제한 없이 된다. 9열=수정 요청 시각, 10열=승인 시각, 11열=고치기 전 점수
     const oldAns = String(data[hit][2]).split(','), nOld = oldAns.length;
     let changed = 0; for (let i = 0; i < nOld; i++) { const o0 = String(oldAns[i]).trim(), n0 = String(studentAnswers[i] === undefined ? '' : studentAnswers[i]).trim(); if (o0 !== '~' && o0 !== '' && o0 !== n0) changed++; }
     if (changed) {
-      const cnt = Number(sheet.getRange(hit + 2, 8).getValue()) || 0;
+      const meta = sheet.getRange(hit + 2, 8, 1, 4).getValues()[0], cnt = Number(meta[0]) || 0;
       if (cnt >= 1) return { ok: false, error: '답안은 한 번만 고칠 수 있어요. 선생님께 말씀해 주세요.' };
-      if (Date.now() - want > 30 * 60 * 1000) return { ok: false, error: '이미 입력한 답은 제출한 지 30분 안에만 고칠 수 있어요. 선생님께 말씀해 주세요.' };
-      if (!shiftSuspect_(correctAnswers, oldAns.map(function (a) { return String(a).trim(); })) && changed > 3) return { ok: false, error: '마킹을 잘못한 문항은 최대 3개까지만 고칠 수 있어요. 답이 많이 밀려 입력됐다면 선생님께 말씀해 주세요.' };
+      const shifted = shiftSuspect_(correctAnswers, oldAns.map(function (a) { return String(a).trim(); }));
+      if (shifted) {
+        if (Date.now() - want > 30 * 60 * 1000) return { ok: false, error: '이미 입력한 답은 제출한 지 30분 안에만 고칠 수 있어요. 선생님께 말씀해 주세요.' };
+      } else {
+        const ok = Number(meta[2]) || 0;
+        if (!ok) return { ok: false, error: '마킹을 잘못 눌렀다면 선생님께 수정 요청을 보내고, 승인을 받은 뒤에 고칠 수 있어요.' };
+        if (Date.now() - ok > 24 * 3600 * 1000) return { ok: false, error: '승인받은 지 하루가 지났어요. 선생님께 다시 말씀해 주세요.' };
+      }
       sheet.getRange(hit + 2, 8).setValue(cnt + 1);
+      if (!meta[3]) sheet.getRange(hit + 2, 11).setValue(data[hit][6] === '' ? score100_(Number(data[hit][3]), Number(data[hit][4])) : Number(data[hit][6]));
     }
     const g = gradeAnswers_(correctAnswers, studentAnswers), score100 = g.objective ? Math.round(g.score / g.objective * 100) : 0;
     sheet.getRange(hit + 2, 3).setValue(studentAnswers.join(','));
@@ -1065,6 +1112,8 @@ function listSubmissionsBuild_() {
       examId: r[0], studentName: r[1],
       answers: r[2], score: r[3], total: r[4], submittedAt: r[5],
       score100: (r[6] === '' || r[6] === undefined) ? score100_(Number(r[3]), Number(r[4])) : Number(r[6]),
+      edited: (Number(r[7]) || 0) >= 1, origScore100: (r[10] === '' || r[10] === undefined) ? null : Number(r[10]),
+      fixRequested: !!r[8] && !r[9] && !(Number(r[7]) >= 1), fixApproved: !!r[9] && !(Number(r[7]) >= 1),
     });
   }
   subs.reverse();  // 최신 순

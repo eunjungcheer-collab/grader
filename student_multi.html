@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 여러 단원 채점 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190800">
+<link rel="stylesheet" href="css/style.css?v=202611190830">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,9 +14,10 @@
 <template id="page-content">
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
-<script src="js/config.js?v=202611190800"></script>
-<script src="js/api.js?v=202611190800"></script>
-<script src="js/common.js?v=202611190800"></script>
+<script src="js/config.js?v=202611190830"></script>
+<script src="js/api.js?v=202611190830"></script>
+<script src="js/common.js?v=202611190830"></script>
+<script src="js/confirmans.js?v=202611190830"></script>
 <script>
 const numLbl = (id, i) => { const f = (typeof state !== 'undefined' && state[id]) ? state[id].info : null; return (f && f.nums && f.nums.length === f.answerCount) ? f.nums[i] : i + 1; };
 renderHeader();
@@ -153,6 +154,7 @@ async function submitAll() {
     const miss = st.answers.findIndex((a, i) => sub.indexOf(i + 1) < 0 && !(st.skip && st.skip.has(i + 1)) && !a);
     if (miss >= 0) { msg.textContent = '"' + ex.label + '" ' + ((st.info.nums && st.info.nums.length === st.info.answerCount) ? st.info.nums[miss] : miss + 1) + '번에 답을 선택해주세요.'; return; }
   }
+  { const ok = await confirmAnswers(picked.map(ex => { const st = state[ex.id], sub = st.info.subjective || []; return { title: (ex.unit ? ex.unit + '단원 ' : '') + ex.label, items: st.answers.map((a, i) => { const sk = sub.indexOf(i + 1) >= 0 || !!(st.skip && st.skip.has(i + 1)); return { label: numLbl(ex.id, i) + '번', ans: sk ? '' : fmtAnswer(a), skip: sk }; }) }; })); if (!ok) return; }
   const btn = document.getElementById('submit');
   btn.disabled = true; btn.textContent = '채점 중...';
   const results = [];
@@ -190,13 +192,24 @@ function showResults(results) {
       <h2>${ex.unit ? esc(ex.unit) + '단원 ' : ''}${esc(ex.label)} — ${res.total ? res.score + '/' + res.total : '객관식 없음'}</h2>
       ${(res.skipped && res.skipped.length) || res.submittedAt ? `<div class="card" style="margin-bottom:8px;">
         ${res.skipped && res.skipped.length ? `<p class="hint" style="margin:0 0 6px;">📝 비워 둔 문항이 ${res.skipped.length}개 있어요. 언제든 이어서 입력할 수 있어요.</p><button type="button" class="btn primary" data-edit="fill" data-ex="${esc(ex.id)}" style="width:100%; margin-bottom:6px;">이어서 입력하기</button>` : ''}
-        ${res.shiftSuspect ? `<p class="hint" style="margin:0 0 6px;">⚠️ 답이 한 칸씩 밀려 입력된 것 같아요. 30분 안에 한 번만 고칠 수 있어요.</p>` : `<p class="hint" style="margin:0 0 6px;">마킹을 잘못 눌렀다면 30분 안에 한 번만, 최대 3문항까지 고칠 수 있어요.</p>`}
-        <button type="button" class="btn ${res.shiftSuspect ? 'primary' : 'outline'}" data-edit="fix" data-ex="${esc(ex.id)}" style="width:100%;">✏️ 답안 수정하기</button></div>` : ''}
+        ${res.shiftSuspect ? `<p class="hint" style="margin:0 0 6px;">⚠️ 답이 한 칸씩 밀려 입력된 것 같아요. 30분 안에 한 번만 고칠 수 있어요.</p>
+        <button type="button" class="btn primary" data-edit="fix" data-ex="${esc(ex.id)}" style="width:100%;">✏️ 답안 수정하기</button>` : `<p class="hint" style="margin:0 0 6px;">마킹을 잘못 눌렀다면 선생님께 수정 요청을 보내세요. 선생님이 승인하면 한 번만 고칠 수 있어요.</p>
+        <button type="button" class="btn outline" data-req="${esc(ex.id)}" style="width:100%;">✏️ 수정 요청하기</button>
+        <button type="button" class="btn primary" data-chk="${esc(ex.id)}" style="width:100%; margin-top:6px; display:none;">🔍 승인 확인</button>
+        <div class="hint" data-fm="${esc(ex.id)}" style="margin-top:6px; font-weight:700;"></div>`}</div>` : ''}
       <div class="card">${res.results.map((rs, i) => rs === 'subj' ? `
         <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${numLbl(ex.id, i)}번</span><span>주관식 (자동 채점 제외)</span></div>` : rs === 'skip' ? `
         <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${numLbl(ex.id, i)}번</span><span>안 푼 문항 (채점 제외)</span></div>` : `
         <div class="submission-row"><span>${numLbl(ex.id, i)}번</span><span>내 답: ${fmtAnswer(res.studentAnswers[i])} ${rs === 'ok' ? '✅' : '❌'}</span></div>`).join('')}</div>`).join('')}
     <button type="button" class="btn outline" style="width:100%;" onclick="location.reload()">다른 단원 또 채점하기</button>`;
+  area().querySelectorAll('button[data-req]').forEach(bt => bt.addEventListener('click', async () => {
+    const r = results.find(x => String(x.ex.id) === bt.dataset.req), fm = area().querySelector('[data-fm="' + bt.dataset.req + '"]');
+    if (r && await sxRequestFix(r.ex.id, studentName, r.res.submittedAt, fm)) { bt.style.display = 'none'; area().querySelector('[data-chk="' + bt.dataset.req + '"]').style.display = ''; }
+  }));
+  area().querySelectorAll('button[data-chk]').forEach(bt => bt.addEventListener('click', () => {
+    const r = results.find(x => String(x.ex.id) === bt.dataset.chk), fm = area().querySelector('[data-fm="' + bt.dataset.chk + '"]');
+    if (r) sxCheckFix(r.ex.id, studentName, r.res.submittedAt, fm, () => editGo(r.ex.id, 'fix', r.res.submittedAt, r.res.studentAnswers, false));
+  }));
   area().querySelectorAll('button[data-edit]').forEach(bt => bt.addEventListener('click', () => {
     const r = results.find(x => String(x.ex.id) === bt.dataset.ex); if (!r) return;
     editGo(r.ex.id, bt.dataset.edit, r.res.submittedAt, r.res.studentAnswers, r.res.shiftSuspect);
