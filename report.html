@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>학생 리포트 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191100">
+<link rel="stylesheet" href="css/style.css?v=202611191130">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -34,9 +34,9 @@
   <div id="st" class="hint">불러오는 중...</div>
   <div id="paper" style="display:none;"></div>
 </template>
-<script src="js/config.js?v=202611191100"></script>
-<script src="js/api.js?v=202611191100"></script>
-<script src="js/common.js?v=202611191100"></script>
+<script src="js/config.js?v=202611191130"></script>
+<script src="js/api.js?v=202611191130"></script>
+<script src="js/common.js?v=202611191130"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -131,7 +131,7 @@ async function load() {
     const [subs, wk] = await Promise.all([callApi('listSubmissions', { password: getTeacherPassword() }), callApi('weakReport', { password: getTeacherPassword(), minRate: 50, minTried: 3 })]);
     if (!subs.ok) throw new Error(subs.error || '불러오지 못했어요');
     (subs.submissions || []).forEach(s => {
-      const k = nk(s.studentName); if (!k || k === '이름없음' || !Number(s.total)) return;
+      const k = nk(s.studentName); if (!k || k === '이름없음' || !Number(s.total) || s.pending > 0) return;      // 나중에 풀 문항이 남은 기록은 평균에 넣지 않는다
       const sc = Number(s.score100); if (!isFinite(sc)) return;
       const o = SUBS[k] || (SUBS[k] = { shown: String(s.studentName).trim(), list: [] });
       o.list.push({ s: sc, t: new Date(s.submittedAt).getTime(), title: s.examTitle || '' });

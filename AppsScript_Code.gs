@@ -532,6 +532,16 @@ function actionSubmitAnswer_(p) {
   };
 }
 
+// 나중에 풀기로 하고 아직 입력하지 않은 문항 수 ('~' 중 시험 범위 밖으로 뺀 것을 제외). 범위 밖/나중에 풀기 구분이 생기기 전(OOR_CUTOVER_)의 기록은 구분할 수 없어서 0으로 본다.
+const OOR_CUTOVER_ = Date.parse('2026-11-19T05:00:00+09:00');
+function pendingOf_(r) {
+  try {
+    if (!(new Date(r[5]).getTime() >= OOR_CUTOVER_)) return 0;
+    const sk = String(r[2]).split(',').filter(function (a) { return String(a).trim() === '~'; }).length;
+    const oo = r[11] ? (JSON.parse(String(r[11])) || []).length : 0;
+    return Math.max(0, sk - oo);
+  } catch (e) { return 0; }
+}
 // 학생이 「시험 범위가 아니라서」 뺀 문항 번호(1부터): 실제로 '~'(안 품)인 문항만 남긴다
 function oorClean_(list, studentAnswers) {
   const out = []; (Array.isArray(list) ? list : []).forEach(function (n) { n = Number(n); if (n >= 1 && studentAnswers[n - 1] === '~' && out.indexOf(n) < 0) out.push(n); });
@@ -1129,7 +1139,7 @@ function listSubmissionsBuild_() {
       examId: r[0], studentName: r[1],
       answers: r[2], score: r[3], total: r[4], submittedAt: r[5],
       score100: (r[6] === '' || r[6] === undefined) ? score100_(Number(r[3]), Number(r[4])) : Number(r[6]),
-      outOfRange: (function () { try { return r[11] ? (JSON.parse(String(r[11])) || []).length : 0; } catch (e) { return 0; } })(), edited: (Number(r[7]) || 0) >= 1, origScore100: (r[10] === '' || r[10] === undefined) ? null : Number(r[10]),
+      pending: pendingOf_(r), outOfRange: (function () { try { return r[11] ? (JSON.parse(String(r[11])) || []).length : 0; } catch (e) { return 0; } })(), edited: (Number(r[7]) || 0) >= 1, origScore100: (r[10] === '' || r[10] === undefined) ? null : Number(r[10]),
       fixRequested: !!r[8] && String(r[8]) !== 'N' && !r[9] && !(Number(r[7]) >= 1), fixApproved: !!r[9] && !(Number(r[7]) >= 1),
     });
   }
