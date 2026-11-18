@@ -21,7 +21,7 @@ jobs:
         run: |
           for v in SID DID RC; do if [ -z "${!v}" ]; then echo "::error::GitHub Secrets 설정이 빠졌어요 (docs/자동배포_설정방법.md 참고)"; exit 1; fi; done
       - name: clasp 설치
-        run: npm install -g @google/clasp@2
+        run: npm install -g @google/clasp
       - name: 로그인 정보와 프로젝트 연결
         env: { SID: '${{ secrets.APPS_SCRIPT_ID }}', RC: '${{ secrets.CLASPRC_JSON }}' }
         run: |
