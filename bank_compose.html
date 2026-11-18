@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190252">
+<link rel="stylesheet" href="css/style.css?v=202611190304">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611190252"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190252"></script>
-<script src="js/config.js?v=202611190252"></script>
-<script src="js/api.js?v=202611190252"></script>
-<script src="js/common.js?v=202611190252"></script>
-<script src="js/bankcore.js?v=202611190252"></script>
-<script src="js/vendor/pdf.min.js?v=202611190252"></script>
-<script src="js/printpdf.js?v=202611190252"></script>
-<script src="js/pdfui.js?v=202611190252"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190304"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190304"></script>
+<script src="js/config.js?v=202611190304"></script>
+<script src="js/api.js?v=202611190304"></script>
+<script src="js/common.js?v=202611190304"></script>
+<script src="js/bankcore.js?v=202611190304"></script>
+<script src="js/vendor/pdf.min.js?v=202611190304"></script>
+<script src="js/printpdf.js?v=202611190304"></script>
+<script src="js/pdfui.js?v=202611190304"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -639,11 +639,12 @@ function renderReview() {
         <button type="button" class="btn outline" id="teacher-btn" style="padding:10px 16px;" title="문제 바로 밑에 정답·해설이 붙은 강사용 PDF만 내려받아요 (등록은 하지 않아요)">📘 강사용 시험지 받기</button>
         <button type="button" class="btn outline" id="teacher-print-btn" style="padding:10px 16px;">🖨️ 강사용 인쇄</button>
       </div>
-      <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
-        <button type="button" class="btn primary" id="finalize-btn" style="padding:10px 16px; flex:1 1 200px;" title="이 문항들을 시험지로 등록(QR 찍힘)하고 학생용 문제지와 정답·해설을 받아요">📄 학생용 시험지 받기 (${reviewPicks.length}문항)</button>
-        <button type="button" class="btn outline" id="finalize-print-btn" style="padding:10px 16px;" title="이 문항들을 시험지로 등록(QR 찍힘)하고 학생용 문제지와 정답·해설을 바로 인쇄해요">🖨️ 학생용 인쇄</button>
+      <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; align-items:stretch;">
+        <button type="button" class="btn primary" id="finalize-print-btn" style="padding:16px 22px; font-size:18px; font-weight:800; flex:1 1 240px;" title="이 문항들을 시험지로 등록(QR 찍힘)하고, 학생용 문제지와 정답·해설을 바로 인쇄해요">🖨️ 학생용 인쇄</button>
+        <button type="button" class="btn outline" id="finalize-btn" style="padding:10px 16px;" title="이 문항들을 시험지로 등록(QR 찍힘)하고 학생용 문제지와 정답·해설을 받아요">📄 학생용 시험지 받기 (${reviewPicks.length}문항)</button>
       </div>
       <p class="hint" style="margin:8px 0 0;">※ 학생용은 받거나 인쇄하는 순간 시험지로 자동 등록되고 학생 제출용 QR이 찍혀요. 강사용은 등록하지 않아요.</p>
+      <div id="fin-msg"></div>
     </div>`;
   renderReviewList();
   $('back-btn').addEventListener('click', () => {
@@ -914,8 +915,20 @@ async function finalize(printAfter) {
       // 강사용 PDF를 이 브라우저에 보관해 둔다 → 등록 완료 화면에서 학생용을 받을 때 함께 받아진다
       try { const tb = await teacherP; if (tb) await teacherPdfSave(examId, title + ' 강사용.pdf', tb); } catch (e) { console.warn('강사용 PDF 보관 실패', e); }
     }
+    if (res.ok && printAfter === true) {          // 시험지 화면으로 넘어가지 않고 이 자리에서 바로 인쇄한다 (이미 만들어 둔 PDF를 그대로 쓴다)
+      if (explFillNote) alert(explFillNote);
+      try {
+        updateSpinner('🖨️ 인쇄 준비 중...'); setupPdfJs();
+        await printPdfBytes(BankCore.b64ToBytes(pdfBase64), (i, n) => updateSpinner('🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽'));
+      } catch (pe) { $('fin-msg').innerHTML = '<div class="banner error">등록은 됐지만 인쇄를 시작하지 못했어요: ' + escapeHtml(pe.message) + ' (<a href="teacher_exam.html?id=' + examId + '&print=student">시험지 화면에서 인쇄</a>)</div>'; }
+      hideSpinner();
+      ['finalize-btn', 'finalize-print-btn'].forEach(id => { const bt = $(id); if (bt) bt.disabled = true; });      // 같은 시험지가 또 등록되지 않게
+      $('fin-msg').insertAdjacentHTML('beforeend', '<div class="banner" style="text-align:left;margin:10px 0;">✅ 시험지로 등록하고 학생용을 인쇄 창으로 보냈어요. 정답·단원을 고치려면 <a href="teacher_exam.html?id=' + examId + '"><b>시험지 화면 열기</b></a></div>');
+      $('fin-msg').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     hideSpinner();
-    if (res.ok) { if (explFillNote) alert(explFillNote); location.href = 'teacher_exam.html?id=' + examId + (printAfter === true ? '&print=student' : ''); }
+    if (res.ok) { if (explFillNote) alert(explFillNote); location.href = 'teacher_exam.html?id=' + examId; }
     else { err.innerHTML = '<div class="banner error">' + escapeHtml(res.error || '등록 실패') + '</div>'; }
   } catch (e) {
     hideSpinner();
