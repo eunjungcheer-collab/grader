@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191040">
+<link rel="stylesheet" href="css/style.css?v=202611191100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611191040"></script>
-<script src="js/api.js?v=202611191040"></script>
-<script src="js/common.js?v=202611191040"></script>
-<script src="js/confirmans.js?v=202611191040"></script>
+<script src="js/config.js?v=202611191100"></script>
+<script src="js/api.js?v=202611191100"></script>
+<script src="js/common.js?v=202611191100"></script>
+<script src="js/confirmans.js?v=202611191100"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -80,11 +80,13 @@ function advanceFrom(q) {
 // ── 이어서 입력 / 답안 고치기 ──
 // EDIT: 이전에 낸 기록을 고치는 중일 때 {mode:'fill'|'fix', submittedAt, answers, name}. 'fill'=비워 둔 문항만 채움(이미 입력한 답은 잠김), 'fix'=밀려 쓴 답을 한 번 고침
 let EDIT = null; try { EDIT = JSON.parse(sessionStorage.getItem('sx_edit_' + examId) || 'null'); sessionStorage.removeItem('sx_edit_' + examId); } catch (e) {}
-const lockedQ = i => !!(EDIT && EDIT.mode === 'fill' && EDIT.answers && EDIT.answers[i] && EDIT.answers[i] !== '~');
+const oorQ = i => !!(EDIT && EDIT.oor && EDIT.oor.indexOf(i + 1) >= 0);      // 처음에 「시험 범위가 아니라서」 뺀 문항 — 이어서 입력해도 계속 빠진 채로 둔다
+const lockedQ = i => !!(EDIT && (oorQ(i) || (EDIT.mode === 'fill' && EDIT.answers && EDIT.answers[i] && EDIT.answers[i] !== '~')));
+let skipWhy = 'scope';      // 직접 적은 「안 푸는 문항」의 이유: scope=시험 범위가 아님(계속 빠짐) / later=나중에 풀 예정(이어서 입력 가능)
 let chipOff = new Set();      // 30문항이 넘는 시험에서 「지금은 입력하지 않을」 구간(0부터)
 const CHUNK = 30;
 function rangeText(list) { const a = list.slice().sort((x, y) => x - y), out = []; let st = null, pv = null; a.forEach(k => { if (st === null) { st = pv = k; } else if (k === pv + 1) { pv = k; } else { out.push(st === pv ? dnOf(st) + '번' : dnOf(st) + '~' + dnOf(pv) + '번'); st = pv = k; } }); if (st !== null) out.push(st === pv ? dnOf(st) + '번' : dnOf(st) + '~' + dnOf(pv) + '번'); return out.join(', '); }
-function goEdit(mode, subm, answers, name, shift) { try { sessionStorage.setItem('sx_edit_' + examId, JSON.stringify({ mode: mode, submittedAt: subm, answers: answers, name: name, shift: !!shift })); } catch (e) {} location.reload(); }
+function goEdit(mode, subm, answers, name, shift, oor) { try { sessionStorage.setItem('sx_edit_' + examId, JSON.stringify({ mode: mode, submittedAt: subm, answers: answers, name: name, shift: !!shift, oor: oor || [] })); } catch (e) {} location.reload(); }
 
 async function loadExam() {
   const area = document.getElementById('content-area');
@@ -112,6 +114,11 @@ async function loadExam() {
         <div id="dl-box" style="display:none; margin-top:8px; padding:8px 10px; border-radius:8px; background:#FFF4E0; border:1px solid #F3D9A4; color:#7A4A00; font-size:14px;"></div>
         <label style="margin-top:12px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 또는 1-10, 15 · 풀지 않는 번호는 채점에서 빠져요)</span></label>
         <input type="text" id="skip-input" placeholder="예: 1-10" inputmode="numeric" autocomplete="off">
+        <div id="skip-why" style="display:none; margin-top:8px; font-size:14px;">
+          <span class="hint" style="font-weight:700;">왜 안 푸나요?</span>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;"><button type="button" class="btn primary" data-why="scope" style="padding:7px 12px;">시험 범위가 아니에요</button><button type="button" class="btn outline" data-why="later" style="padding:7px 12px;">나중에 풀 거예요</button></div>
+          <div class="hint" id="skip-why-hint" style="margin-top:4px;"></div>
+        </div>
         <div id="range-box" style="display:none; margin-top:12px; padding:10px 12px; border-radius:10px; background:#F0F6FF; border:1px solid #BBD3F5;"></div>
         <div id="answer-grid" style="margin-top:16px;"></div>
         <div class="sx-submit"><button type="submit" class="btn primary" style="width:100%; font-size:17px; padding:15px;">제출하고 채점받기</button></div>
@@ -153,6 +160,9 @@ async function loadExam() {
     document.getElementById('sx-prog').style.display = 'block'; updateProgress();
 
     document.getElementById('skip-input').addEventListener('input', applySkip);
+    const paintWhy = () => { document.querySelectorAll('#skip-why [data-why]').forEach(b => { const on = b.dataset.why === skipWhy; b.className = 'btn ' + (on ? 'primary' : 'outline'); }); document.getElementById('skip-why-hint').textContent = skipWhy === 'scope' ? '시험 범위가 아닌 문항은 계속 빠진 채로 두고, 점수에도 넣지 않아요.' : '나중에 「이어서 입력하기」로 풀 수 있어요. 풀기 전까지는 점수에 들어가지 않아요.'; };
+    document.querySelectorAll('#skip-why [data-why]').forEach(b => b.addEventListener('click', () => { skipWhy = b.dataset.why; paintWhy(); }));
+    paintWhy();
     // 문항이 30개를 넘으면: 지금 입력할 구간을 고르게 한다 (고르지 않은 구간은 채점에서 빠지고, 나중에 「이어서 입력」으로 채울 수 있다)
     if (answerCount > CHUNK) {
       const box = document.getElementById('range-box'), nC = Math.ceil(answerCount / CHUNK);
@@ -183,11 +193,11 @@ async function loadExam() {
         if (last && last.fixReq && last.submittedAt) {
           const eb = document.getElementById('edit-banner'); eb.style.display = ''; eb.style.background = '#FFF4E0'; eb.style.border = '1px solid #F3D9A4';
           eb.innerHTML = '✏️ <b>' + escapeHtml(last.name) + '</b>님이 보낸 수정 요청이 있어요. <button type="button" class="btn primary" id="fixchk-btn" style="padding:6px 12px; margin-left:6px;">승인 확인</button> <span id="fixchk-msg" class="hint"></span>';
-          document.getElementById('fixchk-btn').addEventListener('click', () => sxCheckFix(examId, last.name, last.submittedAt, document.getElementById('fixchk-msg'), () => goEdit('fix', last.submittedAt, last.answers, last.name, false)));
+          document.getElementById('fixchk-btn').addEventListener('click', () => sxCheckFix(examId, last.name, last.submittedAt, document.getElementById('fixchk-msg'), () => goEdit('fix', last.submittedAt, last.answers, last.name, false, last.oor)));
         } else if (last && last.skipped && last.skipped.length) {
           const eb = document.getElementById('edit-banner'); eb.style.display = ''; eb.style.background = '#FFF4E0'; eb.style.border = '1px solid #F3D9A4';
           eb.innerHTML = '📝 <b>' + escapeHtml(last.name) + '</b>님이 낸 답안 중 비워 둔 문항(' + escapeHtml(rangeText(last.skipped)) + ')이 있어요. <button type="button" class="btn primary" id="resume-btn" style="padding:6px 12px; margin-left:6px;">이어서 입력하기</button>';
-          document.getElementById('resume-btn').addEventListener('click', () => goEdit('fill', last.submittedAt, last.answers, last.name));
+          document.getElementById('resume-btn').addEventListener('click', () => goEdit('fill', last.submittedAt, last.answers, last.name, false, last.oor));
         }
       } catch (e) {}
     }
@@ -238,7 +248,10 @@ let skipSet = new Set();
 function applySkip() {
   skipSet = parseNumSetLabeled(document.getElementById('skip-input').value, nums, answerCount);
   chipOff.forEach(c => { for (let i = c * CHUNK; i < Math.min(answerCount, (c + 1) * CHUNK); i++) skipSet.add(i + 1); });
+  const typedSkip = new Set(skipSet);      // 학생이 직접 적은 번호(구간 칩 제외)
   for (let i = 0; i < answerCount; i++) if (lockedQ(i)) skipSet.delete(i + 1);
+  for (let i = 0; i < answerCount; i++) if (oorQ(i)) skipSet.add(i + 1);
+  window.__typedSkip = typedSkip; { const w = document.getElementById('skip-why'); if (w) w.style.display = typedSkip.size ? '' : 'none'; }
   const grid = document.getElementById('answer-grid');
   grid.querySelectorAll('.qrow').forEach((row, i) => {
     const off = skipSet.has(i + 1) && !isSub(i);
@@ -252,7 +265,8 @@ async function submitAnswers(e) {
   e.preventDefault();
   const name = document.getElementById('student-name').value.trim();
   if (!name) return;
-  const skipAll = Array.from({ length: answerCount }, (_, i) => skipSet.has(i + 1) && !isSub(i) && !lockedQ(i));
+  const skipAll = Array.from({ length: answerCount }, (_, i) => (skipSet.has(i + 1) && !isSub(i) && !lockedQ(i)) || (oorQ(i) && !isSub(i)));
+  const oorNew = skipWhy === 'scope' ? Array.from(window.__typedSkip || []).filter(n => !isSub(n - 1) && !lockedQ(n - 1)) : [];
   const miss = studentAnswers.findIndex((a, i) => !isSub(i) && !skipAll[i] && !a);
   if (miss >= 0) {
     const rows = document.querySelectorAll('#answer-grid .qrow');
@@ -269,11 +283,11 @@ async function submitAnswers(e) {
 
   try {
     const arr = studentAnswers.map((a, i) => skipAll[i] ? '~' : a);
-    const res = EDIT ? await callApi('editSubmission', { id: examId, studentName: name, submittedAt: EDIT.submittedAt, answers: arr })
-                     : await callApi('submitAnswer', { defer: true, id: examId, studentName: name, answers: arr });
+    const res = EDIT ? await callApi('editSubmission', { id: examId, studentName: name, submittedAt: EDIT.submittedAt, answers: arr, outOfRange: oorNew })
+                     : await callApi('submitAnswer', { defer: true, id: examId, studentName: name, answers: arr, outOfRange: oorNew });
     if (!res.ok) { alert(res.error || '제출에 실패했어요.'); btn.disabled = false; btn.textContent = '제출하고 채점받기'; return; }
     if (!EDIT) callApi('afterSubmit', { id: examId, studentName: name }).catch(() => {});
-    try { localStorage.setItem('sx_last_' + examId, JSON.stringify({ name: name, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], answers: res.studentAnswers })); } catch (e) {}      // 알림은 결과를 보여 준 뒤 따로 보낸다
+    try { localStorage.setItem('sx_last_' + examId, JSON.stringify({ name: name, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], oor: res.outOfRange || [], answers: res.studentAnswers })); } catch (e) {}      // 알림은 결과를 보여 준 뒤 따로 보낸다
 
     const sc100 = res.total ? to100(res.score, res.total) : null;
     const wrongN = res.results.filter(r => r === 'x').length;
@@ -300,9 +314,9 @@ async function submitAnswers(e) {
       </div>
     `;
     window.scrollTo(0, 0);
-    { const cb = document.getElementById('continue-btn'); if (cb) cb.addEventListener('click', () => goEdit('fill', res.submittedAt, res.studentAnswers, name)); const fb = document.getElementById('fix-btn'); if (fb) fb.addEventListener('click', () => goEdit('fix', res.submittedAt, res.studentAnswers, name, true));
+    { const cb = document.getElementById('continue-btn'); if (cb) cb.addEventListener('click', () => goEdit('fill', res.submittedAt, res.studentAnswers, name, false, res.outOfRange)); const fb = document.getElementById('fix-btn'); if (fb) fb.addEventListener('click', () => goEdit('fix', res.submittedAt, res.studentAnswers, name, true, res.outOfRange));
       const rq = document.getElementById('fixreq-btn'), ck = document.getElementById('fixchk-btn'), fm = document.getElementById('fixreq-msg');
-      if (rq) { rq.addEventListener('click', async () => { if (await sxRequestFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false))) { rq.style.display = 'none'; ck.style.display = ''; } }); ck.addEventListener('click', () => sxCheckFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false))); } }
+      if (rq) { rq.addEventListener('click', async () => { if (await sxRequestFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false, res.outOfRange))) { rq.style.display = 'none'; ck.style.display = ''; } }); ck.addEventListener('click', () => sxCheckFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false))); } }
     if (wrongN) setupRetry(res);
   } catch (err) {
     alert('오류가 발생했어요: ' + err.message);

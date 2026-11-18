@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 여러 단원 채점 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191040">
+<link rel="stylesheet" href="css/style.css?v=202611191100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,10 +14,10 @@
 <template id="page-content">
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
-<script src="js/config.js?v=202611191040"></script>
-<script src="js/api.js?v=202611191040"></script>
-<script src="js/common.js?v=202611191040"></script>
-<script src="js/confirmans.js?v=202611191040"></script>
+<script src="js/config.js?v=202611191100"></script>
+<script src="js/api.js?v=202611191100"></script>
+<script src="js/common.js?v=202611191100"></script>
+<script src="js/confirmans.js?v=202611191100"></script>
 <script>
 const numLbl = (id, i) => { const f = (typeof state !== 'undefined' && state[id]) ? state[id].info : null; return (f && f.nums && f.nums.length === f.answerCount) ? f.nums[i] : i + 1; };
 renderHeader();
@@ -107,7 +107,7 @@ function showAnswering() {
     const nm = (r.nums && r.nums.length === r.answerCount) ? r.nums : null, dn = i => (nm ? nm[i] : i + 1);
     const card = document.createElement('div');
     card.className = 'card';
-    card.innerHTML = `<h2 style="margin-top:0;">${ex.unit ? esc(ex.unit) + '단원 ' : ''}${esc(ex.label)}</h2><label style="font-size:13px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 · 채점에서 빠져요)</span></label><input type="text" class="skip-in" placeholder="예: 1-10" inputmode="numeric" autocomplete="off" style="margin-bottom:10px;"><div class="grid"></div>`;
+    card.innerHTML = `<h2 style="margin-top:0;">${ex.unit ? esc(ex.unit) + '단원 ' : ''}${esc(ex.label)}</h2><label style="font-size:13px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 · 채점에서 빠져요)</span></label><input type="text" class="skip-in" placeholder="예: 1-10" inputmode="numeric" autocomplete="off" style="margin-bottom:4px;"><label style="font-size:13px; display:block; margin-bottom:10px;"><input type="checkbox" class="later-cb"> 나중에 풀 예정이에요 <span class="hint" style="font-weight:400;">(체크하지 않으면 시험 범위가 아니라서 빼는 걸로 처리해요)</span></label><div class="grid"></div>`;
     st.skip = new Set();
     card.querySelector('.skip-in').addEventListener('input', function () {
       st.skip = parseNumSetLabeled(this.value, nm, r.answerCount);
@@ -160,7 +160,8 @@ async function submitAll() {
   const results = [];
   try {
     for (const ex of picked) {
-      const res = await callApi('submitAnswer', { defer: true, id: ex.id, studentName: studentName, answers: state[ex.id].answers.map((a, i) => (state[ex.id].skip && state[ex.id].skip.has(i + 1) && (state[ex.id].info.subjective || []).indexOf(i + 1) < 0) ? '~' : a) });
+      const stx = state[ex.id], oorN = (stx.later || !stx.skip) ? [] : Array.from(stx.skip).filter(n => (stx.info.subjective || []).indexOf(n) < 0);
+      const res = await callApi('submitAnswer', { defer: true, id: ex.id, studentName: studentName, outOfRange: oorN, answers: state[ex.id].answers.map((a, i) => (state[ex.id].skip && state[ex.id].skip.has(i + 1) && (state[ex.id].info.subjective || []).indexOf(i + 1) < 0) ? '~' : a) });
       if (!res.ok) throw new Error((ex.label) + ': ' + (res.error || '제출 실패'));
       results.push({ ex, res });
       callApi('afterSubmit', { id: ex.id, studentName: studentName }).catch(() => {});
@@ -173,13 +174,13 @@ async function submitAll() {
   showResults(results);
 }
 
-function editGo(exId, mode, subm, answers, shift) {
-  try { sessionStorage.setItem('sx_edit_' + exId, JSON.stringify({ mode: mode, submittedAt: subm, answers: answers, name: studentName, shift: !!shift })); } catch (e) {}
+function editGo(exId, mode, subm, answers, shift, oor) {
+  try { sessionStorage.setItem('sx_edit_' + exId, JSON.stringify({ mode: mode, submittedAt: subm, answers: answers, name: studentName, shift: !!shift, oor: oor || [] })); } catch (e) {}
   location.href = 'student_exam.html?id=' + encodeURIComponent(exId);
 }
 function showResults(results) {
   let sc = 0, tot = 0;
-  results.forEach(({ ex, res }) => { try { localStorage.setItem('sx_last_' + ex.id, JSON.stringify({ name: studentName, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], answers: res.studentAnswers })); } catch (e) {} });
+  results.forEach(({ ex, res }) => { try { localStorage.setItem('sx_last_' + ex.id, JSON.stringify({ name: studentName, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], oor: res.outOfRange || [], answers: res.studentAnswers })); } catch (e) {} });
   results.forEach(({ res }) => { sc += res.score || 0; tot += res.total || 0; });
   area().innerHTML = `
     <h1>채점 결과</h1>
@@ -204,7 +205,7 @@ function showResults(results) {
     <button type="button" class="btn outline" style="width:100%;" onclick="location.reload()">다른 단원 또 채점하기</button>`;
   area().querySelectorAll('button[data-req]').forEach(bt => bt.addEventListener('click', async () => {
     const r = results.find(x => String(x.ex.id) === bt.dataset.req), fm = area().querySelector('[data-fm="' + bt.dataset.req + '"]');
-    if (r && await sxRequestFix(r.ex.id, studentName, r.res.submittedAt, fm, () => editGo(r.ex.id, 'fix', r.res.submittedAt, r.res.studentAnswers, false))) { bt.style.display = 'none'; area().querySelector('[data-chk="' + bt.dataset.req + '"]').style.display = ''; }
+    if (r && await sxRequestFix(r.ex.id, studentName, r.res.submittedAt, fm, () => editGo(r.ex.id, 'fix', r.res.submittedAt, r.res.studentAnswers, false, r.res.outOfRange))) { bt.style.display = 'none'; area().querySelector('[data-chk="' + bt.dataset.req + '"]').style.display = ''; }
   }));
   area().querySelectorAll('button[data-chk]').forEach(bt => bt.addEventListener('click', () => {
     const r = results.find(x => String(x.ex.id) === bt.dataset.chk), fm = area().querySelector('[data-fm="' + bt.dataset.chk + '"]');
@@ -212,7 +213,7 @@ function showResults(results) {
   }));
   area().querySelectorAll('button[data-edit]').forEach(bt => bt.addEventListener('click', () => {
     const r = results.find(x => String(x.ex.id) === bt.dataset.ex); if (!r) return;
-    editGo(r.ex.id, bt.dataset.edit, r.res.submittedAt, r.res.studentAnswers, r.res.shiftSuspect);
+    editGo(r.ex.id, bt.dataset.edit, r.res.submittedAt, r.res.studentAnswers, r.res.shiftSuspect, r.res.outOfRange);
   }));
 }
 load();

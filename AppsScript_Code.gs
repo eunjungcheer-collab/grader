@@ -513,10 +513,10 @@ function actionSubmitAnswer_(p) {
 
   const scoresSheet = ss.getSheetByName(SHEET_SCORES);
   const submittedAt = new Date().toISOString();
-  scoresSheet.appendRow([
-    String(found.row[0]), p.studentName || '이름없음', studentAnswers.join(','),
-    score, objective, submittedAt, score100,
-  ]);
+  const oor = oorClean_(p.outOfRange, studentAnswers);      // 「시험 범위가 아니라서」 뺀 문항 (나중에 풀 문항과 구분, 12열)
+  const rowVals = [String(found.row[0]), p.studentName || '이름없음', studentAnswers.join(','), score, objective, submittedAt, score100];
+  if (oor.length) { rowVals.push('', '', '', '', JSON.stringify(oor)); }
+  scoresSheet.appendRow(rowVals);
   if (p.defer) {      // 가장 빠른 알림: 제출을 받자마자 이름·점수만 먼저 보낸다 (자세한 분석은 뒤의 afterSubmit 에서)
     try {
       const nm0 = String(p.studentName || '이름없음');
@@ -527,11 +527,16 @@ function actionSubmitAnswer_(p) {
   if (!p.defer) { try { afterSubmit_(ss, found, p, score, objective, score100); } catch (e) {} }      // 알림 때문에 제출이 실패하면 안 된다. defer면 학생에게 결과부터 보내고 알림은 따로(afterSubmit) 보낸다
 
   return {
-    ok: true, score: score, total: objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: skipped,
+    ok: true, score: score, total: objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: skipped.filter(function (n) { return oor.indexOf(n) < 0; }), outOfRange: oor,
     results: results, studentAnswers: studentAnswers, submittedAt: submittedAt, shiftSuspect: shiftSuspect_(correctAnswers, studentAnswers),
   };
 }
 
+// 학생이 「시험 범위가 아니라서」 뺀 문항 번호(1부터): 실제로 '~'(안 품)인 문항만 남긴다
+function oorClean_(list, studentAnswers) {
+  const out = []; (Array.isArray(list) ? list : []).forEach(function (n) { n = Number(n); if (n >= 1 && studentAnswers[n - 1] === '~' && out.indexOf(n) < 0) out.push(n); });
+  return out.sort(function (a, b) { return a - b; });
+}
 // 답이 한 줄(몇 칸)씩 밀려 입력된 것 같은지: 학생 답을 몇 칸 옮겼을 때 정답과 훨씬 많이 맞으면 true (정답 자체는 알려 주지 않고 참/거짓만 쓴다)
 function shiftSuspect_(correct, student) {
   const idx = []; for (let i = 0; i < correct.length; i++) if (!isSubjective_(correct[i]) && student[i] !== undefined && student[i] !== '~' && student[i] !== '') idx.push(i);
@@ -638,10 +643,13 @@ function actionEditSubmission_(p) {
       if (!meta[3]) sheet.getRange(hit + 2, 11).setValue(data[hit][6] === '' ? score100_(Number(data[hit][3]), Number(data[hit][4])) : Number(data[hit][6]));
     }
     const g = gradeAnswers_(correctAnswers, studentAnswers), score100 = g.objective ? Math.round(g.score / g.objective * 100) : 0;
+    let oorOld = []; try { oorOld = JSON.parse(String(sheet.getRange(hit + 2, 12).getValue() || '[]')) || []; } catch (e) {}
+    const oorAll = oorClean_(oorOld.concat(Array.isArray(p.outOfRange) ? p.outOfRange : []), studentAnswers);
+    sheet.getRange(hit + 2, 12).setValue(oorAll.length ? JSON.stringify(oorAll) : '');
     sheet.getRange(hit + 2, 3).setValue(studentAnswers.join(','));
     sheet.getRange(hit + 2, 4, 1, 2).setValues([[g.score, g.objective]]);
     sheet.getRange(hit + 2, 7).setValue(score100);
-    return { ok: true, score: g.score, total: g.objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: g.skipped, results: g.results, studentAnswers: studentAnswers, submittedAt: p.submittedAt, edited: true };
+    return { ok: true, score: g.score, total: g.objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: g.skipped.filter(function (n) { return oorAll.indexOf(n) < 0; }), outOfRange: oorAll, results: g.results, studentAnswers: studentAnswers, submittedAt: p.submittedAt, edited: true };
   } finally { lock.releaseLock(); }
 }
 
@@ -1121,7 +1129,7 @@ function listSubmissionsBuild_() {
       examId: r[0], studentName: r[1],
       answers: r[2], score: r[3], total: r[4], submittedAt: r[5],
       score100: (r[6] === '' || r[6] === undefined) ? score100_(Number(r[3]), Number(r[4])) : Number(r[6]),
-      edited: (Number(r[7]) || 0) >= 1, origScore100: (r[10] === '' || r[10] === undefined) ? null : Number(r[10]),
+      outOfRange: (function () { try { return r[11] ? (JSON.parse(String(r[11])) || []).length : 0; } catch (e) { return 0; } })(), edited: (Number(r[7]) || 0) >= 1, origScore100: (r[10] === '' || r[10] === undefined) ? null : Number(r[10]),
       fixRequested: !!r[8] && String(r[8]) !== 'N' && !r[9] && !(Number(r[7]) >= 1), fixApproved: !!r[9] && !(Number(r[7]) >= 1),
     });
   }
