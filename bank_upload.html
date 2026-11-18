@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문항 가져오기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191230">
+<link rel="stylesheet" href="css/style.css?v=202611191240">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -65,14 +65,14 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611191230"></script>
-<script src="js/config.js?v=202611191230"></script>
-<script src="js/api.js?v=202611191230"></script>
-<script src="js/common.js?v=202611191230"></script>
-<script src="js/ocr.js?v=202611191230"></script>
-<script src="js/bankcore.js?v=202611191230"></script>
-<script src="js/pdfui.js?v=202611191230"></script>
-<script src="js/pdfview.js?v=202611191230"></script>
+<script src="js/vendor/pdf.min.js?v=202611191240"></script>
+<script src="js/config.js?v=202611191240"></script>
+<script src="js/api.js?v=202611191240"></script>
+<script src="js/common.js?v=202611191240"></script>
+<script src="js/ocr.js?v=202611191240"></script>
+<script src="js/bankcore.js?v=202611191240"></script>
+<script src="js/pdfui.js?v=202611191240"></script>
+<script src="js/pdfview.js?v=202611191240"></script>
 <script>
 requireLogin();
 ensureToc().then(() => { try { if (items && items.length) autoSubs(); } catch (e) {} });
@@ -205,6 +205,9 @@ function refreshSummary() {
   const noUnit = unitEls.filter(el => !el.value).length, low = unitEls.filter(el => el.classList.contains('guess') || el.classList.contains('low')).length;
   const noGrade = files.filter(f => !f.meta.grade).length;
   const todo = [];
+  // 서술형('-')인데 그림에 보기 ①~⑤가 있으면 객관식인데 서술형으로 들어간 것일 수 있다 (그대로 저장하면 자동 채점에서 빠진다)
+  const sus = []; items.forEach((it, k2) => { if (vals[k2] !== '-') return; if (it._mk === undefined) { try { const m = BankCore.detectOptionMarkers(it.canvas); it._mk = !!(m && m.length === 5); } catch (e) { it._mk = false; } } if (it._mk) sus.push(k2 + 1); });
+  if (sus.length) todo.push('⚠️ 주관식으로 되어 있지만 보기 ①~⑤가 있는 문항 ' + sus.length + '개 (이 목록의 ' + sus.slice(0, 20).join(', ') + (sus.length > 20 ? ' …' : '') + '번째) — 객관식이면 정답을 입력하고 「주관식」 체크를 해제하세요');
   if (noAns) todo.push('정답이 비어 있는 문항 ' + noAns + '개');
   if (noUnit) todo.push('단원 미지정 ' + noUnit + '개');
   if (low) todo.push('단원을 추정으로 채운 문항(노란 칸) ' + low + '개');
