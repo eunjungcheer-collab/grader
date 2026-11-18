@@ -580,14 +580,14 @@ function actionGetFixStatus_(p) {
   const sheet = ss.getSheetByName(SHEET_SCORES), row = fixRow_(sheet, String(found.row[0]), p.studentName, p.submittedAt);
   if (!row) return { ok: false, error: '기록을 찾지 못했어요.' };
   const m = sheet.getRange(row, 8, 1, 3).getValues()[0], ok = Number(m[2]) || 0;
-  return { ok: true, edited: (Number(m[0]) || 0) >= 1, requested: !!m[1], approved: !!ok && Date.now() - ok <= 24 * 3600 * 1000 };
+  return { ok: true, edited: (Number(m[0]) || 0) >= 1, rejected: String(m[1]) === 'N', requested: !!m[1] && String(m[1]) !== 'N', approved: !!ok && Date.now() - ok <= 24 * 3600 * 1000 };
 }
 function actionApproveFix_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SCORES), row = fixRow_(sheet, String(p.examId), p.studentName, p.submittedAt);
   if (!row) return { ok: false, error: '기록을 찾을 수 없어요.' };
   sheet.getRange(row, 10).setValue(p.approve === false ? '' : Date.now());
-  if (p.approve === false) sheet.getRange(row, 9).setValue('');
+  if (p.approve === false) sheet.getRange(row, 9).setValue('N');      // 거절 표시 (학생 화면에 거절됐다고 알려 준다)
   return { ok: true };
 }
 // 시험 id·이름·제출 시각이 모두 맞는 기록의 행 번호 (제출 시각은 시트 값(Date)과 밀리초까지 비교)
@@ -1122,7 +1122,7 @@ function listSubmissionsBuild_() {
       answers: r[2], score: r[3], total: r[4], submittedAt: r[5],
       score100: (r[6] === '' || r[6] === undefined) ? score100_(Number(r[3]), Number(r[4])) : Number(r[6]),
       edited: (Number(r[7]) || 0) >= 1, origScore100: (r[10] === '' || r[10] === undefined) ? null : Number(r[10]),
-      fixRequested: !!r[8] && !r[9] && !(Number(r[7]) >= 1), fixApproved: !!r[9] && !(Number(r[7]) >= 1),
+      fixRequested: !!r[8] && String(r[8]) !== 'N' && !r[9] && !(Number(r[7]) >= 1), fixApproved: !!r[9] && !(Number(r[7]) >= 1),
     });
   }
   subs.reverse();  // 최신 순
@@ -2782,7 +2782,7 @@ function actionHomeBadges_(p) {
   const out = { ok: true };
   try { out.alerts = actionListAlerts_(p); } catch (e) { out.alerts = null; }
   try { const r = actionListStudents_(p); out.pending = r.ok ? r.students.filter(function (x) { return x.pending; }).length : 0; } catch (e) { out.pending = 0; }
-  try { const sc = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SCORES), ln = sc.getLastRow(); let n = 0; if (ln >= 2) sc.getRange(2, 8, ln - 1, 3).getValues().forEach(function (r) { if (r[1] && !r[2] && !(Number(r[0]) >= 1)) n++; }); out.fixReq = n; } catch (e) { out.fixReq = 0; }
+  try { const sc = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SCORES), ln = sc.getLastRow(); let n = 0; if (ln >= 2) sc.getRange(2, 8, ln - 1, 3).getValues().forEach(function (r) { if (r[1] && String(r[1]) !== 'N' && !r[2] && !(Number(r[0]) >= 1)) n++; }); out.fixReq = n; } catch (e) { out.fixReq = 0; }
   try { const w = actionWeakReport_({ password: p.password, countOnly: true }); out.weak = w.ok ? w.count : 0; } catch (e) { out.weak = 0; }
   return out;
 }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191010">
+<link rel="stylesheet" href="css/style.css?v=202611191040">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -31,6 +31,7 @@
       <option value="score-desc">점수 높은순</option>
       <option value="name">이름순</option>
     </select>
+    <label style="font-size:13px; margin:0; white-space:nowrap;"><input type="checkbox" id="only-partial"> 일부만 입력한 기록만</label>
   </div>
 
   <div id="list"></div>
@@ -48,17 +49,17 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611191010"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191010"></script>
-<script src="js/vendor/qrcode.min.js?v=202611191010"></script>
-<script src="js/config.js?v=202611191010"></script>
-<script src="js/api.js?v=202611191010"></script>
-<script src="js/common.js?v=202611191010"></script>
-<script src="js/bankcore.js?v=202611191010"></script>
-<script src="js/wrongnote.js?v=202611191010"></script>
-<script src="js/printpdf.js?v=202611191010"></script>
-<script src="js/wnpanel.js?v=202611191010"></script>
-<script src="js/pdfui.js?v=202611191010"></script>
+<script src="js/vendor/pdf.min.js?v=202611191040"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191040"></script>
+<script src="js/vendor/qrcode.min.js?v=202611191040"></script>
+<script src="js/config.js?v=202611191040"></script>
+<script src="js/api.js?v=202611191040"></script>
+<script src="js/common.js?v=202611191040"></script>
+<script src="js/bankcore.js?v=202611191040"></script>
+<script src="js/wrongnote.js?v=202611191040"></script>
+<script src="js/printpdf.js?v=202611191040"></script>
+<script src="js/wnpanel.js?v=202611191040"></script>
+<script src="js/pdfui.js?v=202611191040"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -111,9 +112,11 @@ async function load() {
   } catch (e) { if (!all.length) $('total-text').textContent = '서버에 연결할 수 없어요.'; }
 }
 
+// 학생이 「안 푸는 문항」으로 빼서 점수에 들어가지 않은 문항 수 (나눠서 입력하다 아직 이어 입력하지 않은 기록)
+function skippedCount(s) { return s.retry ? 0 : String(s.answers || '').split(',').filter(isSkipAns).length; }
 function filtered() {
   const q = $('q').value.trim().toLowerCase();
-  let list = all.concat(retries).filter(s => (!examFilter || s.examId === examFilter) && (!q || String(s.studentName).toLowerCase().includes(q)));
+  let list = all.concat(retries).filter(s => (!examFilter || s.examId === examFilter) && (!$('only-partial').checked || skippedCount(s) > 0) && (!q || String(s.studentName).toLowerCase().includes(q)));
   const sort = $('sort-sel').value;
   const byDate = (a, b) => new Date(a.submittedAt) - new Date(b.submittedAt);
   if (sort === 'date-asc') list = list.slice().sort(byDate);
@@ -287,6 +290,7 @@ function render() {
           <span class="muted" style="margin-left:8px;">${escapeHtml(s.examTitle)}</span>
         </div>
         <div class="hint">${formatDate(s.submittedAt)}</div>
+        ${skippedCount(s) ? '<div class="hint" style="margin-top:4px;color:#B45309;font-weight:700;">📝 일부만 입력 (' + skippedCount(s) + '문항 비움) · 입력한 문항만으로 ' + s.score100 + '점이에요</div>' : ''}
         ${s.edited ? '<div class="hint" style="margin-top:4px;color:#B45309;font-weight:700;">✏️ 수정된 기록' + (s.origScore100 !== null && s.origScore100 !== undefined ? ' · 고치기 전 ' + s.origScore100 + '점 → ' + s.score100 + '점' : '') + '</div>' : ''}
         ${s.fixRequested ? '<div class="hint" id="fx-' + i + '" style="margin-top:4px;color:#B42318;font-weight:700;">🙋 마킹 실수 수정 요청이 왔어요 <button type="button" class="btn primary fix-ok" data-i="' + i + '" style="padding:5px 10px;margin-left:6px;">승인</button> <button type="button" class="btn ghost fix-no" data-i="' + i + '" style="padding:5px 10px;">거절</button></div>' : s.fixApproved ? '<div class="hint" id="fx-' + i + '" style="margin-top:4px;color:#1a7a4a;font-weight:700;">✅ 수정 승인함 (학생이 하루 안에 한 번 고칠 수 있어요) <button type="button" class="btn ghost fix-no" data-i="' + i + '" style="padding:5px 10px;margin-left:6px;">승인 취소</button></div>' : ''}
         ${(() => { const w = wrongNumsOf(s); return (s.correctAnswers || []).length ? '<div class="hint" style="margin-top:4px;">' + (w.length ? '❌ 틀린 문항: <b style="color:#C1392B;">' + w.join(', ') + '번</b>' : '✅ 틀린 문항 없음') + '</div>' : ''; })()}
@@ -460,6 +464,7 @@ $('bk-term').addEventListener('click', () => {
   });
 });
 $('sort-sel').addEventListener('change', () => { page = 1; render(); });
+$('only-partial').addEventListener('change', () => { page = 1; render(); });
 load();
 </script>
 </body>

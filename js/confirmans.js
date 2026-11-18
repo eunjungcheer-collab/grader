@@ -30,12 +30,13 @@ function confirmAnswers(sections) {
 function sxMarkFixReq(examId, on) {
   try { var k = 'sx_last_' + examId, o = JSON.parse(localStorage.getItem(k) || 'null'); if (o) { o.fixReq = !!on; localStorage.setItem(k, JSON.stringify(o)); } } catch (e) {}
 }
-async function sxRequestFix(examId, name, submittedAt, msgEl) {
+async function sxRequestFix(examId, name, submittedAt, msgEl, goFn) {
   msgEl.textContent = '요청을 보내는 중…';
   var r = await callApi('requestFix', { id: examId, studentName: name, submittedAt: submittedAt });
   if (!r.ok) { msgEl.textContent = '⚠️ ' + (r.error || '요청을 보내지 못했어요.'); return false; }
   sxMarkFixReq(examId, true);
-  msgEl.textContent = '✅ 선생님께 수정 요청을 보냈어요. 선생님이 승인하면 「승인 확인」을 눌러 고칠 수 있어요. (승인 후 하루 안, 한 번만)';
+  msgEl.textContent = '✅ 선생님께 수정 요청을 보냈어요. 이 화면을 열어 두면 승인되는 대로 자동으로 알려 드려요. (승인 후 하루 안, 한 번만)';
+  if (goFn) sxWatchFix(examId, name, submittedAt, msgEl, goFn);
   return true;
 }
 // 승인되었으면 goFn()을 부른다
@@ -43,6 +44,18 @@ async function sxCheckFix(examId, name, submittedAt, msgEl, goFn) {
   msgEl.textContent = '확인하는 중…';
   var r = await callApi('getFixStatus', { id: examId, studentName: name, submittedAt: submittedAt });
   if (!r.ok) { msgEl.textContent = '⚠️ ' + (r.error || '확인하지 못했어요.'); return; }
+  if (r.rejected) { sxMarkFixReq(examId, false); msgEl.textContent = '선생님이 이번에는 수정을 허용하지 않았어요. 궁금한 점은 선생님께 말씀해 주세요.'; return 'rejected'; }
   if (r.edited) { sxMarkFixReq(examId, false); msgEl.textContent = '이미 한 번 고쳤어요. 더 고칠 수 없어요.'; return; }
-  if (r.approved) goFn(); else msgEl.textContent = r.requested ? '아직 선생님이 승인하지 않았어요. 조금 뒤에 다시 눌러 보세요.' : '수정 요청이 없어요. 먼저 「수정 요청하기」를 눌러 주세요.';
+  if (r.approved) { goFn(); return 'approved'; } else msgEl.textContent = r.requested ? '아직 선생님이 승인하지 않았어요. 조금 뒤에 다시 눌러 보세요.' : '수정 요청이 없어요. 먼저 「수정 요청하기」를 눌러 주세요.';
+}
+
+// 요청을 보낸 뒤 화면을 열어 두면 20초마다 승인 여부를 확인해서, 승인되면 바로 수정 화면으로 넘어간다 (최대 15분)
+function sxWatchFix(examId, name, submittedAt, msgEl, goFn) {
+  var n = 0, t = setInterval(async function () {
+    n++; if (n > 45 || !document.body.contains(msgEl)) { clearInterval(t); return; }
+    try { var r = await callApi('getFixStatus', { id: examId, studentName: name, submittedAt: submittedAt });
+      if (r && r.ok && r.approved && !r.edited) { clearInterval(t); msgEl.textContent = '✅ 선생님이 승인했어요!'; goFn(); }
+      else if (r && r.ok && r.rejected) { clearInterval(t); sxMarkFixReq(examId, false); msgEl.textContent = '선생님이 이번에는 수정을 허용하지 않았어요. 궁금한 점은 선생님께 말씀해 주세요.'; }
+    } catch (e) {}
+  }, 20000);
 }
