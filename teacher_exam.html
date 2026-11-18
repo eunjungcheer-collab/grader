@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190505">
+<link rel="stylesheet" href="css/style.css?v=202611190520">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,15 +17,15 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611190505"></script>
-<script src="js/config.js?v=202611190505"></script>
-<script src="js/api.js?v=202611190505"></script>
-<script src="js/common.js?v=202611190505"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190505"></script>
-<script src="js/bankcore.js?v=202611190505"></script>
-<script src="js/vendor/pdf.min.js?v=202611190505"></script>
-<script src="js/printpdf.js?v=202611190505"></script>
-<script src="js/pdfui.js?v=202611190505"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190520"></script>
+<script src="js/config.js?v=202611190520"></script>
+<script src="js/api.js?v=202611190520"></script>
+<script src="js/common.js?v=202611190520"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190520"></script>
+<script src="js/bankcore.js?v=202611190520"></script>
+<script src="js/vendor/pdf.min.js?v=202611190520"></script>
+<script src="js/printpdf.js?v=202611190520"></script>
+<script src="js/pdfui.js?v=202611190520"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -285,11 +285,17 @@ async function makeTeacherFromBank(exam, say) {
         window.open(res.pdfUrl, '_blank'); return false;
       }
       const prog = (i, n) => { noteEl.textContent = '🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽'; };
+      function _h32(t) { let h = 5381; t = String(t); for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
       async function printStudentPdf() {
-        noteEl.textContent = '인쇄할 PDF를 받는 중...';
-        const b = stuId ? await driveDirectBlob(stuId, (g, tot) => { noteEl.textContent = '인쇄할 PDF를 받는 중... ' + (tot ? Math.floor(g / tot * 100) + '%' : ''); }) : null;
-        if (!b) throw new Error('PDF를 받지 못했어요. 서버를 새 버전으로 배포했는지 확인하거나, 「학생용만 받기」로 받아서 인쇄해 주세요.');
-        setupPdfJs(); return printPdfBytes(new Uint8Array(await b.arrayBuffer()), prog);
+        const ckey = stuId ? 'stu:' + stuId + ':' + _h32((res.answers || []).join('|')) + ':' + (res.title || '') : '';
+        let bytes = ckey ? await pdfCacheGet(ckey) : null;
+        if (!bytes) {
+          noteEl.textContent = '인쇄할 PDF를 받는 중...';
+          const b = stuId ? await driveDirectBlob(stuId, (g, tot) => { noteEl.textContent = '인쇄할 PDF를 받는 중... ' + (tot ? Math.floor(g / tot * 100) + '%' : ''); }) : null;
+          if (!b) throw new Error('PDF를 받지 못했어요. 서버를 새 버전으로 배포했는지 확인하거나, 「학생용만 받기」로 받아서 인쇄해 주세요.');
+          bytes = new Uint8Array(await b.arrayBuffer()); if (ckey) pdfCachePut(ckey, bytes);
+        } else noteEl.textContent = '저장해 둔 PDF로 인쇄해요...';
+        setupPdfJs(); return printPdfBytes(bytes, prog);
       }
       async function printTeacherPdf() {
         const t = await obtainTeacher(); if (!t) throw new Error('강사용 PDF를 만들 수 없는 시험지예요.');

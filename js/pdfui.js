@@ -906,3 +906,33 @@ function buildAnswerGrid(box, answers, onChange) {
   press(bar.querySelector('.ag-bsub'), inp => { setM(inp, false); inp.value = '-'; inp._ag.commit(); inp._ag.next(); });
   press(bar.querySelector('.ag-bmulti'), inp => { setM(inp, inp.dataset.multi !== '1'); inp.value = inp.dataset.multi === '1' ? inp.value.replace(/[^0-9\/]/g, '') : inp.value; inp._ag.commit(); inp.focus(); });
 }
+
+// ── 인쇄용 PDF 보관(최근 N개): 같은 시험지를 다시 인쇄할 때 드라이브에서 또 받지 않게 한다. 이 브라우저(디스크)에만 저장되고 서버·드라이브 용량은 쓰지 않는다 ──
+const PDFCACHE_MAX = 10;
+function _pcTx(db, mode, fn) { return new Promise((res, rej) => { const tx = db.transaction('f', mode); const out = fn(tx.objectStore('f')); tx.oncomplete = () => res(out ? out.result : undefined); tx.onerror = () => rej(tx.error); }); }
+async function pdfCacheIndex(db) { try { return (await _pcTx(db, 'readonly', st => st.get('pc:index'))) || []; } catch (e) { return []; } }
+async function pdfCacheGet(key) {
+  try {
+    if (pdfCacheOff()) return null;
+    const db = await _hoDb(), rec = await _pcTx(db, 'readonly', st => st.get('pc:' + key));
+    if (!rec || !rec.blob) return null;
+    const idx = (await pdfCacheIndex(db)).filter(x => x.k !== key); idx.push({ k: key, t: Date.now(), n: rec.blob.size });   // 최근에 쓴 것으로 표시
+    await _pcTx(db, 'readwrite', st => st.put(idx, 'pc:index'));
+    return new Uint8Array(await rec.blob.arrayBuffer());
+  } catch (e) { return null; }
+}
+async function pdfCachePut(key, bytes) {
+  try {
+    if (pdfCacheOff()) return;
+    const db = await _hoDb();
+    await _pcTx(db, 'readwrite', st => st.put({ blob: new Blob([bytes], { type: 'application/pdf' }) }, 'pc:' + key));
+    let idx = (await pdfCacheIndex(db)).filter(x => x.k !== key); idx.push({ k: key, t: Date.now(), n: bytes.byteLength || bytes.length || 0 });
+    while (idx.length > PDFCACHE_MAX) { const old = idx.shift(); await _pcTx(db, 'readwrite', st => st.delete('pc:' + old.k)); }    // 오래된 것부터 지움
+    await _pcTx(db, 'readwrite', st => st.put(idx, 'pc:index'));
+  } catch (e) { /* 저장 공간이 모자라는 등: 보관은 못 해도 인쇄는 된다 */ }
+}
+async function pdfCacheInfo() { try { const db = await _hoDb(), idx = await pdfCacheIndex(db); return { count: idx.length, bytes: idx.reduce((a, x) => a + (x.n || 0), 0) }; } catch (e) { return { count: 0, bytes: 0 }; } }
+async function pdfCacheClear() {
+  try { const db = await _hoDb(), idx = await pdfCacheIndex(db); for (const x of idx) await _pcTx(db, 'readwrite', st => st.delete('pc:' + x.k)); await _pcTx(db, 'readwrite', st => st.delete('pc:index')); return idx.length; } catch (e) { return 0; }
+}
+function pdfCacheOff() { try { return localStorage.getItem('pdfCache') === 'off'; } catch (e) { return false; } }

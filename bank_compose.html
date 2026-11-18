@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190505">
+<link rel="stylesheet" href="css/style.css?v=202611190520">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611190505"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190505"></script>
-<script src="js/config.js?v=202611190505"></script>
-<script src="js/api.js?v=202611190505"></script>
-<script src="js/common.js?v=202611190505"></script>
-<script src="js/bankcore.js?v=202611190505"></script>
-<script src="js/vendor/pdf.min.js?v=202611190505"></script>
-<script src="js/printpdf.js?v=202611190505"></script>
-<script src="js/pdfui.js?v=202611190505"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190520"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190520"></script>
+<script src="js/config.js?v=202611190520"></script>
+<script src="js/api.js?v=202611190520"></script>
+<script src="js/common.js?v=202611190520"></script>
+<script src="js/bankcore.js?v=202611190520"></script>
+<script src="js/vendor/pdf.min.js?v=202611190520"></script>
+<script src="js/printpdf.js?v=202611190520"></script>
+<script src="js/pdfui.js?v=202611190520"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -579,6 +579,7 @@ function buildPicksAndReview() {
 
 // ── 2단계: 검토 화면 — 빼거나 더 넣을 수 있다 ──
 let reviewPicks = [], reviewTitle = '', reviewRecipe = null;
+let finalDone = null;   // 이미 시험지로 등록한 결과 {key, pdfBase64, examId} — 같은 구성으로 다시 인쇄할 때 재등록하지 않고 그대로 쓴다
 // 연관 문제 함께 묶기: "위 실험을 바탕으로…" 처럼 앞 문항의 자료를 이어 쓰는 문항은 대표(앞) 문항과 같이 넣는다
 let groupNote = '';
 function expandGroups(picks) {
@@ -826,6 +827,13 @@ async function finalize(printAfter) {
   const err = $('error-banner');
   err.innerHTML = '';
   const picks = reviewPicks, title = reviewTitle, recipe = reviewRecipe;
+  const dkey = title + '|' + picks.map(q => q.id).join(',');
+  if (finalDone && finalDone.key === dkey) {       // 같은 구성은 이미 등록됨 → 새로 등록하지 않는다
+    if (printAfter !== true) { location.href = 'teacher_exam.html?id=' + finalDone.examId; return; }
+    try { showSpinner('🖨️ 인쇄 준비 중...'); setupPdfJs(); await printPdfBytes(BankCore.b64ToBytes(finalDone.pdfBase64), (i, n) => updateSpinner('🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽')); }
+    catch (pe) { err.innerHTML = '<div class="banner error">인쇄를 시작하지 못했어요: ' + escapeHtml(pe.message) + '</div>'; }
+    hideSpinner(); return;
+  }
   const noAns = picks.filter(q => !q.answer);
   if (noAns.length) {
     err.innerHTML = '<div class="banner error">정답이 없는 문항이 ' + noAns.length + '개 있어요. 문제은행에서 정답을 먼저 입력하거나 검토 화면에서 빼주세요.</div>';
@@ -922,8 +930,8 @@ async function finalize(printAfter) {
         await printPdfBytes(BankCore.b64ToBytes(pdfBase64), (i, n) => updateSpinner('🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽'));
       } catch (pe) { $('fin-msg').innerHTML = '<div class="banner error">등록은 됐지만 인쇄를 시작하지 못했어요: ' + escapeHtml(pe.message) + ' (<a href="teacher_exam.html?id=' + examId + '&print=student">시험지 화면에서 인쇄</a>)</div>'; }
       hideSpinner();
-      ['finalize-btn', 'finalize-print-btn'].forEach(id => { const bt = $(id); if (bt) bt.disabled = true; });      // 같은 시험지가 또 등록되지 않게
-      $('fin-msg').insertAdjacentHTML('beforeend', '<div class="banner" style="text-align:left;margin:10px 0;">✅ 시험지로 등록하고 학생용을 인쇄 창으로 보냈어요. 정답·단원을 고치려면 <a href="teacher_exam.html?id=' + examId + '"><b>시험지 화면 열기</b></a></div>');
+      finalDone = { key: dkey, pdfBase64: pdfBase64, examId: examId };      // 다시 눌러도 새로 등록하지 않고 같은 시험지를 다시 인쇄한다
+      $('fin-msg').insertAdjacentHTML('beforeend', '<div class="banner" style="text-align:left;margin:10px 0;">✅ 시험지로 등록하고 학생용을 인쇄 창으로 보냈어요. (다시 인쇄하려면 위 「학생용 인쇄」를 다시 누르세요 — 새로 등록되지 않아요.) 정답·단원을 고치려면 <a href="teacher_exam.html?id=' + examId + '"><b>시험지 화면 열기</b></a></div>');
       $('fin-msg').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }

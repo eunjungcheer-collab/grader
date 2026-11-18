@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190505">
+<link rel="stylesheet" href="css/style.css?v=202611190520">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,7 +16,7 @@
   <h1>🗄️ 데이터 관리</h1>
   <p class="muted">학생 기록 백업과 드라이브 정리를 한곳에서 해요. 백업은 <b>구글 시트(글자 기록)만</b> 복사해 두는 거라 용량이 아주 작아요. 교재·시험지 PDF는 백업 대상이 아니에요.</p>
   <div class="card"><b>💾 기록 백업</b>
-    <div id="bk-info" class="hint" style="margin-top:8px;">불러오는 중...</div>
+    <div id="bk-badge"></div><div id="bk-info" class="hint" style="margin-top:8px;">불러오는 중...</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
       <button type="button" class="btn primary" id="bk-now" style="padding:8px 14px;">지금 백업하기</button>
       <button type="button" class="btn outline" id="bk-auto" style="padding:8px 14px;">자동 백업 켜기 (매주 일요일 새벽)</button>
@@ -24,7 +24,15 @@
     </div>
     <div id="bk-msg" class="hint" style="margin-top:6px;"></div>
   </div>
-  <div class="card" id="pm-card">
+  <div class="card" id="pc-card">
+      <b>💾 인쇄용 PDF 보관 (이 컴퓨터)</b>
+      <p class="hint" id="pc-info" style="margin:6px 0;"></p>
+      <p class="hint" style="margin:0 0 8px;">같은 시험지를 다시 인쇄할 때 빨라져요. 최근 10개만 이 컴퓨터(브라우저)에 두고, 구글 드라이브·서버 용량은 쓰지 않아요.</p>
+      <label style="display:block;margin:6px 0;"><input type="checkbox" id="pc-on"> 인쇄한 PDF를 이 컴퓨터에 보관하기</label>
+      <button type="button" class="btn outline" id="pc-clear">🗑️ 보관한 PDF 지우기</button>
+      <span class="hint" id="pc-msg"></span>
+    </div>
+    <div class="card" id="pm-card">
       <b>🖨️ 인쇄 방식</b>
       <label style="display:block; margin:6px 0;"><input type="radio" name="pm" value="fast"> <b>빠른 인쇄</b> (기본) — PDF를 그대로 보내요. 더 빠르고 선명해요. 안 되면 자동으로 예전 방식으로 인쇄해요.</label>
       <label style="display:block; margin:6px 0;"><input type="radio" name="pm" value="raster"> <b>예전 방식</b> — 쪽마다 그림으로 바꿔서 인쇄해요. 느리지만 어디서나 돼요.</label>
@@ -49,9 +57,10 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611190505"></script>
-<script src="js/api.js?v=202611190505"></script>
-<script src="js/common.js?v=202611190505"></script>
+<script src="js/config.js?v=202611190520"></script>
+<script src="js/api.js?v=202611190520"></script>
+<script src="js/common.js?v=202611190520"></script>
+<script src="js/pdfui.js?v=202611190520"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -66,6 +75,7 @@ async function loadUsage() {
     if (r.used != null && r.limit) {
       const pct = Math.min(100, r.used / r.limit * 100);
       $('du-info').innerHTML = '구글 계정 전체 <b style="font-size:17px;">' + MB(r.used) + '</b> / ' + MB(r.limit) + ' 사용 중 (' + pct.toFixed(1) + '%)<br><span style="font-size:12px;">드라이브·Gmail·사진을 모두 합친 값이에요.</span>';
+      if (pct >= 80) $('du-info').insertAdjacentHTML('beforeend', '<div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:#FDECEA;color:#C1392B;font-weight:800;border:1px solid #C1392B;">⚠️ 구글 용량이 ' + pct.toFixed(0) + '%예요. 곧 가득 찰 수 있으니 오래된 시험지 PDF나 필요 없는 파일을 정리해 주세요. (가득 차면 시험지·백업이 저장되지 않아요)</div>');
       $('du-bar').style.display = ''; $('du-fill').style.width = Math.max(1, pct) + '%'; $('du-fill').style.background = pct > 85 ? '#C1392B' : pct > 65 ? '#D97706' : '#1f6f4a';
     } else $('du-info').textContent = '계정 전체 용량은 읽을 수 없었어요.';
     const tot = r.folders.reduce((a, f) => a + f.bytes, 0);
@@ -78,6 +88,9 @@ async function load() {
     const r = await callApi('dataStatus', { password: getTeacherPassword() });
     if (!r.ok) { $('bk-info').textContent = r.error || '불러오지 못했어요'; return; }
     const auto = r.backups.filter(b => b.auto), last = r.backups[0];
+    { const hrs = last ? (Date.now() - new Date(last.at).getTime()) / 3600000 : null, badge = $('bk-badge');
+      if (badge) { const bad = !last || (r.autoOn && hrs > 36) || !r.autoOn; badge.style.cssText = 'margin:0 0 8px;padding:10px 12px;border-radius:8px;font-weight:800;font-size:15px;' + (bad ? 'background:#FDECEA;color:#C1392B;border:1px solid #C1392B;' : 'background:#E8F5EE;color:#1f6f4a;border:1px solid #1f6f4a;');
+        badge.textContent = !last ? '⚠️ 아직 백업이 없어요' : !r.autoOn ? '⚠️ 자동 백업이 꺼져 있어요 (마지막 백업 ' + (hrs < 48 ? Math.round(hrs) + '시간' : Math.round(hrs / 24) + '일') + ' 전)' : hrs > 36 ? '⚠️ 마지막 자동 백업이 ' + (hrs < 72 ? Math.round(hrs) + '시간' : Math.round(hrs / 24) + '일') + ' 전이에요. 자동 백업이 멈췄을 수 있어요' : '✅ 백업 정상 · 마지막 백업 ' + (hrs < 1 ? '방금' : Math.round(hrs) + '시간 전'); } }
     $('bk-info').innerHTML = '기록 ' + r.rows.toLocaleString() + '줄 · 시트 ' + r.sheetCount + '개<br>자동 백업: <b style="color:' + (r.autoOn ? '#1f7a4d' : '#C1392B') + ';">' + (r.autoOn ? '켜져 있어요' : '꺼져 있어요 (아래 버튼으로 켜세요)') + '</b><br>보관 중인 백업 ' + r.backups.length + '개 (자동 ' + auto.length + '개)' + (last ? ' · 가장 최근 ' + D(last.at) + ' ' + e(last.name.replace('자동채점 백업 ', '')) : ' · 아직 없어요');
     $('dv-info').innerHTML = '교재 PDF ' + r.pdfCount + '개 · 합계 <b>' + MB(r.pdfBytes) + '</b>' + (r.partial ? ' (일부만 센 값)' : '') + '<br>올리다 남은 임시 조각 ' + r.chunks + '개' + (r.chunks ? ' — 지워도 돼요' : '');
   } catch (err) { $('bk-info').textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
@@ -103,6 +116,11 @@ $('nm-go').addEventListener('click', async () => {
 });
 load();
 (function () { let m = 'fast'; try { m = localStorage.getItem('printMode') === 'raster' ? 'raster' : 'fast'; } catch (e) {} document.querySelectorAll('input[name=pm]').forEach(r => { r.checked = r.value === m; r.addEventListener('change', () => { try { localStorage.setItem('printMode', r.value); document.getElementById('pm-msg').textContent = '✅ 저장했어요 (이 브라우저에서만 적용돼요).'; } catch (e) { document.getElementById('pm-msg').textContent = '⚠️ 저장하지 못했어요.'; } }); }); })();
+(async function () { const on = $('pc-on'); try { on.checked = localStorage.getItem('pdfCache') !== 'off'; } catch (e) { on.checked = true; }
+  const show = async () => { const i = await pdfCacheInfo(); $('pc-info').textContent = '보관 중: ' + i.count + '개 · ' + MB(i.bytes); };
+  on.addEventListener('change', () => { try { localStorage.setItem('pdfCache', on.checked ? 'on' : 'off'); } catch (e) {} $('pc-msg').textContent = on.checked ? '켰어요.' : '껐어요 (이미 보관한 PDF는 그대로예요).'; });
+  $('pc-clear').addEventListener('click', async () => { const n = await pdfCacheClear(); $('pc-msg').textContent = n + '개를 지웠어요.'; show(); });
+  show(); })();
 loadUsage(); loadNames();
 </script>
 </body>

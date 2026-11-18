@@ -42,10 +42,16 @@ async function printPdfNative(bytes) {
 
 /* 인쇄 방식: 기본은 「빠른 인쇄」(PDF를 그대로), 안 되면 자동으로 「그림으로 바꿔 인쇄」(예전 방식). 데이터 관리에서 고를 수 있다 */
 function printMode() { try { return localStorage.getItem('printMode') === 'raster' ? 'raster' : 'fast'; } catch (e) { return 'fast'; } }
+function _printToast(text) {
+  let t = document.getElementById('print-toast');
+  if (!text) { if (t) t.remove(); return; }
+  if (!t) { t = document.createElement('div'); t.id = 'print-toast'; t.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:99999;background:#1F3A6B;color:#fff;padding:12px 18px;border-radius:10px;font-weight:700;font-size:15px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:90vw;text-align:center;'; document.body.appendChild(t); }
+  t.textContent = text;
+}
 async function printPdfBytes(bytes, onProg) {
   if (printMode() === 'fast') {
-    try { return await printPdfNative(bytes); }
-    catch (e) { try { console.warn('빠른 인쇄 실패 → 예전 방식으로 인쇄', e); } catch (_) {} }
+    try { _printToast('🖨️ 인쇄 창을 여는 중이에요... 쪽수가 많으면 10~20초 걸려요'); const r = await printPdfNative(bytes); _printToast(''); return r; }
+    catch (e) { _printToast(''); try { console.warn('빠른 인쇄 실패 → 예전 방식으로 인쇄', e); } catch (_) {} }
   }
   if (!window.pdfjsLib && typeof setupPdfJs === 'function') { try { setupPdfJs(); } catch (e) {} }
   return printPdfRaster(bytes, onProg);
