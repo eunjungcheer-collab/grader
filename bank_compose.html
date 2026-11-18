@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611182330">
+<link rel="stylesheet" href="css/style.css?v=202611182350">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,13 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611182330"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611182330"></script>
-<script src="js/config.js?v=202611182330"></script>
-<script src="js/api.js?v=202611182330"></script>
-<script src="js/common.js?v=202611182330"></script>
-<script src="js/bankcore.js?v=202611182330"></script>
-<script src="js/pdfui.js?v=202611182330"></script>
+<script src="js/vendor/qrcode.min.js?v=202611182350"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611182350"></script>
+<script src="js/config.js?v=202611182350"></script>
+<script src="js/api.js?v=202611182350"></script>
+<script src="js/common.js?v=202611182350"></script>
+<script src="js/bankcore.js?v=202611182350"></script>
+<script src="js/vendor/pdf.min.js?v=202611182350"></script>
+<script src="js/printpdf.js?v=202611182350"></script>
+<script src="js/pdfui.js?v=202611182350"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -635,6 +637,7 @@ function renderReview() {
       <div style="display:flex; gap:10px; margin-top:16px;">
         <button type="button" class="btn ghost" id="back-btn" style="padding:10px 16px;">← 조건 다시 선택</button>
         <button type="button" class="btn outline" id="teacher-btn" style="padding:10px 16px;" title="문제 바로 밑에 정답·해설이 붙은 강사용 PDF만 내려받아요 (등록은 하지 않아요)">📘 강사용 시험지 받기</button>
+        <button type="button" class="btn outline" id="teacher-print-btn" style="padding:10px 16px;">🖨️ 강사용 바로 인쇄</button>
         <button type="button" class="btn primary" id="finalize-btn" style="flex:1;">이 ${reviewPicks.length}문항으로 최종 확정 → PDF 만들기</button>
       </div>
     </div>`;
@@ -645,7 +648,8 @@ function renderReview() {
     else history.back();
   });
   $('finalize-btn').addEventListener('click', finalize);
-  $('teacher-btn').addEventListener('click', makeTeacher);
+  $('teacher-btn').addEventListener('click', () => makeTeacher(false));
+  $('teacher-print-btn').addEventListener('click', () => makeTeacher(true));
   $('add-search').addEventListener('input', renderAddResults);
 }
 function renderReviewList() {
@@ -743,7 +747,7 @@ async function buildTeacherBytes(title, picks, slots, items, map) {
 }
 
 // 강사용 시험지: 문제 바로 밑에 정답(빨간 글씨)·해설이 붙고 객관식 정답 번호에 빨간 동그라미를 친 PDF. 버튼을 눌렀을 때만 만들고, 등록은 하지 않는다.
-async function makeTeacher() {
+async function makeTeacher(doPrint) {
   const err = $('error-banner'); err.innerHTML = '';
   const picks = reviewPicks, title = reviewTitle;
   if (!picks.length) return;
@@ -773,6 +777,7 @@ async function makeTeacher() {
     items.forEach((it, i) => { const q = picks[i]; if (q.explFileId && map[q.explFileId]) { const sz = pngSize(BankCore.b64ToBytes(map[q.explFileId])); it.explBase64 = map[q.explFileId]; it.explW = sz.width; it.explH = sz.height; } });
     updateSpinner('강사용 시험지 만드는 중...');
     const bytes = await buildTeacherBytes(title, picks, slots, items, map);
+    if (doPrint === true) { updateSpinner('인쇄 준비 중...'); try { setupPdfJs(); await printPdfBytes(new Uint8Array(bytes), (i, n) => updateSpinner('🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽')); } finally { hideSpinner(); } return; }
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     a.download = title.replace(/[\\/:*?"<>|]/g, '_') + ' 강사용.pdf'; document.body.appendChild(a); a.click(); a.remove();
     hideSpinner();

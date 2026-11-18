@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611182330">
+<link rel="stylesheet" href="css/style.css?v=202611182350">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -148,6 +148,7 @@
 <div class="hint" id="bank-guess-msg2" style="margin:4px 0 0;"></div>
             </div>
             <button type="button" class="btn outline" style="width:100%; margin-top:16px;" id="teacher-btn" disabled>📘 강사용 시험지 PDF 만들어 받기 (정답 동그라미 + 문제 밑 정답·해설 · 시험지 등록과는 별개)</button>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button type="button" class="btn outline" style="flex:1 1 45%;" id="teacher-print-btn" disabled>🖨️ 강사용 바로 인쇄</button><button type="button" class="btn outline" style="flex:1 1 45%;" id="merge-print-btn" disabled>🖨️ 문제+정답 바로 인쇄</button></div>
             <button type="button" class="btn outline" style="width:100%; margin-top:8px;" id="merge-btn" disabled>📎 문제지 + 정답지 합친 PDF 받기 (따로 올린 정답지를 문제지 뒤에 붙여요 · 시험지 등록과는 별개)</button>
             <button type="submit" class="btn primary" style="width:100%; margin-top:10px;" id="submit-btn" disabled>시험지 등록하고 QR 만들기</button>
           </div>
@@ -157,16 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611182330"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611182330"></script>
-<script src="js/vendor/pdf.min.js?v=202611182330"></script>
-<script src="js/config.js?v=202611182330"></script>
-<script src="js/api.js?v=202611182330"></script>
-<script src="js/common.js?v=202611182330"></script>
-<script src="js/ocr.js?v=202611182330"></script>
-<script src="js/bankcore.js?v=202611182330"></script>
-<script src="js/pdfui.js?v=202611182330"></script>
-<script src="js/pdfview.js?v=202611182330"></script>
+<script src="js/vendor/qrcode.min.js?v=202611182350"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611182350"></script>
+<script src="js/printpdf.js?v=202611182350"></script>
+<script src="js/vendor/pdf.min.js?v=202611182350"></script>
+<script src="js/config.js?v=202611182350"></script>
+<script src="js/api.js?v=202611182350"></script>
+<script src="js/common.js?v=202611182350"></script>
+<script src="js/ocr.js?v=202611182350"></script>
+<script src="js/bankcore.js?v=202611182350"></script>
+<script src="js/pdfui.js?v=202611182350"></script>
+<script src="js/pdfview.js?v=202611182350"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1472,7 +1474,7 @@ async function buildBoxes() {
     if (scanned && scanned.answers[n] && (scanned.answers[n].multi || /^[1-5]{2,}$/.test(String(inp.value))) && String(inp.value).length > 1) setMulti(inp, true, cell);   // 정답표에 두 개 모두(AND)로 적힌 문항
     if (scanned && scanned.subj && scanned.subj[n]) setSubjective(inp, true, cell);   // 문제 글자로 추정한 주관식
   });
-  $('submit-btn').disabled = false; $('teacher-btn').disabled = false; $('merge-btn').disabled = false;
+  $('submit-btn').disabled = false; $('teacher-btn').disabled = false; $('merge-btn').disabled = false; $('teacher-print-btn').disabled = false; $('merge-print-btn').disabled = false;
   updateSubNote(scanned && scanned.subj ? Object.keys(scanned.subj).filter(k => scanned.subj[k] && k <= count).length : 0);
   const firstOpen = answerInputs.find(i => !i.disabled);
   if (firstOpen) { showCurrent(parseInt(firstOpen.dataset.n, 10)); firstOpen.focus({ preventScroll: true }); }
@@ -1634,8 +1636,9 @@ async function buildTeacherBytes(title, answers) {
   await BankCore.addPageNumbers(PDFLib, merged);
   return { bytes: await merged.save(), fallback: false };
 }
-async function downloadTeacherPdf(title, answers) {
+async function downloadTeacherPdf(title, answers, doPrint) {
   let r; try { r = await buildTeacherBytes(title, answers); } finally { rcClear(); }
+  if (doPrint) { hideSpinner(); showSpinner('인쇄 준비 중...'); try { await printPdfBytes(new Uint8Array(r.bytes), (i, n) => showSpinner('🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽')); } finally { hideSpinner(); } return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([r.bytes], { type: 'application/pdf' }));
   a.download = title.replace(/[\\/:*?"<>|]/g, '_') + ' 강사용.pdf';
@@ -1644,18 +1647,20 @@ async function downloadTeacherPdf(title, answers) {
   if (r.fallback) alert('이 PDF는 사진(스캔)으로 된 파일이라 글자가 없어서, 문제를 하나씩 잘라 정답·해설을 문제 밑에 붙일 수 없어요.\n\n대신 원본 쪽 그대로 두고, 맨 뒤에 입력해 둔 정답표를 붙여서 내려받았어요.\n(정답 동그라미·문제 밑 정답은 글자가 있는 PDF에서만 돼요. 한글 파일을 PDF로 저장한 것은 글자가 살아 있어요.)');
 }
 
-$('teacher-btn').addEventListener('click', async function () {
-  const btn = this; if (!scanned || !answerInputs.length) return;
+async function teacherClick(btn, doPrint) {
+  if (!scanned || !answerInputs.length) return;
   syncTitleSuffix();
   const title = $('title').value.trim() || '시험지';
   btn.disabled = true; showSpinner('강사용 시험지 만드는 중...');
-  try { await downloadTeacherPdf(title, answerInputs.map(i => i.value)); }
+  try { await downloadTeacherPdf(title, answerInputs.map(i => i.value), doPrint); }
   catch (e) { $('error-banner').innerHTML = '<div class="banner error">강사용 시험지를 만들지 못했어요: ' + escapeHtml(e.message) + '</div>'; }
   hideSpinner(); btn.disabled = false;
-});
+}
+$('teacher-btn').addEventListener('click', function () { teacherClick(this, false); });
+$('teacher-print-btn').addEventListener('click', function () { teacherClick(this, true); });
 
 // 문제지 + 따로 올린 정답지를 한 PDF로 합쳐서 내려받는다 (정답지를 따로 올리지 않았으면 올린 PDF 그대로 — 이미 정답이 들어 있는 파일)
-$('merge-btn').addEventListener('click', async function () {
+async function mergeClick(doPrint) {
   if (!pdfInfo) { alert('PDF를 먼저 올려주세요.'); return; }
   showSpinner('문제지와 정답지 합치는 중...');
   try {
@@ -1666,6 +1671,7 @@ $('merge-btn').addEventListener('click', async function () {
     syncTitleSuffix();
     const title = ($('title').value.trim() || baseNoExt(curFileName) || '시험지');
     const bytes = await out.save();
+    if (doPrint) { hideSpinner(); showSpinner('인쇄 준비 중...'); try { await printPdfBytes(new Uint8Array(bytes), (i, n) => showSpinner('🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽')); } finally { hideSpinner(); } return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     a.download = title.replace(/[\\/:*?"<>|]/g, '_') + (hasSep ? ' (문제+정답).pdf' : '.pdf');
@@ -1673,7 +1679,9 @@ $('merge-btn').addEventListener('click', async function () {
     hideSpinner();
     if (!hasSep) alert('따로 올린 정답지가 없어서, 올리신 PDF를 그대로 내려받았어요. (정답지 PDF를 위쪽 "정답지 PDF" 칸에 올리면 문제지 뒤에 붙여 드려요)');
   } catch (e) { hideSpinner(); alert('합치지 못했어요: ' + e.message); }
-});
+}
+$('merge-btn').addEventListener('click', () => mergeClick(false));
+$('merge-print-btn').addEventListener('click', () => mergeClick(true));
 $('new-exam-form').addEventListener('submit', async function (e) {
   e.preventDefault();
   const errorBox = $('error-banner');

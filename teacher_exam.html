@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611182330">
+<link rel="stylesheet" href="css/style.css?v=202611182350">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,15 +17,15 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611182330"></script>
-<script src="js/config.js?v=202611182330"></script>
-<script src="js/api.js?v=202611182330"></script>
-<script src="js/common.js?v=202611182330"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611182330"></script>
-<script src="js/bankcore.js?v=202611182330"></script>
-<script src="js/vendor/pdf.min.js?v=202611182330"></script>
-<script src="js/printpdf.js?v=202611182330"></script>
-<script src="js/pdfui.js?v=202611182330"></script>
+<script src="js/vendor/qrcode.min.js?v=202611182350"></script>
+<script src="js/config.js?v=202611182350"></script>
+<script src="js/api.js?v=202611182350"></script>
+<script src="js/common.js?v=202611182350"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611182350"></script>
+<script src="js/bankcore.js?v=202611182350"></script>
+<script src="js/vendor/pdf.min.js?v=202611182350"></script>
+<script src="js/printpdf.js?v=202611182350"></script>
+<script src="js/pdfui.js?v=202611182350"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -217,6 +217,7 @@ async function makeTeacherFromBank(exam, say) {
         <a class="btn primary" id="dl-student" href="${res.pdfUrl}" target="_blank" style="width:100%;${res.pdfUrl ? '' : ' display:none;'}">📄 학생용만 받기${res.explUrl ? ' (QR 찍힌 PDF)' : ' (해설 포함)'}</a>
         <button type="button" class="btn outline" id="print-student" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">🖨️ 학생용 바로 인쇄</button>
         <button type="button" class="btn primary" id="dl-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📄📘 학생용 + 강사용 둘 다 받기</button>
+        <button type="button" class="btn outline" id="print-teacher" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">🖨️ 강사용 바로 인쇄</button>
         <button type="button" class="btn outline" id="dl-teacher-only" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📘 강사용만 받기 (정답 동그라미·문제 밑 정답·해설)</button>
         <div id="dl-bank" style="display:none; text-align:left; margin-top:6px;">
           <div style="font-weight:700; margin:2px 0 8px;">⬇️ 이 단원만 따로 받기 (문제은행에 저장된 문항으로 만들어요)</div>
@@ -290,6 +291,15 @@ async function makeTeacherFromBank(exam, say) {
           noteEl.textContent = ok ? '🖨️ 인쇄 창으로 보냈어요.' : '';
         } catch (err) { noteEl.textContent = '⚠️ ' + err.message; }
         prBtn.disabled = false;
+      });
+      const prT = document.getElementById('print-teacher');
+      if (prT) prT.addEventListener('click', async () => {
+        prT.disabled = true; try {
+          const t = await obtainTeacher(); if (!t) throw new Error('강사용 PDF를 만들 수 없는 시험지예요.');
+          setupPdfJs(); const ok = await printPdfBytes(new Uint8Array(await t.blob.arrayBuffer()), (i, n) => { noteEl.textContent = '🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽'; });
+          noteEl.textContent = ok ? '🖨️ 인쇄 창으로 보냈어요.' : '';
+        } catch (err) { noteEl.textContent = '⚠️ ' + err.message; }
+        prT.disabled = false;
       });
       const stuLink = document.getElementById('dl-student');
       if (stuLink && stuId) stuLink.addEventListener('click', ev => { ev.preventDefault(); saveStudent(); });
