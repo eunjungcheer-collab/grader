@@ -142,6 +142,7 @@ function handle_(e) {
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
       case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
+      case 'editSubmission': result = actionEditSubmission_(params); break;
       case 'unlinkOldQr': result = actionUnlinkOldQr_(params); break;
       case 'setExamSources': result = actionSetExamSources_(params); break;
       case 'renameBook': result = actionRenameBook_(params); break;
@@ -502,29 +503,67 @@ function actionSubmitAnswer_(p) {
   const correctAnswers = examAnswers_(found.row);
   // 학생이 「안 푸는 문항」으로 뺀 번호는 답 대신 '~'로 온다 → 채점·문항 수에서 뺀다
   const studentAnswers = (p.answers || []).map(function (a) { return String(a === undefined || a === null ? '' : a).trim() === '~' ? '~' : normAns_(a); });   // 복수정답은 "35"처럼 정리해서 비교
-  let score = 0, objective = 0;
-  const skipped = [], results = [];      // results: 문항별 'subj'(주관식)·'skip'(안 푼 문항)·'ok'(맞음)·'x'(틀림) — 정답 자체는 학생에게 보내지 않는다
-  for (let i = 0; i < correctAnswers.length; i++) {
-    if (isSubjective_(correctAnswers[i])) { results.push('subj'); continue; }      // 주관식은 자동 채점에서 뺀다
-    if (studentAnswers[i] === '~') { skipped.push(i + 1); results.push('skip'); continue; }
-    objective++;
-    if (ansMatches_(studentAnswers[i], correctAnswers[i])) { score++; results.push('ok'); } else results.push('x');
-  }
+  const g = gradeAnswers_(correctAnswers, studentAnswers), score = g.score, objective = g.objective, skipped = g.skipped, results = g.results;
 
   // 100점 만점 환산 (객관식만 채점, 주관식은 합산하지 않음)
   const score100 = objective ? Math.round(score / objective * 100) : 0;
 
   const scoresSheet = ss.getSheetByName(SHEET_SCORES);
+  const submittedAt = new Date().toISOString();
   scoresSheet.appendRow([
     String(found.row[0]), p.studentName || '이름없음', studentAnswers.join(','),
-    score, objective, new Date().toISOString(), score100,
+    score, objective, submittedAt, score100,
   ]);
   if (!p.defer) { try { afterSubmit_(ss, found, p, score, objective, score100); } catch (e) {} }      // 알림 때문에 제출이 실패하면 안 된다. defer면 학생에게 결과부터 보내고 알림은 따로(afterSubmit) 보낸다
 
   return {
     ok: true, score: score, total: objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: skipped,
-    results: results, studentAnswers: studentAnswers,
+    results: results, studentAnswers: studentAnswers, submittedAt: submittedAt,
   };
+}
+
+// 채점: 주관식·안 푼 문항('~')은 빼고 객관식만 센다. results 는 문항별 'subj'·'skip'·'ok'·'x'
+function gradeAnswers_(correctAnswers, studentAnswers) {
+  let score = 0, objective = 0;
+  const skipped = [], results = [];
+  for (let i = 0; i < correctAnswers.length; i++) {
+    if (isSubjective_(correctAnswers[i])) { results.push('subj'); continue; }
+    if (studentAnswers[i] === '~' || studentAnswers[i] === undefined) { skipped.push(i + 1); results.push('skip'); continue; }
+    objective++;
+    if (ansMatches_(studentAnswers[i], correctAnswers[i])) { score++; results.push('ok'); } else results.push('x');
+  }
+  return { score: score, objective: objective, skipped: skipped, results: results };
+}
+
+// 학생이 제출한 답안을 나중에 고치거나(밀려 쓴 경우) 비워 둔 구간을 이어서 채울 때: 기록을 새로 만들지 않고 그 기록을 고친다.
+// 제출했을 때 받은 시각(submittedAt)과 이름이 맞아야 하고, 제출한 지 3일 안에만 고칠 수 있다. 정답은 알려 주지 않는다.
+const EDIT_WINDOW_MS_ = 3 * 24 * 3600 * 1000;
+function actionEditSubmission_(p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const correctAnswers = examAnswers_(found.row);
+  const studentAnswers = (p.answers || []).map(function (a) { return String(a === undefined || a === null ? '' : a).trim() === '~' ? '~' : normAns_(a); });
+  const want = new Date(p.submittedAt).getTime(); if (!isFinite(want)) return { ok: false, error: '고칠 기록을 찾지 못했어요.' };
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    const sheet = ss.getSheetByName(SHEET_SCORES), last = sheet.getLastRow();
+    if (last < 2) return { ok: false, error: '고칠 기록을 찾지 못했어요.' };
+    const data = sheet.getRange(2, 1, last - 1, 7).getValues();
+    const eid = String(found.row[0]), nm = String(p.studentName || '').trim();
+    let hit = -1;
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (String(data[i][0]) !== eid || String(data[i][1]).trim() !== nm) continue;
+      if (new Date(data[i][5]).getTime() === want) { hit = i; break; }
+    }
+    if (hit < 0) return { ok: false, error: '고칠 기록을 찾지 못했어요. (선생님이 기록을 지웠거나 이름이 달라요)' };
+    if (Date.now() - want > EDIT_WINDOW_MS_) return { ok: false, error: '제출한 지 3일이 지나서 더 고칠 수 없어요. 선생님께 말씀해 주세요.' };
+    const g = gradeAnswers_(correctAnswers, studentAnswers), score100 = g.objective ? Math.round(g.score / g.objective * 100) : 0;
+    sheet.getRange(hit + 2, 3).setValue(studentAnswers.join(','));
+    sheet.getRange(hit + 2, 4, 1, 2).setValues([[g.score, g.objective]]);
+    sheet.getRange(hit + 2, 7).setValue(score100);
+    return { ok: true, score: g.score, total: g.objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: g.skipped, results: g.results, studentAnswers: studentAnswers, submittedAt: p.submittedAt, edited: true };
+  } finally { lock.releaseLock(); }
 }
 
 

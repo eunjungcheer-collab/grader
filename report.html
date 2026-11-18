@@ -84,7 +84,7 @@ function makeMsgs(name, last, prev, avg, pavg, best, w, label, isM) {
     const b = [];
     low.forEach(x => b.push(x.u + ' 단원 평균 ' + x.a + '점으로 ' + T('복습이 더 필요합니다.', '복습이 더 필요해요.')));
     weakUn.forEach(x => { if (!low.some(l => l.u === x.unit)) b.push(x.unit + ' 단원은 반복해서 정답률이 낮은 편(' + x.avg + '%)' + T('입니다.', '이에요.')); });
-    if (rep.length) b.push('반복해서 틀린 문제: ' + rep.map(q => ((q.title || q.examTitle || '').trim() + ' ' + q.n + '번').trim()).join(', ') + T(' — 같은 유형을 다시 점검해 주세요.', ' — 같은 유형을 다시 점검해 봐요.'));
+    if (rep.length) { const gq = {}; rep.forEach(q => { const k = String(q.title || q.examTitle || '').trim(); (gq[k] = gq[k] || []).push(q.n); }); b.push('반복해서 틀린 문제: ' + Object.keys(gq).map(k => (k ? k + ' ' : '') + gq[k].join('·') + '번').join(', ') + T(' — 같은 유형을 다시 점검해 주세요.', ' — 같은 유형을 다시 점검해 봐요.')); }
     if (!b.length) b.push(T('뚜렷하게 약한 단원은 없으며, 지금의 학습 흐름을 유지하면 좋겠습니다.', '뚜렷하게 약한 단원은 없어요. 지금처럼만 해요.'));
     t += b.slice(0, 5).map(x => '- ' + x).join('\n');
     t += '\n\n💡 ' + T('다음 달 계획', '다음 목표') + '\n';
