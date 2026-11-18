@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190318">
+<link rel="stylesheet" href="css/style.css?v=202611190335">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -24,6 +24,12 @@
     </div>
     <div id="bk-msg" class="hint" style="margin-top:6px;"></div>
   </div>
+  <div class="card"><b>☁️ 구글 드라이브 용량</b>
+    <div id="du-info" class="hint" style="margin-top:8px;">불러오는 중... (폴더가 크면 20~40초 걸려요)</div>
+    <div id="du-bar" style="display:none;height:16px;background:#e6e1d6;border-radius:9px;overflow:hidden;margin:10px 0 4px;"><div id="du-fill" style="height:100%;width:0;background:#1f6f4a;"></div></div>
+    <div id="du-list" style="margin-top:8px;font-size:14px;"></div>
+    <div style="margin-top:10px;"><button type="button" class="btn outline" id="du-reload" style="padding:8px 14px;">다시 계산하기</button></div>
+  </div>
   <div class="card"><b>📦 드라이브에 쌓인 교재 PDF</b>
     <div id="dv-info" class="hint" style="margin-top:8px;">불러오는 중...</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="btn outline" id="dv-clean" style="padding:8px 14px;">올리다 남은 임시 조각 지우기</button><a class="btn outline" href="cover_edit.html" style="padding:8px 14px;text-decoration:none;">🎨 교재 관리에서 안 쓰는 교재 지우기</a></div>
@@ -37,15 +43,30 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611190318"></script>
-<script src="js/api.js?v=202611190318"></script>
-<script src="js/common.js?v=202611190318"></script>
+<script src="js/config.js?v=202611190335"></script>
+<script src="js/api.js?v=202611190335"></script>
+<script src="js/common.js?v=202611190335"></script>
 <script>
 requireLogin();
 renderHeader({});
 const $ = id => document.getElementById(id), e = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const D = iso => { const d = new Date(iso); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const MB = b => b >= 1073741824 ? (b / 1073741824).toFixed(1) + 'GB' : (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + 'MB';
+async function loadUsage() {
+  $('du-info').textContent = '계산하는 중... (폴더가 크면 20~40초 걸려요)'; $('du-list').innerHTML = ''; $('du-bar').style.display = 'none';
+  try {
+    const r = await callApi('driveUsage', { password: getTeacherPassword() });
+    if (!r.ok) { $('du-info').textContent = r.error || '불러오지 못했어요'; return; }
+    if (r.used != null && r.limit) {
+      const pct = Math.min(100, r.used / r.limit * 100);
+      $('du-info').innerHTML = '구글 계정 전체 <b style="font-size:17px;">' + MB(r.used) + '</b> / ' + MB(r.limit) + ' 사용 중 (' + pct.toFixed(1) + '%)<br><span style="font-size:12px;">드라이브·Gmail·사진을 모두 합친 값이에요.</span>';
+      $('du-bar').style.display = ''; $('du-fill').style.width = Math.max(1, pct) + '%'; $('du-fill').style.background = pct > 85 ? '#C1392B' : pct > 65 ? '#D97706' : '#1f6f4a';
+    } else $('du-info').textContent = '계정 전체 용량은 읽을 수 없었어요.';
+    const tot = r.folders.reduce((a, f) => a + f.bytes, 0);
+    $('du-list').innerHTML = '<div style="font-weight:700;margin-bottom:4px;">이 앱이 쓰는 폴더 (합계 ' + MB(tot) + ')</div>' + r.folders.map(f => '<div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding:5px 0;"><span>' + e(f.name) + (f.partial ? ' <span class="hint" style="margin:0;">(일부만 센 값)</span>' : '') + '</span><span><b>' + MB(f.bytes) + '</b> · ' + f.count + '개</span></div>').join('');
+  } catch (x) { $('du-info').textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
+}
+$('du-reload').addEventListener('click', loadUsage);
 async function load() {
   try {
     const r = await callApi('dataStatus', { password: getTeacherPassword() });
@@ -74,7 +95,8 @@ $('nm-go').addEventListener('click', async () => {
   if (!confirm('「' + from.join(', ') + '」 기록을 모두 「' + to + '」로 바꿀까요?\n(합치기 전에 자동 백업해요. 되돌리려면 백업을 사용해야 해요.)')) return;
   $('nm-msg').textContent = '합치는 중...'; try { const r = await callApi('mergeNames', { password: getTeacherPassword(), from: from, to: to }); $('nm-msg').textContent = r.ok ? '✅ ' + r.changed + '곳을 「' + to + '」로 통일했어요' : '⚠️ ' + r.error; loadNames(); } catch (x) { $('nm-msg').textContent = '⚠️ ' + x.message; }
 });
-load(); loadNames();
+load();
+loadUsage(); loadNames();
 </script>
 </body>
 </html>

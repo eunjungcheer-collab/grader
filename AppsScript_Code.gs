@@ -184,6 +184,7 @@ function handle_(e) {
       case 'nameGroups': result = actionNameGroups_(params); break;
       case 'mergeNames': result = actionMergeNames_(params); break;
       case 'dataStatus': result = actionDataStatus_(params); break;
+      case 'driveUsage': result = actionDriveUsage_(params); break;
       case 'dataTrim': result = actionDataTrim_(params); break;
       case 'retryCheck': result = actionRetryCheck_(params); break;
       case 'retryLog': result = actionRetryLog_(params); break;
@@ -2266,6 +2267,26 @@ function backupFiles_() {
   out.sort(function (a, b) { return b.getDateCreated() - a.getDateCreated(); });
   return out;
 }
+// 드라이브 용량: 계정 전체 사용량 + 이 앱이 쓰는 폴더별 용량 (폴더가 크면 시간이 걸려서 폴더마다 시간 제한을 둔다)
+function actionDriveUsage_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const t0 = Date.now(), names = [DRIVE_FOLDER_NAME, BANK_FOLDER_NAME, MERGE_FOLDER_NAME, '자동채점 백업'], out = [];
+  function walk(folder, st, deadline) {
+    const fi = folder.getFiles();
+    while (fi.hasNext()) { if (Date.now() > deadline) { st.partial = true; return; } const f = fi.next(); st.count++; st.bytes += f.getSize(); }
+    const sub = folder.getFolders();
+    while (sub.hasNext()) { if (Date.now() > deadline) { st.partial = true; return; } walk(sub.next(), st, deadline); }
+  }
+  names.forEach(function (n, i) {
+    const st = { name: n, count: 0, bytes: 0, partial: false };
+    try { const it = DriveApp.getFoldersByName(n); while (it.hasNext()) walk(it.next(), st, Math.min(t0 + 40000, Date.now() + 14000)); } catch (e) { st.error = String(e && e.message || e); }
+    out.push(st);
+  });
+  let used = null, limit = null;
+  try { used = DriveApp.getStorageUsed(); limit = DriveApp.getStorageLimit(); } catch (e) {}
+  return { ok: true, used: used, limit: limit, folders: out };
+}
+
 function actionDataStatus_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const ss = SpreadsheetApp.getActiveSpreadsheet(), t0 = Date.now();
