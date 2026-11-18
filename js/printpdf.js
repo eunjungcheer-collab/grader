@@ -40,11 +40,11 @@ async function printPdfBytes(bytes, onProg) {
     if (b.dataset.twin || !/바로\s*인쇄/.test(b.textContent)) return; b.dataset.twin = '1';
     const t = document.createElement('button'); t.type = 'button'; t.className = b.className; t.dataset.twin = '1';
     t.style.cssText = b.style.cssText.replace(/(flex|width)[^;]*;?/g, ''); t.style.marginLeft = '0';
-    t.textContent = '🖨️ 프린터 선택해 인쇄'; t.title = 'PDF를 새 탭에 열어요. 거기서 프린터와 인쇄 설정(양면·매수 등)을 고를 수 있어요';
+    t.textContent = '🖨️ 프린터 선택해 인쇄'; t.title = 'PDF를 새 탭에 열어요. 거기서 Ctrl+Shift+P를 누르면 프린터와 인쇄 설정(양면·매수 등)을 고를 수 있어요';
     if (b.style.width) t.style.width = b.style.width; if (b.style.flex) t.style.flex = b.style.flex;
     t.addEventListener('click', () => {
       if (b.disabled) return;
-      window.__printDialog = true; try { window.__printWin = window.open('', '_blank'); if (window.__printWin) window.__printWin.document.write('<p style="font:16px sans-serif">PDF 준비 중이에요...</p>'); } catch (e) { window.__printWin = null; }
+      window.__printDialog = true; try { window.__printWin = window.open('', '_blank'); if (window.__printWin) window.__printWin.document.write('<p style="font:16px sans-serif">PDF 준비 중이에요... PDF가 열리면 Ctrl+Shift+P 를 눌러 프린터를 고르세요.</p>'); } catch (e) { window.__printWin = null; }
       b.click();
       setTimeout(() => { window.__printDialog = false; }, 120000);
     });
