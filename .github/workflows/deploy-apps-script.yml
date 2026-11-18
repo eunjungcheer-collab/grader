@@ -32,9 +32,9 @@ jobs:
       - name: 코드 덮어쓰기 (프로젝트에 코드 파일이 하나일 때만)
         run: |
           cd gas
-          n=$(ls *.gs *.js 2>/dev/null | wc -l)
+          n=$(ls *.gs *.js 2>/dev/null | wc -l || true)
           if [ "$n" != "1" ]; then echo "::error::Apps Script 프로젝트에 코드 파일이 $n개예요. 하나(Code.gs)만 있어야 자동 배포가 안전해요."; ls; exit 1; fi
-          f=$(ls *.gs *.js); cp ../AppsScript_Code.gs "$f"; echo "덮어쓴 파일: $f"
+          f=$(ls *.gs *.js 2>/dev/null | head -1); cp ../AppsScript_Code.gs "$f"; echo "덮어쓴 파일: $f"
       - name: 올리고 기존 배포 갱신
         env: { DID: '${{ secrets.APPS_SCRIPT_DEPLOYMENT_ID }}' }
         run: |
