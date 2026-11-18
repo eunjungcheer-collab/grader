@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190350">
+<link rel="stylesheet" href="css/style.css?v=202611190358">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,15 +17,15 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611190350"></script>
-<script src="js/config.js?v=202611190350"></script>
-<script src="js/api.js?v=202611190350"></script>
-<script src="js/common.js?v=202611190350"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190350"></script>
-<script src="js/bankcore.js?v=202611190350"></script>
-<script src="js/vendor/pdf.min.js?v=202611190350"></script>
-<script src="js/printpdf.js?v=202611190350"></script>
-<script src="js/pdfui.js?v=202611190350"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190358"></script>
+<script src="js/config.js?v=202611190358"></script>
+<script src="js/api.js?v=202611190358"></script>
+<script src="js/common.js?v=202611190358"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190358"></script>
+<script src="js/bankcore.js?v=202611190358"></script>
+<script src="js/vendor/pdf.min.js?v=202611190358"></script>
+<script src="js/printpdf.js?v=202611190358"></script>
+<script src="js/pdfui.js?v=202611190358"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -310,7 +310,7 @@ async function makeTeacherFromBank(exam, say) {
       const toParent = (kind, text) => { try { if (window.parent !== window) window.parent.postMessage({ wnPrint: kind, text: text }, location.origin); } catch (e) {} };
       if (window.parent !== window) new MutationObserver(() => toParent('progress', noteEl.textContent)).observe(noteEl, { childList: true, characterData: true, subtree: true });
       const wire = (id, fn, doneMsg) => { const b = document.getElementById(id); if (!b) return null; b.addEventListener('click', async () => { b.disabled = true; try { const ok = await fn(); noteEl.textContent = ok === false ? '' : doneMsg; toParent(ok === false ? 'error' : 'done', ok === false ? '인쇄를 취소했어요.' : doneMsg); } catch (err) { noteEl.textContent = '⚠️ ' + err.message; toParent('error', err.message); } b.disabled = false; }); return b; };
-      { const fb = document.getElementById('print-fast'); if (fb) fb.addEventListener('click', async () => { fb.disabled = true; try { await printFastPdf(); } catch (err) { noteEl.textContent = '⚠️ ' + err.message; } fb.disabled = false; }); }
+      { const fb = document.getElementById('print-fast'); if (fb) fb.addEventListener('click', async () => { fb.disabled = true; try { await printFastPdf(); toParent('done', noteEl.textContent); } catch (err) { noteEl.textContent = '⚠️ ' + err.message; toParent('error', err.message); } fb.disabled = false; }); }
       const prBtn = wire('print-student', printStudentPdf, '🖨️ 인쇄 창으로 보냈어요.');
       wire('print-teacher', printTeacherPdf, '🖨️ 인쇄 창으로 보냈어요.');
       wire('print-both', async () => { await printStudentPdf(); return printTeacherPdf(); }, '🖨️ 학생용·강사용을 차례로 인쇄 창으로 보냈어요.');
@@ -351,7 +351,7 @@ async function makeTeacherFromBank(exam, say) {
       const autoPrint = new URLSearchParams(location.search).get('print');
       if (autoPrint) setTimeout(() => {
         const vis = id => { const b = document.getElementById(id); return b && b.offsetParent !== null && !b.disabled ? b : null; };
-        const pick = autoPrint === 'teacher' ? (vis('print-teacher') || vis('print-bank-teacher')) : (vis('print-student') || vis('print-bank-student'));
+        const pick = autoPrint === 'fast' ? vis('print-fast') : autoPrint === 'teacher' ? (vis('print-teacher') || vis('print-bank-teacher')) : (vis('print-student') || vis('print-bank-student'));
         if (pick) pick.click(); else { noteEl.textContent = '⚠️ 이 시험지는 인쇄할 PDF를 만들 수 없어요.'; toParent('error', '이 시험지는 인쇄할 PDF를 만들 수 없어요.'); }
       }, 500);
     }
