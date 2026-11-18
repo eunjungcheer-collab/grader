@@ -564,7 +564,7 @@ function actionRequestFix_(p) {
   if ((Number(sheet.getRange(row, 8).getValue()) || 0) >= 1) return { ok: false, error: '이미 한 번 고쳐서 더 고칠 수 없어요. 선생님께 말씀해 주세요.' };
   const already = !!sheet.getRange(row, 9).getValue();
   sheet.getRange(row, 9).setValue(Date.now());
-  if (!already) { try { pushToTeacher_('🙋 ' + String(p.studentName || '학생') + ' 마킹 실수 수정 요청', String(found.row[1]) + '\n시험 기록 화면에서 승인해 주세요', '?sub=' + encodeURIComponent(String(found.row[0])) + '&stu=' + encodeURIComponent(String(p.studentName || ''))); } catch (e) {} }
+  if (!already) { try { pushToTeacher_('🙋 ' + String(p.studentName || '학생') + ' 마킹 실수 수정 요청', String(found.row[1]) + '\n시험 기록 화면에서 승인해 주세요', '?sub=' + encodeURIComponent(String(found.row[0])) + '&stu=' + encodeURIComponent(String(p.studentName || '')), 'records.html'); } catch (e) {} }
   return { ok: true };
 }
 function actionGetFixStatus_(p) {
@@ -1639,7 +1639,7 @@ function afterSubmit_(ss, found, p, score, objective, score100) {
   let lowText = '';
   try {      // 낮은 점수: 70점 미만이거나, 이 학생의 바로 전 시험보다 20점 이상 떨어졌을 때
     if (objective > 0) {
-      const sd = ss.getSheetByName(SHEET_SCORES).getDataRange().getValues(), kk = nameKey_(name);
+      const shS = ss.getSheetByName(SHEET_SCORES), lnS = shS.getLastRow(), st0 = Math.max(2, lnS - 399), sd = [[]].concat(lnS >= 2 ? shS.getRange(st0, 1, lnS - st0 + 1, 7).getValues() : []), kk = nameKey_(name);      // 최근 400줄만 본다 (기록이 많아도 알림이 늦지 않게)
       let skipped = false, prev = null;
       for (let i = sd.length - 1; i >= 1; i--) { if (nameKey_(sd[i][1]) !== kk) continue; if (!skipped) { skipped = true; continue; } prev = (sd[i][6] === '' || sd[i][6] === undefined) ? score100_(Number(sd[i][3]), Number(sd[i][4])) : Number(sd[i][6]); break; }
       const bits = [];
@@ -2232,20 +2232,23 @@ function pushToStudent_(name, title, body) {
 let PUSH_LAST_ERR = '';
 // ───────── 강사용 푸시 (선생님 폰·컴퓨터) ─────────
 function teacherTokens_() { return safeJson_(PropertiesService.getScriptProperties().getProperty('TEACHER_TOKENS'), []); }
-function missedCount_() { try { const sh = assignSheet_(), last = sh.getLastRow(); if (last < 2) return 0; let n = 0; sh.getRange(2, 6, last - 1, 1).getValues().forEach(function (r) { if (String(r[0]) === 'missed') n++; }); return n; } catch (e) { return 0; } }
-function pushToTeacher_(title, body, link) {
+function missedCount_() { try { const cc = CacheService.getScriptCache(), hit = cc.get('missed_cnt'); if (hit !== null) return Number(hit) || 0; const n0 = missedCountRaw_(); cc.put('missed_cnt', String(n0), 60); return n0; } catch (e) { return missedCountRaw_(); } }
+function missedCountRaw_() { try { const sh = assignSheet_(), last = sh.getLastRow(); if (last < 2) return 0; let n = 0; sh.getRange(2, 6, last - 1, 1).getValues().forEach(function (r) { if (String(r[0]) === 'missed') n++; }); return n; } catch (e) { return 0; } }
+function pushToTeacher_(title, body, link, page) {
   const pr = PropertiesService.getScriptProperties();
   if (!pr.getProperty('FCM_SA')) return false;
   const tokens = teacherTokens_(); if (!tokens.length) return false;
   const pid = JSON.parse(pr.getProperty('FCM_SA')).project_id, at = fcmAccessToken_(); let url = pr.getProperty('TEACHER_APP_URL') || ''; const count = String(missedCount_()), keep = [];
-  if (link && url) url = url.replace(/[?#].*$/, '').replace(/[^\/]*$/, 'alerts.html') + link;
+  if (link && url) url = url.replace(/[?#].*$/, '').replace(/[^\/]*$/, page || 'alerts.html') + link;
   let okCount = 0; PUSH_LAST_ERR = '';
-  tokens.forEach(function (tk) {
-    const res = UrlFetchApp.fetch('https://fcm.googleapis.com/v1/projects/' + pid + '/messages:send', {
-      method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + at }, muteHttpExceptions: true,
-      payload: JSON.stringify({ message: { token: tk, data: { title: title, body: body, url: url, count: count, sticky: '1', icon: 'icons/icon-192.png' } } })
-    });
-    const code = res.getResponseCode();
+  // 기기가 여러 대여도 한꺼번에 보낸다 (하나씩 보내면 기기 수만큼 늦어진다)
+  const reqs = tokens.map(function (tk) {
+    return { url: 'https://fcm.googleapis.com/v1/projects/' + pid + '/messages:send', method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + at }, muteHttpExceptions: true,
+      payload: JSON.stringify({ message: { token: tk, android: { priority: 'HIGH' }, webpush: { headers: { Urgency: 'high', TTL: '600' } }, data: { title: title, body: body, url: url, count: count, sticky: '1', icon: 'icons/icon-192.png' } } }) };
+  });
+  const resps = UrlFetchApp.fetchAll(reqs);
+  resps.forEach(function (res, i) {
+    const code = res.getResponseCode(), tk = tokens[i];
     if (code !== 200) PUSH_LAST_ERR = 'FCM ' + code + ': ' + String(res.getContentText()).slice(0, 240); else okCount++;
     if (code === 200 || !(code === 404 || code === 400)) keep.push(tk);
   });

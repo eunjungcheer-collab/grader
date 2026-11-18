@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190900">
+<link rel="stylesheet" href="css/style.css?v=202611190930">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -48,17 +48,17 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611190900"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190900"></script>
-<script src="js/vendor/qrcode.min.js?v=202611190900"></script>
-<script src="js/config.js?v=202611190900"></script>
-<script src="js/api.js?v=202611190900"></script>
-<script src="js/common.js?v=202611190900"></script>
-<script src="js/bankcore.js?v=202611190900"></script>
-<script src="js/wrongnote.js?v=202611190900"></script>
-<script src="js/printpdf.js?v=202611190900"></script>
-<script src="js/wnpanel.js?v=202611190900"></script>
-<script src="js/pdfui.js?v=202611190900"></script>
+<script src="js/vendor/pdf.min.js?v=202611190930"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190930"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190930"></script>
+<script src="js/config.js?v=202611190930"></script>
+<script src="js/api.js?v=202611190930"></script>
+<script src="js/common.js?v=202611190930"></script>
+<script src="js/bankcore.js?v=202611190930"></script>
+<script src="js/wrongnote.js?v=202611190930"></script>
+<script src="js/printpdf.js?v=202611190930"></script>
+<script src="js/wnpanel.js?v=202611190930"></script>
+<script src="js/pdfui.js?v=202611190930"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -88,6 +88,8 @@ async function loadBankUnitsBg() {
   } catch (e) {}
   try { await ensureBankUnits(); render(); } catch (e) {}
 }
+// 알림에서 들어왔을 때(?stu=이름&sub=시험id) 그 학생·시험 기록만 보여 준다
+try { const qp = new URLSearchParams(location.search); if (qp.get('stu')) $('q').value = qp.get('stu'); if (qp.get('sub')) examFilter = qp.get('sub'); } catch (e) {}
 async function load() {
   // 지난번에 받은 기록이 있으면 먼저 바로 보여 주고, 최신 기록은 뒤에서 받아 갈아끼운다
   try {
