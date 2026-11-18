@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611182350">
+<link rel="stylesheet" href="css/style.css?v=202611190010">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611182350"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611182350"></script>
-<script src="js/config.js?v=202611182350"></script>
-<script src="js/api.js?v=202611182350"></script>
-<script src="js/common.js?v=202611182350"></script>
-<script src="js/bankcore.js?v=202611182350"></script>
-<script src="js/vendor/pdf.min.js?v=202611182350"></script>
-<script src="js/printpdf.js?v=202611182350"></script>
-<script src="js/pdfui.js?v=202611182350"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190010"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190010"></script>
+<script src="js/config.js?v=202611190010"></script>
+<script src="js/api.js?v=202611190010"></script>
+<script src="js/common.js?v=202611190010"></script>
+<script src="js/bankcore.js?v=202611190010"></script>
+<script src="js/vendor/pdf.min.js?v=202611190010"></script>
+<script src="js/printpdf.js?v=202611190010"></script>
+<script src="js/pdfui.js?v=202611190010"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -634,11 +634,12 @@ function renderReview() {
         <input type="text" id="add-search" placeholder="단원·학교·학년·내용으로 검색 (예: 기출, 중2, 전기)">
         <div id="add-results" class="hint"></div>
       </div>
-      <div style="display:flex; gap:10px; margin-top:16px;">
+      <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
         <button type="button" class="btn ghost" id="back-btn" style="padding:10px 16px;">← 조건 다시 선택</button>
         <button type="button" class="btn outline" id="teacher-btn" style="padding:10px 16px;" title="문제 바로 밑에 정답·해설이 붙은 강사용 PDF만 내려받아요 (등록은 하지 않아요)">📘 강사용 시험지 받기</button>
         <button type="button" class="btn outline" id="teacher-print-btn" style="padding:10px 16px;">🖨️ 강사용 바로 인쇄</button>
-        <button type="button" class="btn primary" id="finalize-btn" style="flex:1;">이 ${reviewPicks.length}문항으로 최종 확정 → PDF 만들기</button>
+        <button type="button" class="btn outline" id="finalize-print-btn" style="padding:10px 16px;" title="시험지로 확정해 등록한 뒤, 학생용(문제+정답) 인쇄 창을 바로 열어요">🖨️ 확정하고 문제+정답 바로 인쇄</button>
+        <button type="button" class="btn primary" id="finalize-btn" style="flex:1 1 200px;">이 ${reviewPicks.length}문항으로 최종 확정 → PDF 만들기</button>
       </div>
     </div>`;
   renderReviewList();
@@ -647,7 +648,8 @@ function renderReview() {
     if (formCard) { $('review-area').style.display = 'none'; formCard.style.display = ''; }
     else history.back();
   });
-  $('finalize-btn').addEventListener('click', finalize);
+  $('finalize-btn').addEventListener('click', () => finalize(false));
+  $('finalize-print-btn').addEventListener('click', () => finalize(true));
   $('teacher-btn').addEventListener('click', () => makeTeacher(false));
   $('teacher-print-btn').addEventListener('click', () => makeTeacher(true));
   $('add-search').addEventListener('input', renderAddResults);
@@ -816,7 +818,7 @@ async function getImgs(ids) {
 }
 
 // ── 3단계: 최종 확정 — PDF 생성 ──
-async function finalize() {
+async function finalize(printAfter) {
   const err = $('error-banner');
   err.innerHTML = '';
   const picks = reviewPicks, title = reviewTitle, recipe = reviewRecipe;
@@ -910,7 +912,7 @@ async function finalize() {
       try { const tb = await teacherP; if (tb) await teacherPdfSave(examId, title + ' 강사용.pdf', tb); } catch (e) { console.warn('강사용 PDF 보관 실패', e); }
     }
     hideSpinner();
-    if (res.ok) { if (explFillNote) alert(explFillNote); location.href = 'teacher_exam.html?id=' + examId; }
+    if (res.ok) { if (explFillNote) alert(explFillNote); location.href = 'teacher_exam.html?id=' + examId + (printAfter === true ? '&print=student' : ''); }
     else { err.innerHTML = '<div class="banner error">' + escapeHtml(res.error || '등록 실패') + '</div>'; }
   } catch (e) {
     hideSpinner();

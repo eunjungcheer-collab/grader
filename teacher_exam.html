@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611182350">
+<link rel="stylesheet" href="css/style.css?v=202611190010">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,15 +17,15 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611182350"></script>
-<script src="js/config.js?v=202611182350"></script>
-<script src="js/api.js?v=202611182350"></script>
-<script src="js/common.js?v=202611182350"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611182350"></script>
-<script src="js/bankcore.js?v=202611182350"></script>
-<script src="js/vendor/pdf.min.js?v=202611182350"></script>
-<script src="js/printpdf.js?v=202611182350"></script>
-<script src="js/pdfui.js?v=202611182350"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190010"></script>
+<script src="js/config.js?v=202611190010"></script>
+<script src="js/api.js?v=202611190010"></script>
+<script src="js/common.js?v=202611190010"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190010"></script>
+<script src="js/bankcore.js?v=202611190010"></script>
+<script src="js/vendor/pdf.min.js?v=202611190010"></script>
+<script src="js/printpdf.js?v=202611190010"></script>
+<script src="js/pdfui.js?v=202611190010"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -292,6 +292,7 @@ async function makeTeacherFromBank(exam, say) {
         } catch (err) { noteEl.textContent = '⚠️ ' + err.message; }
         prBtn.disabled = false;
       });
+      if (prBtn && new URLSearchParams(location.search).get('print') === 'student') setTimeout(() => prBtn.click(), 300);   // 문제은행 출제 화면에서 「확정하고 바로 인쇄」로 넘어온 경우
       const prT = document.getElementById('print-teacher');
       if (prT) prT.addEventListener('click', async () => {
         prT.disabled = true; try {
