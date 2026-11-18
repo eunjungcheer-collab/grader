@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190335">
+<link rel="stylesheet" href="css/style.css?v=202611190350">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,15 +17,15 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611190335"></script>
-<script src="js/config.js?v=202611190335"></script>
-<script src="js/api.js?v=202611190335"></script>
-<script src="js/common.js?v=202611190335"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190335"></script>
-<script src="js/bankcore.js?v=202611190335"></script>
-<script src="js/vendor/pdf.min.js?v=202611190335"></script>
-<script src="js/printpdf.js?v=202611190335"></script>
-<script src="js/pdfui.js?v=202611190335"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190350"></script>
+<script src="js/config.js?v=202611190350"></script>
+<script src="js/api.js?v=202611190350"></script>
+<script src="js/common.js?v=202611190350"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190350"></script>
+<script src="js/bankcore.js?v=202611190350"></script>
+<script src="js/vendor/pdf.min.js?v=202611190350"></script>
+<script src="js/printpdf.js?v=202611190350"></script>
+<script src="js/pdfui.js?v=202611190350"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -216,6 +216,7 @@ async function makeTeacherFromBank(exam, say) {
         <div style="font-weight:700; margin:2px 0 8px; text-align:left;${res.pdfUrl ? '' : ' display:none;'}">⬇️ 받을 파일 고르기</div>
         <a class="btn primary" id="dl-student" href="${res.pdfUrl}" target="_blank" style="width:100%;${res.pdfUrl ? '' : ' display:none;'}">📄 학생용만 받기${res.explUrl ? ' (QR 찍힌 PDF)' : ' (해설 포함)'}</a>
         <button type="button" class="btn outline" id="print-student" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">🖨️ 학생용 인쇄</button>
+        <button type="button" class="btn outline" id="print-fast" style="width:100%; margin-top:6px; font-size:13px;${res.pdfUrl ? '' : ' display:none;'}">🧪 빠른 인쇄 (시험용 · 그림 변환 없이)</button>
         <button type="button" class="btn primary" id="dl-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📄📘 학생용 + 강사용 둘 다 받기</button>
         <button type="button" class="btn outline" id="print-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">🖨️ 학생용 + 강사용 둘 다 인쇄</button>
         <button type="button" class="btn outline" id="dl-teacher-only" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📘 강사용만 받기 (정답 동그라미·문제 밑 정답·해설)</button>
@@ -291,6 +292,16 @@ async function makeTeacherFromBank(exam, say) {
         if (!b) throw new Error('PDF를 받지 못했어요. 서버를 새 버전으로 배포했는지 확인하거나, 「학생용만 받기」로 받아서 인쇄해 주세요.');
         setupPdfJs(); return printPdfBytes(new Uint8Array(await b.arrayBuffer()), prog);
       }
+      async function printFastPdf() {
+        const t0 = Date.now();
+        noteEl.textContent = '인쇄할 PDF를 받는 중...';
+        const b = stuId ? await driveDirectBlob(stuId, (g, tot) => { noteEl.textContent = '인쇄할 PDF를 받는 중... ' + (tot ? Math.floor(g / tot * 100) + '%' : ''); }) : null;
+        if (!b) throw new Error('PDF를 받지 못했어요.');
+        const t1 = Date.now(); noteEl.textContent = '인쇄 창을 여는 중...';
+        await printPdfNative(new Uint8Array(await b.arrayBuffer()));
+        noteEl.textContent = '🧪 인쇄 창으로 보냈어요. (받기 ' + ((t1 - t0) / 1000).toFixed(1) + '초 + 준비 ' + ((Date.now() - t1) / 1000).toFixed(1) + '초)';
+        return null;
+      }
       async function printTeacherPdf() {
         const t = await obtainTeacher(); if (!t) throw new Error('강사용 PDF를 만들 수 없는 시험지예요.');
         setupPdfJs(); return printPdfBytes(new Uint8Array(await t.blob.arrayBuffer()), prog);
@@ -299,6 +310,7 @@ async function makeTeacherFromBank(exam, say) {
       const toParent = (kind, text) => { try { if (window.parent !== window) window.parent.postMessage({ wnPrint: kind, text: text }, location.origin); } catch (e) {} };
       if (window.parent !== window) new MutationObserver(() => toParent('progress', noteEl.textContent)).observe(noteEl, { childList: true, characterData: true, subtree: true });
       const wire = (id, fn, doneMsg) => { const b = document.getElementById(id); if (!b) return null; b.addEventListener('click', async () => { b.disabled = true; try { const ok = await fn(); noteEl.textContent = ok === false ? '' : doneMsg; toParent(ok === false ? 'error' : 'done', ok === false ? '인쇄를 취소했어요.' : doneMsg); } catch (err) { noteEl.textContent = '⚠️ ' + err.message; toParent('error', err.message); } b.disabled = false; }); return b; };
+      { const fb = document.getElementById('print-fast'); if (fb) fb.addEventListener('click', async () => { fb.disabled = true; try { await printFastPdf(); } catch (err) { noteEl.textContent = '⚠️ ' + err.message; } fb.disabled = false; }); }
       const prBtn = wire('print-student', printStudentPdf, '🖨️ 인쇄 창으로 보냈어요.');
       wire('print-teacher', printTeacherPdf, '🖨️ 인쇄 창으로 보냈어요.');
       wire('print-both', async () => { await printStudentPdf(); return printTeacherPdf(); }, '🖨️ 학생용·강사용을 차례로 인쇄 창으로 보냈어요.');

@@ -26,3 +26,16 @@ async function printPdfBytes(bytes, onProg) {
   return true;
 }
 
+
+/* 시험용: PDF를 그림으로 바꾸지 않고 그대로 숨은 창에 넣어 인쇄 (브라우저 PDF 뷰어가 처리). 벡터라 더 선명하지만 브라우저에 따라 안 될 수 있음 */
+async function printPdfNative(bytes) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const fr = document.createElement('iframe'); fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;';
+  document.body.appendChild(fr);
+  const cleanup = () => { try { fr.remove(); } catch (e) {} URL.revokeObjectURL(url); };
+  await new Promise((res, rej) => { fr.onload = res; fr.onerror = () => rej(new Error('PDF를 불러오지 못했어요.')); fr.src = url; setTimeout(() => rej(new Error('PDF 뷰어가 열리지 않았어요 (20초).')), 20000); }).catch(e => { cleanup(); throw e; });
+  await new Promise(r => setTimeout(r, 1200)); // 뷰어가 쪽을 그릴 시간
+  try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { cleanup(); throw new Error('이 브라우저에서는 숨은 창 인쇄가 막혀 있어요: ' + e.message); }
+  setTimeout(cleanup, 10 * 60 * 1000);
+  return true;
+}
