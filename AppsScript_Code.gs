@@ -142,6 +142,7 @@ function handle_(e) {
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
       case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
+      case 'unlinkOldQr': result = actionUnlinkOldQr_(params); break;
       case 'setExamSources': result = actionSetExamSources_(params); break;
       case 'renameBook': result = actionRenameBook_(params); break;
       case 'deleteExam': result = actionDeleteExam_(params); break;
@@ -2896,4 +2897,21 @@ function actionRelinkOldQr_(p) {
   } finally { lock.releaseLock(); }
   if (done.length) bustCache_();
   return { ok: true, linked: done.length, done: done, none: none };
+}
+
+// 이 시험지에 이어붙인 예전 QR(별칭)을 모두 해제한다. 해제하면 그 예전 QR은 다시 「존재하지 않는 시험」이 된다.
+function actionUnlinkOldQr_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  let n = 0;
+  try {
+    const data = exams.getDataRange().getValues();
+    let rowIndex = 0; for (let i = 1; i < data.length; i++) if (String(data[i][0]) === String(p.id)) { rowIndex = i + 1; break; }
+    if (!rowIndex) return { ok: false, error: '존재하지 않는 시험이에요.' };
+    const rc = safeJson_(data[rowIndex - 1][8], null);
+    if (rc && rc.aliases && rc.aliases.length) { n = rc.aliases.length; delete rc.aliases; exams.getRange(rowIndex, 9).setValue(JSON.stringify(rc)); }
+  } finally { lock.releaseLock(); }
+  if (n) bustCache_();
+  return { ok: true, removed: n };
 }
