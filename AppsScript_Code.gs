@@ -237,6 +237,7 @@ function actionDuplicateExam_(p) {
   if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
   const row = found.row.slice(), newId = 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   row[0] = newId; row[1] = cleanText_(p.title, 120) || (String(row[1]) + ' (복사)'); row[3] = new Date().toISOString();
+  { const rc2 = safeJson_(row[8], null); if (rc2 && rc2.aliases) { delete rc2.aliases; row[8] = JSON.stringify(rc2); } }      // 예전 QR 이어붙임은 원본에만 남긴다
   sheet.appendRow(row);
   return { ok: true, id: newId, title: String(row[1]) };
 }
