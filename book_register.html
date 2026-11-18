@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
-<title>교재 QR 합본 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611181300">
+<title>교재 만들기 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611181700">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -30,7 +30,7 @@
 <body>
 <template id="page-content">
   <span class="backlink"><a href="index.html">← 홈으로</a></span>
-  <h1>📚 교재 QR 합본 만들기</h1>
+  <h1>📚 교재 만들기</h1>
   <p class="muted">교재 PDF 한 권을 올리면 목차대로 소단원(25문제씩)을 찾아 <b>정답을 읽고</b>, 단원마다 시험을 등록한 뒤 <b>각 단원 첫 쪽에 QR을 찍은 교재 합본 PDF</b> 한 개를 만들어 드려요. 그 PDF를 학생에게 나눠주면 풀다가 단원 QR을 찍어 답안을 입력해요.</p>
   <div id="error-banner"></div>
 
@@ -97,15 +97,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611181300"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611181300"></script>
-<script src="js/vendor/pdf.min.js?v=202611181300"></script>
-<script src="js/config.js?v=202611181300"></script>
-<script src="js/api.js?v=202611181300"></script>
-<script src="js/common.js?v=202611181300"></script>
-<script src="js/bankcore.js?v=202611181300"></script>
-<script src="js/coverdesign.js?v=202611181300"></script>
-<script src="js/pdfui.js?v=202611181300"></script>
+<script src="js/vendor/qrcode.min.js?v=202611181700"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611181700"></script>
+<script src="js/vendor/pdf.min.js?v=202611181700"></script>
+<script src="js/config.js?v=202611181700"></script>
+<script src="js/api.js?v=202611181700"></script>
+<script src="js/common.js?v=202611181700"></script>
+<script src="js/bankcore.js?v=202611181700"></script>
+<script src="js/coverdesign.js?v=202611181700"></script>
+<script src="js/pdfui.js?v=202611181700"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });

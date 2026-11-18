@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611181300">
+<link rel="stylesheet" href="css/style.css?v=202611181700">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611181300"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611181300"></script>
-<script src="js/config.js?v=202611181300"></script>
-<script src="js/api.js?v=202611181300"></script>
-<script src="js/common.js?v=202611181300"></script>
-<script src="js/bankcore.js?v=202611181300"></script>
-<script src="js/coverdesign.js?v=202611181300"></script>
+<script src="js/vendor/pdf.min.js?v=202611181700"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611181700"></script>
+<script src="js/config.js?v=202611181700"></script>
+<script src="js/api.js?v=202611181700"></script>
+<script src="js/common.js?v=202611181700"></script>
+<script src="js/bankcore.js?v=202611181700"></script>
+<script src="js/coverdesign.js?v=202611181700"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -191,7 +191,7 @@ async function renderList(fresh) {
   Object.keys(by).forEach(k => { by[k].sO = origSrv[k]; });
   const all = Object.keys(by).map(k => by[k]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const box = $('list');
-  if (!all.length) { box.className = 'muted'; box.innerHTML = '저장된 교재가 없어요. 「교재 한 권 QR 합본 만들기」에서 교재를 만들면 여기에 나타나요.' + (srvErr ? '<br>' + esc(srvErr) : ''); return; }
+  if (!all.length) { box.className = 'muted'; box.innerHTML = '저장된 교재가 없어요. 「교재 만들기」에서 교재를 만들면 여기에 나타나요.' + (srvErr ? '<br>' + esc(srvErr) : ''); return; }
   box.className = ''; box.innerHTML = !SERVER_LOADED ? '<div class="muted">☁ 서버 보관 상태를 확인하는 중... (아래는 마지막으로 확인한 상태예요)</div>' : srvErr ? '<div class="muted" style="color:#B45309;">⚠ ' + esc(srvErr) + ' — 이 기기에 저장된 교재만 보여요.</div>' : '';
   all.forEach(it => {
     const rec = it.rec, d = new Date(it.date), ds = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
@@ -375,7 +375,7 @@ async function applyEdit(saveIt) {
     if (out.teacher) blobDl(out.teacher, REC.name + ' (QR 강사용 전체).pdf');
     if (out.student) setTimeout(() => blobDl(out.student, REC.name + ' (QR 학생용).pdf'), 1200);
     if (!saveIt) { m.innerHTML = '✅ 표지를 바꾼 파일을 내려받았어요. <span class="muted">(저장은 하지 않아서, 이 기기와 서버의 교재는 그대로예요.)</span>'; ok.disabled = false; ok2.disabled = false; return; }
-    m.innerHTML = '✅ 표지를 바꿔서 이 기기의 저장본도 새로 저장했고, 내려받았어요. <span class="muted">(서버에 보관해 둔 파일은 그대로예요. 표지를 고친 뒤 「교재 QR 합본 만들기」의 저장 목록에서 다시 서버에 보관해 주세요)</span>';
+    m.innerHTML = '✅ 표지를 바꿔서 이 기기의 저장본도 새로 저장했고, 내려받았어요. <span class="muted">(서버에 보관해 둔 파일은 그대로예요. 표지를 고친 뒤 「교재 만들기」의 저장 목록에서 다시 서버에 보관해 주세요)</span>';
     try {
       const sv = SERVER.find(x => x.id === REC.id), kinds = [['teacher', '강사용'], ['student', '학생용']].filter(k => sv && sv[k[0]] && out[k[0]] && out[k[0]].size <= 150e6);
       if (kinds.length && confirm('서버에 보관된 ' + kinds.map(k => k[1]).join('·') + ' 파일도 표지를 고친 새 파일로 바꿀까요?\n(기존 서버 파일은 지워져요)')) {
