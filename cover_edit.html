@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
-<title>저장된 교재 수정&관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611181610">
+<title>교재 관리 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611181300">
 <style>
   .ce-row { padding:10px 0; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
   .ce-row:first-child { border-top:0; }
@@ -24,7 +24,7 @@
 <body>
 <template id="page-content">
   <span class="backlink"><a href="index.html">← 홈으로</a></span>
-  <h1>🎨 저장된 교재 수정&관리</h1>
+  <h1>🎨 교재 관리</h1>
   <p class="muted">이 기기에 저장된 교재(QR 합본)의 <b>표지만</b> 바꿔서 다시 저장해요. 표지 도안·색을 고르고, <b>강사용/학생용 표시</b>를 화면에서 끌어 옮기며 결과를 미리 보세요. 시험지·QR·문제은행은 건드리지 않아요.</p>
   <div style="margin:6px 0;"><button type="button" class="btn" id="srv-clean">🧹 서버 임시 파일 정리</button> <span class="muted" id="srv-clean-msg">서버 보관을 올리다 실패해서 남은 임시 조각을 지워요. <b>지금 올리는 중인 것이 없을 때만</b> 눌러 주세요.</span></div>
   <div id="list-card" class="card"><div id="list" class="muted">불러오는 중...</div></div>
@@ -56,13 +56,13 @@
     </div>
   </div>
 </template>
-<script src="js/vendor/pdf.min.js?v=202611181610"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611181610"></script>
-<script src="js/config.js?v=202611181610"></script>
-<script src="js/api.js?v=202611181610"></script>
-<script src="js/common.js?v=202611181610"></script>
-<script src="js/bankcore.js?v=202611181610"></script>
-<script src="js/coverdesign.js?v=202611181610"></script>
+<script src="js/vendor/pdf.min.js?v=202611181300"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611181300"></script>
+<script src="js/config.js?v=202611181300"></script>
+<script src="js/api.js?v=202611181300"></script>
+<script src="js/common.js?v=202611181300"></script>
+<script src="js/bankcore.js?v=202611181300"></script>
+<script src="js/coverdesign.js?v=202611181300"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
