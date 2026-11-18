@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190555">
+<link rel="stylesheet" href="css/style.css?v=202611190610">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,15 +97,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611190555"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190555"></script>
-<script src="js/vendor/pdf.min.js?v=202611190555"></script>
-<script src="js/config.js?v=202611190555"></script>
-<script src="js/api.js?v=202611190555"></script>
-<script src="js/common.js?v=202611190555"></script>
-<script src="js/bankcore.js?v=202611190555"></script>
-<script src="js/coverdesign.js?v=202611190555"></script>
-<script src="js/pdfui.js?v=202611190555"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190610"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190610"></script>
+<script src="js/vendor/pdf.min.js?v=202611190610"></script>
+<script src="js/config.js?v=202611190610"></script>
+<script src="js/api.js?v=202611190610"></script>
+<script src="js/common.js?v=202611190610"></script>
+<script src="js/bankcore.js?v=202611190610"></script>
+<script src="js/coverdesign.js?v=202611190610"></script>
+<script src="js/pdfui.js?v=202611190610"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -888,6 +888,7 @@ $('go-btn').addEventListener('click', async () => {
     if (repairWarn.length) linkWarn = (linkWarn ? linkWarn + ' / ' : '') + '문제은행 재저장 후 시험지 연결을 못 한 단원 ' + repairWarn.length + '개 (앱스크립트를 새 버전으로 배포해야 연결돼요)';
     if (toLink.length) { try { const lr = await callApi('linkBook', { password: getTeacherPassword(), book: bookId, ids: toLink }); if (!lr.ok) linkWarn = lr.error || '연결 실패'; } catch (e) { linkWarn = e.message; } }
 
+    try { const ar = await callApi('relinkOldQr', { password: getTeacherPassword(), auto: true, newIds: Object.values(ids).filter(Boolean) }); if (ar && ar.ok && ar.linked) linkWarn = (linkWarn ? linkWarn + ' / ' : '') + '예전에 나눠 준 QR ' + ar.linked + '개를 새 시험지로 이어 놓았어요'; } catch (e) { /* 서버가 옛 버전이면 건너뜀 */ }
     try { await bookDoc.cleanup(); } catch (e) {}
     msg('교재 PDF에 QR을 찍는 중... (파일이 커서 1~2분 걸릴 수 있어요)');
     const size = parseInt($('qr-size').value, 10), corner = $('qr-corner').value;

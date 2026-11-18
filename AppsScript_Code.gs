@@ -2895,6 +2895,10 @@ function actionRelinkOldQr_(p) {
       if ((c.rc.aliases || []).map(String).indexOf(oldId) >= 0) return;      // 이미 이어져 있음
       cands.push({ oldId: oldId, newId: c.id, label: label, oldTitle: String(row[1]), newTitle: c.title, deletedAt: it.at, _c: c });
     });
+    if (p.auto === true && Array.isArray(p.newIds)) {      // 교재를 다시 등록할 때: 이번에 등록한 시험지에 대해서만 자동으로 이어 준다
+      const nw = {}; p.newIds.forEach(function (x) { nw[String(x)] = 1; });
+      p.apply = cands.filter(function (k) { return nw[k.newId]; }).map(function (k) { return { oldId: k.oldId, newId: k.newId }; });
+    }
     if (Array.isArray(p.apply)) {
       const want = {}; p.apply.forEach(function (x) { want[String(x.oldId) + '>' + String(x.newId)] = 1; });
       cands.forEach(function (k) {

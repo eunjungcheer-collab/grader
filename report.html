@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>학생 리포트 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190555">
+<link rel="stylesheet" href="css/style.css?v=202611190610">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,7 +17,7 @@
 .kpi b{display:block;font-size:22px;color:var(--point);}
 .sec{margin-top:16px;font-weight:800;}
 .row{display:flex;justify-content:space-between;gap:8px;border-top:1px solid #eee;padding:6px 0;font-size:14px;}
-@media print{ body *{visibility:hidden;} #paper,#paper *{visibility:visible;} #paper{position:absolute;left:0;top:0;width:100%;border:0;} }
+@media print{ .no-print{display:none !important;} body *{visibility:hidden;} #paper,#paper *{visibility:visible;} #paper{position:absolute;left:0;top:0;width:100%;border:0;} }
 </style>
 </head>
 <body>
@@ -27,16 +27,16 @@
   <p class="muted">학생 한 명의 점수 변화와 약점 단원을 한 장으로 정리해요. 상담·학부모 안내용으로 인쇄하거나 이미지처럼 저장할 수 있어요.</p>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
     <select id="who" style="padding:8px;min-width:180px;"><option value="">학생을 고르세요</option></select>
-    <select id="rng" style="padding:8px;"><option value="5">최근 5회</option><option value="10" selected>최근 10회</option><option value="30">최근 30회</option></select>
+    <select id="rng" style="padding:8px;"><option value="m0">이번 달</option><option value="m1">지난 달</option><option value="5">최근 5회</option><option value="10">최근 10회</option><option value="30">최근 30회</option></select>
     <button type="button" class="btn primary" id="print" style="padding:8px 14px;" disabled>🖨️ 인쇄 / PDF 저장</button>
     <button type="button" class="btn outline" id="copy" style="padding:8px 14px;" disabled>📋 요약 문구 복사</button>
   </div>
   <div id="st" class="hint">불러오는 중...</div>
   <div id="paper" style="display:none;"></div>
 </template>
-<script src="js/config.js?v=202611190555"></script>
-<script src="js/api.js?v=202611190555"></script>
-<script src="js/common.js?v=202611190555"></script>
+<script src="js/config.js?v=202611190610"></script>
+<script src="js/api.js?v=202611190610"></script>
+<script src="js/common.js?v=202611190610"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -51,24 +51,78 @@ function chart(pts) {
   const dots = pts.map((p, i) => '<circle cx="' + x(i) + '" cy="' + y(p.s) + '" r="4" fill="#1F3A6B"/><text x="' + x(i) + '" y="' + (y(p.s) - 8) + '" font-size="11" text-anchor="middle" fill="#1F3A6B">' + p.s + '</text><text x="' + x(i) + '" y="' + (H - 8) + '" font-size="10" text-anchor="middle" fill="#6b7280">' + p.d + '</text>').join('');
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;">' + g + '<path d="' + path + '" fill="none" stroke="#1F3A6B" stroke-width="2.5"/>' + dots + '</svg>';
 }
+let MSG = null, MSGTAB = 'parent';
+function monthRange(back) {
+  const n = new Date(), a = new Date(n.getFullYear(), n.getMonth() - back, 1), b = new Date(n.getFullYear(), n.getMonth() - back + 1, 1), pa = new Date(n.getFullYear(), n.getMonth() - back - 1, 1);
+  return { from: a.getTime(), to: b.getTime(), pfrom: pa.getTime(), label: (a.getMonth() + 1) + '월' };
+}
+function unitOf(t) { const m = String(t || '').match(/(\d+(?:-\d+)*\.\s*[^(\[\n]+?)\s*(?:\(\d+\)|\s최|\s서술|\s수준|\s대표|$)/); return m ? m[1].trim() : ''; }
+function makeMsgs(name, last, prev, avg, pavg, best, w, label, isM) {
+  const n = last.length, hi = last.filter(s => s.s >= 90).length, by = {};
+  last.forEach(s => { const u = unitOf(s.title); if (!u) return; (by[u] = by[u] || []).push(s.s); });
+  const us = Object.keys(by).map(u => ({ u: u, a: Math.round(by[u].reduce((x, y) => x + y, 0) / by[u].length), c: by[u].length }));
+  const good = us.filter(x => x.a >= 90).sort((a, b) => b.a - a.a).slice(0, 3), low = us.filter(x => x.a < 80).sort((a, b) => a.a - b.a).slice(0, 3);
+  const weakUn = (w.weakUnits || []).slice(0, 3), rep = (w.repeatQ || []).slice(0, 3);
+  const diff = pavg == null ? null : avg - pavg, first = n >= 2 ? last[0].s : null, lastS = n >= 2 ? last[n - 1].s : null;
+  const fn = name.replace(/\s+/g, '');
+  function build(kind) {
+    const P = kind === 'parent';     // 학부모용: ~습니다 / 학생용: ~한다
+    const T = (a, b) => P ? a : b;
+    if (!n) return P ? fn + ' 학생은 ' + label + ' 제출한 시험이 아직 없습니다.' : label + ' 제출한 시험이 아직 없다.';
+    let t = '[' + fn + (P ? ' 학생 ' : ' ') + label + ' 학습 리포트]\n';
+    t += label + (isM ? ' 한 달 동안 ' : ' 시험 기준 ') + n + '회 시험을 ' + T('보았고', '보았고') + ' 평균 ' + avg + '점, 최고 ' + best + T('점입니다.', '점이다.');
+    if (diff != null) t += ' ' + (isM ? '지난달보다 ' : '이전 기록보다 ') + (diff > 0 ? diff + '점 올랐' + T('습니다.', '다.') : diff < 0 ? Math.abs(diff) + '점 내려갔' + T('습니다.', '다.') : '비슷한 수준을 유지했' + T('습니다.', '다.'));
+    t += '\n\n✅ ' + T('잘한 점', '잘한 점') + '\n';
+    const g = [];
+    good.forEach(x => g.push(x.u + ' 단원 평균 ' + x.a + '점으로 ' + T('개념 이해가 탄탄합니다.', '개념 이해가 탄탄하다.')));
+    if (hi) g.push(n + '회 중 ' + hi + '회에서 90점 이상을 ' + T('받았습니다.', '받았다.'));
+    if (first != null && lastS - first >= 8) g.push('첫 시험(' + first + '점)보다 최근 시험(' + lastS + '점)이 ' + (lastS - first) + '점 올라 ' + T('꾸준히 성장하고 있습니다.', '성장하고 있다.'));
+    if (n >= 4) g.push(label + ' 동안 ' + n + '회 ' + T('꾸준히 시험에 응시하는 성실함이 돋보입니다.', '꾸준히 응시한 성실함이 돋보인다.'));
+    if (!g.length) g.push(T('시험에 꾸준히 참여하며 학습 습관을 만들어 가고 있습니다.', '시험에 꾸준히 참여하며 학습 습관을 만들어 가고 있다.'));
+    t += g.slice(0, 4).map(x => '- ' + x).join('\n');
+    t += '\n\n📌 ' + T('보완할 점', '보완할 점') + '\n';
+    const b = [];
+    low.forEach(x => b.push(x.u + ' 단원 평균 ' + x.a + '점으로 ' + T('복습이 더 필요합니다.', '복습이 더 필요하다.')));
+    weakUn.forEach(x => { if (!low.some(l => l.u === x.unit)) b.push(x.unit + ' 단원은 반복해서 정답률이 낮은 편(' + x.avg + '%)' + T('입니다.', '이다.')); });
+    if (rep.length) b.push('반복해서 틀린 문제: ' + rep.map(q => ((q.title || q.examTitle || '').trim() + ' ' + q.n + '번').trim()).join(', ') + T(' — 같은 유형을 다시 점검해 주세요.', ' — 같은 유형을 다시 점검하자.'));
+    if (!b.length) b.push(T('뚜렷하게 약한 단원은 없으며, 지금의 학습 흐름을 유지하면 좋겠습니다.', '뚜렷하게 약한 단원은 없다. 지금의 학습 흐름을 유지하자.'));
+    t += b.slice(0, 5).map(x => '- ' + x).join('\n');
+    t += '\n\n💡 ' + T('다음 달 계획', '다음 목표') + '\n';
+    t += (low.length || weakUn.length || rep.length) ? '- ' + T('보완 단원은 오답노트와 다시풀기로 복습하고, 수업에서 해당 개념을 한 번 더 짚어 드리겠습니다.', '오답노트와 다시풀기로 약한 단원을 복습하자.') : '- ' + T('현재 수준을 유지하면서 심화·서술형 문항까지 도전해 보겠습니다.', '심화·서술형 문항에도 도전해 보자.');
+    return t;
+  }
+  return { parent: build('parent'), student: build('student') };
+}
+function paintMsg() {
+  const box = document.getElementById('msgbox'); if (!box || !MSG) return;
+  box.innerHTML = '<div style="display:flex;gap:6px;margin-bottom:8px;"><button type="button" class="btn ' + (MSGTAB === 'parent' ? 'primary' : 'outline') + '" data-t="parent" style="padding:7px 14px;">👪 학부모용</button><button type="button" class="btn ' + (MSGTAB === 'student' ? 'primary' : 'outline') + '" data-t="student" style="padding:7px 14px;">🧑‍🎓 학생용</button></div>'
+    + '<textarea id="msgtxt" style="width:100%;min-height:260px;padding:10px;font-size:14px;line-height:1.55;border:1px solid #cbd5e1;border-radius:8px;box-sizing:border-box;"></textarea>'
+    + '<div style="margin-top:8px;display:flex;gap:8px;align-items:center;"><button type="button" class="btn primary" id="msgcopy" style="padding:10px 18px;font-size:15px;">📋 이 문구 복사</button><span class="hint" id="msgok"></span></div><div class="hint" style="margin-top:6px;">내용은 점수 기록으로 자동 작성한 초안이에요. 칸 안에서 바로 고친 뒤 복사할 수 있어요.</div>';
+  $('msgtxt').value = MSG[MSGTAB];
+  box.querySelectorAll('[data-t]').forEach(b => b.addEventListener('click', () => { MSG[MSGTAB] = $('msgtxt').value; MSGTAB = b.dataset.t; paintMsg(); }));
+  $('msgcopy').addEventListener('click', async () => { const t = $('msgtxt').value; MSG[MSGTAB] = t; try { await navigator.clipboard.writeText(t); $('msgok').textContent = '✅ 복사했어요. 붙여넣기(Ctrl+V) 하세요.'; } catch (x) { $('msgtxt').select(); $('msgok').textContent = '복사가 막혀 있어요. 선택된 글을 Ctrl+C로 복사해 주세요.'; } });
+}
 function render() {
   const k = $('who').value; if (!k) { $('paper').style.display = 'none'; $('print').disabled = $('copy').disabled = true; return; }
-  const list = (SUBS[k].list || []).slice().sort((a, b) => a.t - b.t), N = +$('rng').value, last = list.slice(-N);
+  const list = (SUBS[k].list || []).slice().sort((a, b) => a.t - b.t), rv = $('rng').value, isM = /^m\d$/.test(rv), M = isM ? monthRange(+rv.slice(1)) : null;
+  const N = isM ? 0 : +rv, last = isM ? list.filter(s => s.t >= M.from && s.t < M.to) : list.slice(-N);
   const pts = last.map(s => ({ s: Math.round(s.s), d: (new Date(s.t).getMonth() + 1) + '/' + new Date(s.t).getDate() }));
   const avg = last.length ? Math.round(last.reduce((a, s) => a + s.s, 0) / last.length) : 0;
-  const prev = list.slice(-N * 2, -N), pavg = prev.length ? Math.round(prev.reduce((a, s) => a + s.s, 0) / prev.length) : null;
+  const prev = isM ? list.filter(s => s.t >= M.pfrom && s.t < M.from) : list.slice(-N * 2, -N), pavg = prev.length ? Math.round(prev.reduce((a, s) => a + s.s, 0) / prev.length) : null;
   const best = last.length ? Math.round(Math.max.apply(null, last.map(s => s.s))) : 0;
   const w = WEAK[k] || { repeatQ: [], weakUnits: [] };
   const diff = pavg === null ? '' : (avg - pavg >= 0 ? '▲ ' : '▼ ') + Math.abs(avg - pavg) + '점';
   const name = SUBS[k].shown, today = new Date();
-  let h = '<h2>' + e(name) + ' 학생 학습 리포트</h2><div class="muted">' + today.getFullYear() + '.' + (today.getMonth() + 1) + '.' + today.getDate() + ' 기준 · 최근 ' + last.length + '회 시험</div>';
+  let h = '<h2>' + e(name) + ' 학생 학습 리포트</h2><div class="muted">' + today.getFullYear() + '.' + (today.getMonth() + 1) + '.' + today.getDate() + ' 기준 · ' + (isM ? M.label + ' ' : '최근 ') + last.length + '회 시험</div>';
   h += '<div class="kpi"><div><b>' + avg + '점</b>평균</div><div><b>' + best + '점</b>최고</div><div><b>' + (diff || '-') + '</b>이전 ' + N + '회 대비</div></div>';
   h += '<div class="sec">📈 점수 변화</div>' + chart(pts);
   h += '<div class="sec">🎯 보완이 필요한 단원</div>' + (w.weakUnits.length ? w.weakUnits.map(u => '<div class="row"><span>' + e(u.unit) + '</span><span>평균 정답률 ' + u.avg + '%</span></div>').join('') : '<div class="hint">반복해서 약한 단원은 아직 없어요. 👍</div>');
   h += '<div class="sec">🔁 반복해서 틀린 문제</div>' + (w.repeatQ.length ? w.repeatQ.slice(0, 6).map(q => '<div class="row"><span>' + e(q.title || q.examTitle || '') + ' ' + e(q.n) + '번</span><span>' + (q.times ? q.times + '회 오답' : '') + '</span></div>').join('') : '<div class="hint">반복 오답이 없어요.</div>');
   h += '<div class="sec">📝 최근 시험</div>' + last.slice().reverse().slice(0, 8).map(s => '<div class="row"><span>' + e(s.title) + '</span><span><b>' + Math.round(s.s) + '점</b></span></div>').join('');
-  $('paper').innerHTML = h; $('paper').style.display = 'block'; $('print').disabled = $('copy').disabled = false;
-  SUMMARY = name + ' 학생 리포트 (최근 ' + last.length + '회)\n평균 ' + avg + '점' + (diff ? ' (이전 대비 ' + diff + ')' : '') + ' · 최고 ' + best + '점'
+  MSG = makeMsgs(name, last, prev, avg, pavg, best, w, isM ? M.label : '최근 ' + last.length + '회', isM);
+  h += '<div class="sec no-print">✍️ 안내 문구 (복사해서 붙여넣기)</div><div class="no-print" id="msgbox"></div>';
+    $('paper').innerHTML = h; $('paper').style.display = 'block'; paintMsg(); $('print').disabled = $('copy').disabled = false;
+  SUMMARY = name + ' 학생 리포트 (' + (isM ? M.label : '최근 ' + last.length + '회') + ')\n평균 ' + avg + '점' + (diff ? ' (이전 대비 ' + diff + ')' : '') + ' · 최고 ' + best + '점'
     + (w.weakUnits.length ? '\n보완 단원: ' + w.weakUnits.map(u => u.unit + ' ' + u.avg + '%').join(', ') : '\n보완이 필요한 단원은 아직 없어요')
     + (w.repeatQ.length ? '\n반복 오답: ' + w.repeatQ.slice(0, 4).map(q => (q.title || q.examTitle || '') + ' ' + q.n + '번').join(', ') : '');
 }
@@ -86,6 +140,10 @@ async function load() {
     const keys = Object.keys(SUBS).sort((a, b) => SUBS[a].shown.localeCompare(SUBS[b].shown, 'ko'));
     $('who').innerHTML = '<option value="">학생을 고르세요</option>' + keys.map(k => '<option value="' + e(k) + '">' + e(SUBS[k].shown) + ' (' + SUBS[k].list.length + '회)</option>').join('');
     $('st').textContent = keys.length ? '' : '아직 제출 기록이 없어요.';
+    { const q = new URLSearchParams(location.search), nm = nk(q.get('name') || ''), rg = q.get('range');      // 알림장 앱 등에서 「학생 이름 + 기간」을 달고 들어올 때
+      if (rg && /^(m0|m1|5|10|30)$/.test(rg)) $('rng').value = rg;
+      if (q.get('tab') === 'student') MSGTAB = 'student';
+      if (nm) { const hit = keys.find(k => k === nm) || keys.find(k => k.indexOf(nm) >= 0 || nm.indexOf(k) >= 0); if (hit) { $('who').value = hit; render(); } else $('st').textContent = '「' + (q.get('name') || '') + '」 학생의 제출 기록을 찾지 못했어요.'; } }
   } catch (err) { $('st').innerHTML = '<span style="color:#C1392B;">' + e(err.message) + '</span>'; }
 }
 $('who').addEventListener('change', render); $('rng').addEventListener('change', render);
