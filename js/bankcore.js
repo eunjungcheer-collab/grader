@@ -1540,6 +1540,13 @@
     return arr;
   }
 
+  // 옛 문항 번호 자리(left~right, top~bottom: pt)에 덮을 새 번호 배지의 자리. 배지가 옛 번호보다 넓으면 오른쪽 끝을 옛 번호 오른쪽에 맞추고 왼쪽으로 넓힌다 (오른쪽 문제 글자를 가리지 않게).
+  function numBadgeGeom(left, right, top, bottom, t, tw) {
+    const h = top - bottom, r = Math.max(8, Math.min(10, h * 0.6)), bw = t.length > 2 ? tw + 8 : r * 2, w0 = right - left;
+    let cx = (left + right) / 2;
+    if (bw > w0 + 2) cx = right + 1 - bw / 2;
+    return { cx: cx, cy: top - h * 0.46, r: r };
+  }
   // images: [{ base64, width, height, naturalW, numRect? }] 순서대로 1번부터
   //   naturalW = 원본 크기(pt) 기준 가로, numRect = 이미지 안 "옛 문항 번호"의 위치 [x0,top,x1,bottom] (pt, 이미지 왼쪽 위 기준)
   // 2단으로 배치한다: 왼쪽 단을 위에서 아래로 채우고, 다 차면 오른쪽 단, 그다음 새 페이지.
@@ -1609,18 +1616,16 @@
       ys = [top0, top0];
       col = 0;
     }
+    const subjTag = await (async () => { const t = tagPng('서술형'); return { img: await doc.embedPng(b64ToBytes(t.base64)), w: t.w, h: t.h }; })();
     function label(cx, cy, r, n, subj) {
       const t = String(n), fs = t.length > 2 ? 9 : (t.length > 1 ? 10.5 : 12), tw = font.widthOfTextAtSize(t, fs);
       if (t.length > 2) {            // "3~4" 처럼 한 문항 그림에 문제가 여러 개 들어 있을 때: 둥근 원 대신 길쭉한 빨간 이름표
-        page.drawRectangle({ x: cx - tw / 2 - 5, y: cy - r, width: tw + 10, height: r * 2, color: RED });
+        page.drawRectangle({ x: cx - tw / 2 - 4, y: cy - r, width: tw + 8, height: r * 2, color: RED });
       } else page.drawCircle({ x: cx, y: cy, size: r, color: RED });
       page.drawText(t, { x: cx - tw / 2, y: cy - fs * 0.34, size: fs, font: font, color: rgb(1, 1, 1) });
-      if (subj) {
-        // 서술형(주관식)은 OMR 번호처럼 보이지 않게, 배지 밑에 작은 꼬리표를 따로 붙인다
-        const tag = '서술형', tfs = 8, ttw = font.widthOfTextAtSize(tag, tfs);
-        const tx = cx - ttw / 2 - 3, ty = cy - r - tfs - 5;
-        page.drawRectangle({ x: tx, y: ty, width: ttw + 6, height: tfs + 5, color: GREY, borderColor: RED, borderWidth: 0.75 });
-        page.drawText(tag, { x: tx + 3, y: ty + 2.2, size: tfs, font: font, color: RED });
+      if (subj && subjTag) {
+        // 서술형(주관식)은 OMR 번호처럼 보이지 않게, 배지 밑에 작은 「서술형」 꼬리표를 따로 붙인다 (한글이라 그림으로 만든 것을 붙인다. 글자로 쓰면 「???」로 깨진다)
+        page.drawImage(subjTag.img, { x: cx - subjTag.w / 2, y: cy - r - subjTag.h - 2, width: subjTag.w, height: subjTag.h });
       }
     }
     // 왼쪽 여백에 붙이는 번호 (번호 위치를 모를 때)
@@ -1630,9 +1635,8 @@
       const sc = drawW / im.naturalW, nr = im.numRect;
       const left = x + nr[0] * sc, right = x + nr[2] * sc, top = topY - nr[1] * sc, bottom = topY - nr[3] * sc;
       page.drawRectangle({ x: left - 1.5, y: bottom - 1.5, width: (right - left) + 3, height: (top - bottom) + 3, color: rgb(1, 1, 1) });
-      const h = top - bottom;
-      const cx = (left + right) / 2, cy = top - h * 0.46;
-      label(cx, cy, Math.max(9.5, Math.min(12, h * 0.62)), n, subj);
+      const tn = String(n), g = numBadgeGeom(left, right, top, bottom, tn, font.widthOfTextAtSize(tn, tn.length > 2 ? 9 : (tn.length > 1 ? 10.5 : 12)));
+      label(g.cx, g.cy, g.r, n, subj);
     }
     function mark(x, topY, drawW, im, n, badgeX) {
       const subj = String(im.answer) === '-';
@@ -1975,9 +1979,9 @@
         if (it.numRect && it.naturalW) {
           const k = dw / it.naturalW, nr = it.numRect, left = p.x + nr[0] * k, right = p.x + nr[2] * k, top = p.top - nr[1] * k, bottom = p.top - nr[3] * k;
           page.drawRectangle({ x: left - 1.5, y: bottom - 1.5, width: (right - left) + 3, height: (top - bottom) + 3, color: rgb(1, 1, 1) });
-          cx = (left + right) / 2; cy = top - (top - bottom) * 0.46; r = Math.max(9.5, Math.min(12, (top - bottom) * 0.62));
+          const g = numBadgeGeom(left, right, top, bottom, t, tw); cx = g.cx; cy = g.cy; r = g.r;
         } else { cx = p.x + 9; cy = p.top - 11; r = 10; }
-        if (t.length > 2) page.drawRectangle({ x: cx - tw / 2 - 5, y: cy - r, width: tw + 10, height: r * 2, color: RB });
+        if (t.length > 2) page.drawRectangle({ x: cx - tw / 2 - 4, y: cy - r, width: tw + 8, height: r * 2, color: RB });
         else page.drawCircle({ x: cx, y: cy, size: r, color: RB });
         page.drawText(t, { x: cx - tw / 2, y: cy - fs * 0.34, size: fs, font: nfont, color: rgb(1, 1, 1) });
       }
@@ -2229,8 +2233,8 @@
         const RB = rgb(0.043, 0.122, 0.361), t = String(it.num), fs = t.length > 2 ? 9 : (t.length > 1 ? 10.5 : 12), tw = nfont.widthOfTextAtSize(t, fs);
         const k = dw / it.naturalW, nr = it.numRect, left = p.x + nr[0] * k, right = p.x + nr[2] * k, top = pt - nr[1] * k, bottom = pt - nr[3] * k;
         page.drawRectangle({ x: left - 1.5, y: bottom - 1.5, width: (right - left) + 3, height: (top - bottom) + 3, color: rgb(1, 1, 1) });
-        const cx = (left + right) / 2, cy = top - (top - bottom) * 0.46, r = Math.max(9.5, Math.min(12, (top - bottom) * 0.62));
-        if (t.length > 2) page.drawRectangle({ x: cx - tw / 2 - 5, y: cy - r, width: tw + 10, height: r * 2, color: RB }); else page.drawCircle({ x: cx, y: cy, size: r, color: RB });
+        const g = numBadgeGeom(left, right, top, bottom, t, tw), cx = g.cx, cy = g.cy, r = g.r;
+        if (t.length > 2) page.drawRectangle({ x: cx - tw / 2 - 4, y: cy - r, width: tw + 8, height: r * 2, color: RB }); else page.drawCircle({ x: cx, y: cy, size: r, color: RB });
         page.drawText(t, { x: cx - tw / 2, y: cy - fs * 0.34, size: fs, font: nfont, color: rgb(1, 1, 1) });
       }
       if (labImg) page.drawImage(labImg, { x: p.x, y: pt - dh - 2 - lab.h, width: dw, height: lab.h });
