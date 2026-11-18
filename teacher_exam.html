@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611181800">
+<link rel="stylesheet" href="css/style.css?v=202611181830">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,13 +17,13 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611181800"></script>
-<script src="js/config.js?v=202611181800"></script>
-<script src="js/api.js?v=202611181800"></script>
-<script src="js/common.js?v=202611181800"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611181800"></script>
-<script src="js/bankcore.js?v=202611181800"></script>
-<script src="js/pdfui.js?v=202611181800"></script>
+<script src="js/vendor/qrcode.min.js?v=202611181830"></script>
+<script src="js/config.js?v=202611181830"></script>
+<script src="js/api.js?v=202611181830"></script>
+<script src="js/common.js?v=202611181830"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611181830"></script>
+<script src="js/bankcore.js?v=202611181830"></script>
+<script src="js/pdfui.js?v=202611181830"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -271,12 +271,20 @@ async function makeTeacherFromBank(exam, say) {
       teacherPdfGet(examId).then(rec => {
         if (!(rec && rec.blob) && !canMake) { bothBtn.disabled = tOnly.disabled = true; noteEl.textContent = '이 시험지의 강사용 PDF는 이 브라우저에 없고 문제은행에서 출제한 시험지도 아니라서 다시 만들 수 없어요. (강사용은 시험지를 등록한 브라우저에서만 받을 수 있어요)'; }
       });
+      // 학생용 PDF: 구글 링크로 받으면 한글 이름이 깨지므로, 구글에서 직접 받아 「시험 이름 학생용.pdf」로 저장 (안 되면 예전 링크)
+      const stuId = (String(res.pdfUrl || '').match(/[?&]id=([^&]+)/) || [])[1], stuName = res.title.replace(/[\\/:*?"<>|]/g, '_') + ' 학생용.pdf';
+      async function saveStudent() {
+        if (stuId) { noteEl.textContent = '학생용 PDF를 받는 중...'; const b = await driveDirectBlob(stuId, (g, tot) => { noteEl.textContent = '학생용 PDF를 받는 중... ' + (tot ? Math.floor(g / tot * 100) + '%' : Math.round(g / 1048576) + 'MB'); }); if (b) { saveBlob(b, stuName); noteEl.textContent = '학생용 PDF를 받았어요.'; return true; } }
+        window.open(res.pdfUrl, '_blank'); return false;
+      }
+      const stuLink = document.getElementById('dl-student');
+      if (stuLink && stuId) stuLink.addEventListener('click', ev => { ev.preventDefault(); saveStudent(); });
       const run = async (withStudent, btn) => {
         btn.disabled = true;
         try {
-          if (withStudent) window.open(res.pdfUrl, '_blank');
+          if (withStudent) await saveStudent();
           const t = await obtainTeacher();
-          if (t) { saveBlob(t.blob, t.name); noteEl.textContent = '강사용 PDF를 받았어요.' + (withStudent ? ' 학생용은 새 창에서 열렸어요.' : ''); }
+          if (t) { saveBlob(t.blob, t.name); noteEl.textContent = '강사용 PDF를 받았어요.' + (withStudent ? ' 학생용도 받았어요.' : ''); }
           else noteEl.textContent = '강사용 PDF를 만들 수 없어요.';
         } catch (e) { noteEl.innerHTML = '<span style="color:#C1392B;">강사용 PDF를 만들지 못했어요: ' + escapeHtml(e.message) + '</span>'; }
         btn.disabled = false;
@@ -339,7 +347,7 @@ async function makeTeacherFromBank(exam, say) {
       } catch (e) { alert('삭제 중 오류: ' + e.message); btn.disabled = false; btn.textContent = '🗑 시험지 삭제'; }
     });
   } catch (err) {
-    container.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
+    console.error('시험지 화면 오류', err); container.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
   }
 })();
 </script>

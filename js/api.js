@@ -405,3 +405,17 @@ async function askDeleteExams(exams, allExams, opt) {
     });
   });
 }
+
+
+// 구글 드라이브 파일을 구글에서 바로 받아 Blob으로 돌려준다 (구글 다운로드 링크는 한글 파일 이름이 깨져서, 이름은 우리가 직접 붙여 저장한다)
+// 서버(Apps Script)가 옛날 버전이거나 막히면 null을 돌려주니, 호출한 쪽에서 예전 방식으로 넘어가면 된다.
+async function driveDirectBlob(fileId, onProg) {
+  try {
+    const tk = await callApi('driveToken', { password: getTeacherPassword() }); if (!tk || !tk.ok || !tk.token) return null;
+    const resp = await fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?alt=media&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + tk.token } });
+    if (!resp.ok || !resp.body) return null;
+    const tot = parseInt(resp.headers.get('Content-Length') || '0', 10), rd = resp.body.getReader(), chunks = []; let got = 0;
+    for (;;) { const r = await rd.read(); if (r.done) break; chunks.push(r.value); got += r.value.length; if (onProg) onProg(got, tot); }
+    return new Blob(chunks, { type: 'application/pdf' });
+  } catch (e) { console.warn('driveDirectBlob', e); return null; }
+}
