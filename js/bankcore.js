@@ -1570,6 +1570,27 @@
     const RED = rgb(0.043, 0.122, 0.361);          // 번호 원·꼬리표: 매우 짙은 파란색
     const GREY = rgb(0.95, 0.95, 0.95);
 
+    // 정답표를 첫 쪽 맨 위(머리글 밑)에 넣고 그 밑에서 해설이 이어지게 한다 (정답 따로 한 쪽·해설 다음 쪽 → 종이 낭비 방지). 정답이 너무 많으면(50개 초과) 예전처럼 따로 둔다.
+    let ansTbl = null, firstPage = true;
+    if (opts.answers && opts.answers.length && opts.answers.length <= 50) {
+      const n = opts.answers.length, groups = 5, rows = Math.ceil(n / groups), rowH = 22, labH = 24, SCt = 3, circ = '①②③④⑤⑥⑦⑧⑨';
+      const fmt = a => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '(없음)'; if (t === '-') return '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
+      const FONTA = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif', tH = labH + rows * rowH + 4;
+      const c = createCanvas(Math.round(areaW * SCt), Math.round(tH * SCt)), ctx = c.getContext('2d');
+      ctx.scale(SCt, SCt); ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#111'; ctx.font = 'bold 14px ' + FONTA; ctx.fillText('정답', 0, 10);
+      ctx.fillStyle = '#6B7280'; ctx.font = '9px ' + FONTA; ctx.fillText('번호는 시험지의 진한 파란 원 번호와 같아요.', 36, 11);
+      const gw = areaW / groups;
+      opts.answers.forEach((q, k) => {
+        const g = k % groups, r = Math.floor(k / groups), x = g * gw, y = labH + r * rowH;
+        ctx.strokeStyle = '#E5E7EB'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(x, y + rowH); ctx.lineTo(x + gw - 10, y + rowH); ctx.stroke();
+        ctx.fillStyle = '#0B1F5C'; ctx.beginPath(); ctx.arc(x + 9, y + rowH / 2, 8.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 9.5px ' + FONTA; ctx.textAlign = 'center'; ctx.fillText(String(k + 1), x + 9, y + rowH / 2 + 0.5);
+        ctx.textAlign = 'left'; ctx.fillStyle = '#111'; ctx.font = 'bold 12.5px ' + FONTA; ctx.fillText(fmt(q.answer), x + 24, y + rowH / 2 + 0.5);
+      });
+      ansTbl = { img: await doc.embedPng(b64ToBytes(canvasToBase64(c))), h: tH };
+      doc.__inlineAnswers = true;
+    }
     let page, ys, col;
     // 가운데 중간선: 문제 그림에 딸려 나온 선 조각은 모두 지우고, 대신 앱이 모든 쪽에 똑같은 선을 직접 긋는다
     // (진짜 시험지처럼 위에서 아래까지 쭉 이어진 가는 선). 그림보다 먼저 그려서 넓은 문항이 선을 덮을 수 있게 한다.
@@ -1578,11 +1599,14 @@
     function newPage() {
       page = doc.addPage([W, H]);
       page.drawImage(headImg, { x: marginX, y: H - 28 - headH, width: headW, height: headH });
+      let top0 = H - marginTop;
+      if (firstPage && ansTbl) { page.drawImage(ansTbl.img, { x: marginX, y: top0 - ansTbl.h, width: areaW, height: ansTbl.h }); top0 -= ansTbl.h + 14; }
+      firstPage = false;
       if (drawCenterLine) {
-        page.drawLine({ start: { x: centerX, y: H - marginTop + 4 }, end: { x: centerX, y: marginBottom - 4 },
+        page.drawLine({ start: { x: centerX, y: top0 + 4 }, end: { x: centerX, y: marginBottom - 4 },
           thickness: 0.7, color: rgb(0.25, 0.25, 0.25) });
       }
-      ys = [H - marginTop, H - marginTop];
+      ys = [top0, top0];
       col = 0;
     }
     function label(cx, cy, r, n, subj) {
@@ -2097,10 +2121,11 @@
     return { base64: canvasToBase64(c), w: widthPt, h: h };
   }
   // 오답노트 맨 뒤 쪽: 틀린 문항의 정답을 한 곳에 모은다
-  async function wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, entries, qrImg, opts) {
+  async function wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, entries, qrImg, opts, inlineExpl) {
     const W = 595.28, H = 841.89, marginX = 30, SC = 3, perPage = 70, groups = 5, circ = '①②③④⑤⑥⑦⑧⑨';
     const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
     const fmt = a => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '(없음)'; if (t === '-') return '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
+    let result = null;
     for (let start = 0; start < entries.length; start += perPage) {
       const chunk = entries.slice(start, start + perPage), page = doc.addPage([W, H]);
       page.drawImage(headImg, { x: marginX, y: H - 28 - hdr.h, width: W - marginX * 2, height: hdr.h });
@@ -2117,13 +2142,24 @@
       });
       const img = await doc.embedPng(b64ToBytes(canvasToBase64(c)));
       page.drawImage(img, { x: 0, y: 0, width: W, height: H });
-      if (qrImg && start + perPage >= entries.length) {          // 맨 뒤 쪽에는 큰 QR: 찍으면 틀린 문항만 다시 풀 수 있다
+      const lastChunk = start + perPage >= entries.length, tblBottomPdf = H - (top + Math.ceil(chunk.length / groups) * rowH);
+      if (qrImg && lastChunk && inlineExpl && chunk.length <= 40) {   // 해설이 이어질 때: QR을 정답표 바로 밑에 작게 두고 그 밑부터 해설
+        const q = 64, l = wrongNoteQrLabelPng('QR을 찍어 틀린 문항만 다시 풀어 보세요', 300, 10.5), l2 = wrongNoteQrLabelPng('다시 푼 답을 입력하면 맞았는지 바로 알려 줘요.', 330, 8.5, '#6B7280');
+        const qy = tblBottomPdf - 8 - q;
+        page.drawImage(qrImg, { x: marginX, y: qy, width: q, height: q });
+        page.drawImage((await doc.embedPng(b64ToBytes(l.base64))), { x: marginX + q + 12, y: qy + q / 2 + 6, width: l.w, height: l.h });
+        page.drawImage((await doc.embedPng(b64ToBytes(l2.base64))), { x: marginX + q + 12, y: qy + q / 2 - 12, width: l2.w, height: l2.h });
+        result = { bottom: qy - 16 };
+      } else if (inlineExpl && lastChunk && chunk.length <= 40) {
+        result = { bottom: tblBottomPdf - 14 };
+      } else if (qrImg && lastChunk) {          // 맨 뒤 쪽에는 큰 QR: 찍으면 틀린 문항만 다시 풀 수 있다
         const q = 96, l = wrongNoteQrLabelPng('QR을 찍어 틀린 문항만 다시 풀어 보세요', 300, 11), l2 = wrongNoteQrLabelPng('정답은 이 쪽에서 확인하고, 다시 푼 답을 입력하면 맞았는지 바로 알려 줘요.', 330, 8.5, '#6B7280');
         page.drawImage(qrImg, { x: marginX, y: 60, width: q, height: q });
         page.drawImage((await doc.embedPng(b64ToBytes(l.base64))), { x: marginX + q + 14, y: 60 + q / 2 + 8, width: l.w, height: l.h });
         page.drawImage((await doc.embedPng(b64ToBytes(l2.base64))), { x: marginX + q + 14, y: 60 + q / 2 - 12, width: l2.w, height: l2.h });
       }
     }
+    return result;
   }
   async function composeWrongNotePdf(PDFLib, items, opts) {
     opts = opts || {};
@@ -2158,6 +2194,23 @@
     }
     function advance(p, used) { if (p.wide) ys[0] = ys[1] = p.top - used - gap; else ys[col] = p.top - used - gap; }
     newPage();
+    if (qrImg) {      // 첫 쪽 맨 위: 학생이 놓치지 않게 큰 안내 상자 (QR을 찍으면 틀린 문항만 다시 풀 수 있다)
+      const bh = 84, SCb = 3, FONTB = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
+      const c = createCanvas(Math.round(areaW * SCb), Math.round(bh * SCb)), ctx = c.getContext('2d');
+      ctx.scale(SCb, SCb);
+      ctx.fillStyle = '#EAF1FF'; ctx.strokeStyle = '#1D4ED8'; ctx.lineWidth = 2.4;
+      const r = 10, x0 = 1.2, y0 = 1.2, w0 = areaW - 2.4, h0 = bh - 2.4;
+      ctx.beginPath(); ctx.moveTo(x0 + r, y0); ctx.arcTo(x0 + w0, y0, x0 + w0, y0 + h0, r); ctx.arcTo(x0 + w0, y0 + h0, x0, y0 + h0, r); ctx.arcTo(x0, y0 + h0, x0, y0, r); ctx.arcTo(x0, y0, x0 + w0, y0, r); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.textBaseline = 'middle'; const tx = 12 + 66 + 16;
+      ctx.fillStyle = '#1D4ED8'; ctx.font = 'bold 16px ' + FONTB; ctx.fillText('QR을 찍으면 틀린 문항만 다시 풀 수 있어요!', tx, 20);
+      ctx.fillStyle = '#111'; ctx.font = 'bold 10.5px ' + FONTB; ctx.fillText('① 휴대폰 카메라로 QR을 찍는다   ② 다시 푼 답을 입력한다   ③ 맞았는지 바로 확인한다', tx, 44);
+      ctx.fillStyle = '#4B5563'; ctx.font = '10px ' + FONTB; ctx.fillText('정답은 맨 뒤 정답 쪽에서 확인하고, 해설을 보고 한 번 더 풀어 보세요.', tx, 63);
+      const bimg = await doc.embedPng(b64ToBytes(canvasToBase64(c)));
+      const top = ys[0];
+      page.drawImage(bimg, { x: marginX, y: top - bh, width: areaW, height: bh });
+      page.drawImage(qrImg, { x: marginX + 12, y: top - bh + (bh - 66) / 2, width: 66, height: 66 });
+      ys[0] = ys[1] = top - bh - 12;
+    }
     const blank = opts.blank || 0;
     for (const it of (opts.part === 'answers' ? [] : items)) {      // part 'answers': 정답표·해설만 (문제 쪽 없음)
       const img = await doc.embedPng(b64ToBytes(it.base64));
@@ -2196,9 +2249,14 @@
       // 정답·해설은 뒤쪽에 따로 모은다. 양면으로 인쇄하면 오답노트가 홀수 쪽에서 끝날 때 해설이 그 뒷면에 붙어 버리니, 빈 쪽을 한 장 끼워 해설이 새 장의 앞면부터 시작하게 한다.
       if (opts.part === 'answers') doc.removePage(0);
       else if (doc.getPageCount() % 2 === 1) doc.addPage([W, H]);
-      if (all.length) await wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, all, qrImg, opts);
+      let inl = null;
+      if (all.length) inl = await wrongNoteAnswersPage(doc, PDFLib, headImg, hdr, all, qrImg, opts, withEx);
       if (withEx) {
-        newPage();
+        if (inl && inl.bottom != null) {         // 정답표 바로 밑에서 해설이 이어진다 (같은 쪽을 같이 쓴다)
+          page = doc.getPage(doc.getPageCount() - 1);
+          page.drawLine({ start: { x: marginX + colW + colGap / 2, y: inl.bottom + 4 }, end: { x: marginX + colW + colGap / 2, y: marginBottom - 4 }, thickness: 0.6, color: rgb(0.8, 0.8, 0.8) });
+          ys = [inl.bottom, inl.bottom]; col = 0;
+        } else newPage();
         for (const it of items) {
           if (!it.explBase64) continue;
           const eimg = await doc.embedPng(b64ToBytes(it.explBase64));
@@ -2220,6 +2278,7 @@
   // 정답표: 선생님이 입력해 둔 정답을 표로 만든다 (해설이 없는 문항도 정답은 꼭 들어간다). 한글이 들어가서 그림으로 그려 넣는다.
   // picks: [{ answer, kind, school, year, unit }] 순서대로 1번부터. 해설 그림 문서(explDoc)가 있으면 정답표 뒤에 이어붙인다.
   async function answerSheetDoc(PDFLib, title, picks, explDoc, sub) {
+    if (explDoc && explDoc.__inlineAnswers) return explDoc;      // 정답표가 해설 첫 쪽 위에 이미 들어 있다
     const doc = await PDFLib.PDFDocument.create();
     const W = 595.28, H = 841.89, SC = 2.4;
     const N = picks.length, perPage = 80, groups = 5;

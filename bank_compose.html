@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190146">
+<link rel="stylesheet" href="css/style.css?v=202611190212">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611190146"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190146"></script>
-<script src="js/config.js?v=202611190146"></script>
-<script src="js/api.js?v=202611190146"></script>
-<script src="js/common.js?v=202611190146"></script>
-<script src="js/bankcore.js?v=202611190146"></script>
-<script src="js/vendor/pdf.min.js?v=202611190146"></script>
-<script src="js/printpdf.js?v=202611190146"></script>
-<script src="js/pdfui.js?v=202611190146"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190212"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190212"></script>
+<script src="js/config.js?v=202611190212"></script>
+<script src="js/api.js?v=202611190212"></script>
+<script src="js/common.js?v=202611190212"></script>
+<script src="js/bankcore.js?v=202611190212"></script>
+<script src="js/vendor/pdf.min.js?v=202611190212"></script>
+<script src="js/printpdf.js?v=202611190212"></script>
+<script src="js/pdfui.js?v=202611190212"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -738,10 +738,10 @@ async function buildTeacherBytes(title, picks, slots, items, map) {
   const tdoc = await BankCore.composeTeacherPdf(PDFLib, title, items, { keepTitle: picks.length > 0 && picks.every(q => q.kind === '기출') });
   const explImgs = [];
   picks.forEach((q, qi) => { if (q.explFileId && map[q.explFileId]) { const sz = pngSize(BankCore.b64ToBytes(map[q.explFileId])); explImgs.push({ base64: map[q.explFileId], width: sz.width, height: sz.height, naturalW: sz.width / 2.2, numRect: q.explNumRect || null, tag: BankCore.pastTagText(q), num: slots[qi].label }); } });
-  let explDoc = null;
-  if (explImgs.length) explDoc = await BankCore.composeExamPdf(PDFLib, title + ' 해설', explImgs, { subtitle: explImgs.every(x => x.numRect) ? '※ 정답 옆의 진한 파란 원 번호가 시험지의 문항 번호예요.' : '※ 왼쪽 진한 파란 원 번호가 시험지의 문항 번호예요. (해설 안에 다른 번호가 보여도 무시하세요)', centerLine: false });
   const flatPicks = [];
   picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => flatPicks.push(Object.assign({}, q, { answer: a }))); else flatPicks.push(q); });
+  let explDoc = null;
+  if (explImgs.length) explDoc = await BankCore.composeExamPdf(PDFLib, title + ' 해설', explImgs, { answers: flatPicks, subtitle: explImgs.every(x => x.numRect) ? '※ 정답 옆의 진한 파란 원 번호가 시험지의 문항 번호예요.' : '※ 왼쪽 진한 파란 원 번호가 시험지의 문항 번호예요. (해설 안에 다른 번호가 보여도 무시하세요)', centerLine: false });
   const back = await BankCore.answerSheetDoc(PDFLib, title, flatPicks, explDoc);
   const merged = await BankCore.mergePdfs(PDFLib, tdoc, back);
   await BankCore.addPageNumbers(PDFLib, merged);
@@ -869,6 +869,8 @@ async function finalize(printAfter) {
     }
     if ($('make-expl').checked) {
       // 해설 그림이 저장된 문항은 해설을, 없는 문항은 정답표에만 정답을 적는다 (정답표는 항상 들어간다)
+      const flatPicks = [];
+      picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => flatPicks.push(Object.assign({}, q, { answer: a }))); else flatPicks.push(q); });
       let explDoc = null;
       if (withExpl.length) {
         const explImgs = [];
@@ -881,14 +883,12 @@ async function finalize(printAfter) {
         updateSpinner('해설 만드는 중...');
         const allPos = explImgs.every(x => x.numRect);
         explDoc = await BankCore.composeExamPdf(PDFLib, title + ' 해설', explImgs,
-          { subtitle: allPos ? '※ 정답 옆의 진한 파란 원 번호가 시험지의 문항 번호예요.' : '※ 왼쪽 진한 파란 원 번호가 시험지의 문항 번호예요. (해설 안에 다른 번호가 보여도 무시하세요)', centerLine: false });
+          { answers: flatPicks, subtitle: allPos ? '※ 정답 옆의 진한 파란 원 번호가 시험지의 문항 번호예요.' : '※ 왼쪽 진한 파란 원 번호가 시험지의 문항 번호예요. (해설 안에 다른 번호가 보여도 무시하세요)', centerLine: false });
       }
       if (withExpl.length < picks.length) explFillNote = withExpl.length
         ? '해설이 저장되지 않은 ' + (picks.length - withExpl.length) + '문항은 정답표에 정답만 들어갔어요.'
         : '저장된 해설이 있는 문항이 없어서, 정답표만 시험지 뒤에 붙였어요.';
       updateSpinner('정답표 만드는 중...');
-      const flatPicks = [];
-      picks.forEach((q, i) => { if (slots[i].parts) slots[i].parts.forEach(a => flatPicks.push(Object.assign({}, q, { answer: a }))); else flatPicks.push(q); });
       edoc = await BankCore.answerSheetDoc(PDFLib, title, flatPicks, explDoc);
     }
 

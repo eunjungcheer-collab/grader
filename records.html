@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190146">
+<link rel="stylesheet" href="css/style.css?v=202611190212">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -48,17 +48,17 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611190146"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611190146"></script>
-<script src="js/vendor/qrcode.min.js?v=202611190146"></script>
-<script src="js/config.js?v=202611190146"></script>
-<script src="js/api.js?v=202611190146"></script>
-<script src="js/common.js?v=202611190146"></script>
-<script src="js/bankcore.js?v=202611190146"></script>
-<script src="js/wrongnote.js?v=202611190146"></script>
-<script src="js/printpdf.js?v=202611190146"></script>
-<script src="js/wnpanel.js?v=202611190146"></script>
-<script src="js/pdfui.js?v=202611190146"></script>
+<script src="js/vendor/pdf.min.js?v=202611190212"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611190212"></script>
+<script src="js/vendor/qrcode.min.js?v=202611190212"></script>
+<script src="js/config.js?v=202611190212"></script>
+<script src="js/api.js?v=202611190212"></script>
+<script src="js/common.js?v=202611190212"></script>
+<script src="js/bankcore.js?v=202611190212"></script>
+<script src="js/wrongnote.js?v=202611190212"></script>
+<script src="js/printpdf.js?v=202611190212"></script>
+<script src="js/wnpanel.js?v=202611190212"></script>
+<script src="js/pdfui.js?v=202611190212"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -293,7 +293,7 @@ function render() {
         <button type="button" class="btn outline res-btn" data-i="${i}" style="padding:7px 12px;">🔍 문항별 결과</button>
         <button type="button" class="btn ghost edit-btn" data-i="${i}" style="padding:7px 12px;">점수 수정</button>
         <button type="button" class="btn danger del-btn" data-i="${i}" style="padding:7px 12px;">삭제</button>
-        ${wrongNumsOf(s).length ? '<button type="button" class="btn outline note-btn" data-i="' + i + '" style="padding:7px 12px;">📓 오답노트 (' + wrongNumsOf(s).length + '문항)</button> <a class="btn outline" style="padding:7px 12px;text-decoration:none;" href="alerts.html?sub=' + encodeURIComponent(s.examId) + '&stu=' + encodeURIComponent(s.studentName) + '">🔁 다시풀기·여러 시험 합쳐 받기</a>' : ''}
+        ${wrongNumsOf(s).length ? '<button type="button" class="btn outline note-btn" data-i="' + i + '" style="padding:7px 12px;">📓 오답노트 (' + wrongNumsOf(s).length + '문항)</button> <button type="button" class="btn outline wn-open" data-i="' + i + '" style="padding:7px 12px;">🔁 다시풀기·여러 시험 합쳐 받기</button>' : ''}
         ${(() => { const wu = wrongUnits(s); return wu.count ? '<button type="button" class="btn outline wrong-btn" data-i="' + i + '" style="padding:7px 12px;">📝 유사오답 (' + wu.count + '개)</button>' : ''; })()}
         ${(() => { const wc = wrongCountNoSource(s); return wc ? '<button type="button" class="btn outline textmatch-btn" data-i="' + i + '" style="padding:7px 12px;">📝 유사오답 (' + wc + '개)</button>' : ''; })()}
       </div>
@@ -338,6 +338,8 @@ function render() {
       const res = await callApi('deleteSubmission', { password: getTeacherPassword(), examId: s.examId, studentName: s.studentName, submittedAt: s.submittedAt });
       if (res.ok) { all = all.filter(x => x !== s); render(); } else alert(res.error);
     });
+    const openBtn = document.querySelector('.wn-open[data-i="' + i + '"]');
+    if (openBtn) openBtn.addEventListener('click', () => { if (window.wnShowStudent) window.wnShowStudent(s.studentName, String(s.examId)); });   // 알림 화면으로 가지 않고, 이 화면 위쪽의 학생별 받기 칸을 연다
     const noteBtn = document.querySelector('.note-btn[data-i="' + i + '"]');
     if (noteBtn) {
       noteBtn.addEventListener('click', () => { const p = $('note-' + i); p.style.display = p.style.display === 'none' ? 'block' : 'none'; });
