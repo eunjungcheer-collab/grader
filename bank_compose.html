@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191200">
+<link rel="stylesheet" href="css/style.css?v=202611191230">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611191200"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191200"></script>
-<script src="js/config.js?v=202611191200"></script>
-<script src="js/api.js?v=202611191200"></script>
-<script src="js/common.js?v=202611191200"></script>
-<script src="js/bankcore.js?v=202611191200"></script>
-<script src="js/vendor/pdf.min.js?v=202611191200"></script>
-<script src="js/printpdf.js?v=202611191200"></script>
-<script src="js/pdfui.js?v=202611191200"></script>
+<script src="js/vendor/qrcode.min.js?v=202611191230"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191230"></script>
+<script src="js/config.js?v=202611191230"></script>
+<script src="js/api.js?v=202611191230"></script>
+<script src="js/common.js?v=202611191230"></script>
+<script src="js/bankcore.js?v=202611191230"></script>
+<script src="js/vendor/pdf.min.js?v=202611191230"></script>
+<script src="js/printpdf.js?v=202611191230"></script>
+<script src="js/pdfui.js?v=202611191230"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -859,6 +859,12 @@ async function finalize(printAfter) {
         imgs.push({ base64: b64, width: size.width, height: size.height, naturalW: size.width / BankCore.CROP_SCALE, numRect: (q && q.numRect) || null, answer: q.answer, tag: BankCore.pastTagText(q), num: slots[s + k].label, headRange: BankCore.parseHeadRange(q.textPreview), srcKey: q.source || '', origNum: q.num });
       }
     }
+    // 서술형(-)으로 저장돼 있지만 보기 ①~⑤가 있는 객관식으로 보이는 문항이 있으면, 만들기 전에 알려 준다 (정답을 못 읽어 서술형으로 들어간 경우가 많아서, 그대로 두면 자동 채점에서 빠진다)
+    try {
+      const sus = [];
+      for (let k = 0; k < imgs.length; k++) { if (String(imgs[k].answer) !== '-') continue; let mk = null; try { mk = await BankCore.detectOptionMarkersB64(imgs[k].base64); } catch (e) {} if (mk && mk.length === 5) sus.push(imgs[k].num); }
+      if (sus.length && !confirm('⚠️ 서술형으로 저장돼 있지만 보기 ①~⑤가 있는 객관식으로 보이는 문항이 ' + sus.length + '개 있어요.\n(시험지 번호: ' + sus.slice(0, 30).join(', ') + (sus.length > 30 ? ' …' : '') + ')\n\n이대로 만들면 이 문항들은 자동 채점에서 빠져요.\n문제은행에서 정답을 입력한 뒤에 만드는 것을 추천해요.\n\n그래도 이대로 만들까요? (취소 = 멈추기)')) { hideSpinner(); return; }
+    } catch (e) {}
     updateSpinner('시험지 PDF 만드는 중...');
     const examId = genExamId();
     const doc = await BankCore.composeExamPdf(PDFLib, title, imgs, { qrReserve: 62, keepTitle: picks.length > 0 && picks.every(q => q.kind === '기출') });
