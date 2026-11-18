@@ -406,6 +406,18 @@ async function applyEdit(saveIt) {
   $('ce-sz').addEventListener('input', e => { ST.wd = +e.target.value; paint(); });
   $('ce-auto').onclick = applyAuto; $('ce-tl').onclick = () => { ST.x = 20; ST.top = 14; paint(); };
   $('ce-close').onclick = () => { $('editor').style.display = 'none'; };
+  // 교재 이름 목록을 띄워 하나를 눌러 고르게 한다 (고른 이름을 돌려주고, 닫으면 '')
+  function pickBook(names, cnt) {
+    return new Promise(res => {
+      const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+      const box = document.createElement('div'); box.style.cssText = 'background:#fff;border-radius:12px;max-width:460px;width:100%;max-height:80vh;overflow:auto;padding:16px;box-shadow:0 8px 30px rgba(0,0,0,.25);';
+      box.innerHTML = '<div style="font-weight:700;margin-bottom:4px;">이름을 바꿀 교재를 눌러 주세요</div><div class="muted" style="font-size:12px;margin-bottom:10px;">누르면 새 이름을 입력하는 창이 떠요.</div>';
+      const done = v => { ov.remove(); res(v); };
+      names.forEach(n => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn outline'; b.style.cssText = 'display:block;width:100%;text-align:left;margin:6px 0;padding:10px 12px;'; b.textContent = n + '  (시험지 ' + cnt[n] + '개)'; b.onclick = () => done(n); box.appendChild(b); });
+      const c = document.createElement('button'); c.type = 'button'; c.className = 'btn'; c.style.cssText = 'margin-top:8px;'; c.textContent = '닫기'; c.onclick = () => done(''); box.appendChild(c);
+      ov.addEventListener('click', e => { if (e.target === ov) done(''); }); ov.appendChild(box); document.body.appendChild(ov);
+    });
+  }
   $('book-rename').onclick = async () => {      // 교재 이름 바꾸기 (시험지 목록에서 옮겨 옴): 등록된 교재 합본 시험지의 교재 이름 중에서 고른다
     const b = $('book-rename'); b.disabled = true; const t0 = b.textContent; b.textContent = '교재 목록 불러오는 중...';
     try {
@@ -413,12 +425,8 @@ async function applyEdit(saveIt) {
       const cnt = {}; ((le && le.exams) || []).forEach(ex => { if (ex.bookTitle && !ex.hasRecipe) cnt[ex.bookTitle] = (cnt[ex.bookTitle] || 0) + 1; });
       const names = Object.keys(cnt).sort((x, y) => x.localeCompare(y, 'ko'));
       if (!names.length) { alert('이름을 바꿀 교재가 없어요. (교재 합본으로 등록한 시험지가 있어야 해요)'); return; }
-      let oldN = names[0];
-      if (names.length > 1) {
-        const pick = prompt('이름을 바꿀 교재 번호를 입력하세요.\n' + names.map((n, i) => (i + 1) + '. ' + n + ' (시험지 ' + cnt[n] + '개)').join('\n'), '1');
-        const k = parseInt(pick, 10); if (!(k >= 1 && k <= names.length)) return;
-        oldN = names[k - 1];
-      }
+      const oldN = await pickBook(names, cnt);      // 목록에서 눌러 고른다
+      if (!oldN) return;
       if (await renameBookFlow(oldN)) { try { sessionStorage.removeItem('list_filter'); } catch (e) {} }
     } catch (e) { alert('교재 이름을 바꾸지 못했어요: ' + e.message); }
     finally { b.disabled = false; b.textContent = t0; }
