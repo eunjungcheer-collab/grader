@@ -562,7 +562,9 @@ function actionRequestFix_(p) {
   const sheet = ss.getSheetByName(SHEET_SCORES), row = fixRow_(sheet, String(found.row[0]), p.studentName, p.submittedAt);
   if (!row) return { ok: false, error: '기록을 찾지 못했어요.' };
   if ((Number(sheet.getRange(row, 8).getValue()) || 0) >= 1) return { ok: false, error: '이미 한 번 고쳐서 더 고칠 수 없어요. 선생님께 말씀해 주세요.' };
+  const already = !!sheet.getRange(row, 9).getValue();
   sheet.getRange(row, 9).setValue(Date.now());
+  if (!already) { try { pushToTeacher_('🙋 ' + String(p.studentName || '학생') + ' 마킹 실수 수정 요청', String(found.row[1]) + '\n시험 기록 화면에서 승인해 주세요', '?sub=' + encodeURIComponent(String(found.row[0])) + '&stu=' + encodeURIComponent(String(p.studentName || ''))); } catch (e) {} }
   return { ok: true };
 }
 function actionGetFixStatus_(p) {
@@ -2768,6 +2770,7 @@ function actionHomeBadges_(p) {
   const out = { ok: true };
   try { out.alerts = actionListAlerts_(p); } catch (e) { out.alerts = null; }
   try { const r = actionListStudents_(p); out.pending = r.ok ? r.students.filter(function (x) { return x.pending; }).length : 0; } catch (e) { out.pending = 0; }
+  try { const sc = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SCORES), ln = sc.getLastRow(); let n = 0; if (ln >= 2) sc.getRange(2, 8, ln - 1, 3).getValues().forEach(function (r) { if (r[1] && !r[2] && !(Number(r[0]) >= 1)) n++; }); out.fixReq = n; } catch (e) { out.fixReq = 0; }
   try { const w = actionWeakReport_({ password: p.password, countOnly: true }); out.weak = w.ok ? w.count : 0; } catch (e) { out.weak = 0; }
   return out;
 }
