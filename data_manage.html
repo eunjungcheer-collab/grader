@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190410">
+<link rel="stylesheet" href="css/style.css?v=202611190430">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -24,7 +24,13 @@
     </div>
     <div id="bk-msg" class="hint" style="margin-top:6px;"></div>
   </div>
-  <div class="card"><b>☁️ 구글 드라이브 용량</b>
+  <div class="card" id="pm-card">
+      <b>🖨️ 인쇄 방식</b>
+      <label style="display:block; margin:6px 0;"><input type="radio" name="pm" value="fast"> <b>빠른 인쇄</b> (기본) — PDF를 그대로 보내요. 더 빠르고 선명해요. 안 되면 자동으로 예전 방식으로 인쇄해요.</label>
+      <label style="display:block; margin:6px 0;"><input type="radio" name="pm" value="raster"> <b>예전 방식</b> — 쪽마다 그림으로 바꿔서 인쇄해요. 느리지만 어디서나 돼요.</label>
+      <p class="hint" id="pm-msg" style="margin:6px 0 0;"></p>
+    </div>
+    <div class="card"><b>☁️ 구글 드라이브 용량</b>
     <div id="du-info" class="hint" style="margin-top:8px;">불러오는 중... (폴더가 크면 20~40초 걸려요)</div>
     <div id="du-bar" style="display:none;height:16px;background:#e6e1d6;border-radius:9px;overflow:hidden;margin:10px 0 4px;"><div id="du-fill" style="height:100%;width:0;background:#1f6f4a;"></div></div>
     <div id="du-list" style="margin-top:8px;font-size:14px;"></div>
@@ -43,9 +49,9 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611190410"></script>
-<script src="js/api.js?v=202611190410"></script>
-<script src="js/common.js?v=202611190410"></script>
+<script src="js/config.js?v=202611190430"></script>
+<script src="js/api.js?v=202611190430"></script>
+<script src="js/common.js?v=202611190430"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -96,6 +102,7 @@ $('nm-go').addEventListener('click', async () => {
   $('nm-msg').textContent = '합치는 중...'; try { const r = await callApi('mergeNames', { password: getTeacherPassword(), from: from, to: to }); $('nm-msg').textContent = r.ok ? '✅ ' + r.changed + '곳을 「' + to + '」로 통일했어요' : '⚠️ ' + r.error; loadNames(); } catch (x) { $('nm-msg').textContent = '⚠️ ' + x.message; }
 });
 load();
+(function () { let m = 'fast'; try { m = localStorage.getItem('printMode') === 'raster' ? 'raster' : 'fast'; } catch (e) {} document.querySelectorAll('input[name=pm]').forEach(r => { r.checked = r.value === m; r.addEventListener('change', () => { try { localStorage.setItem('printMode', r.value); document.getElementById('pm-msg').textContent = '✅ 저장했어요 (이 브라우저에서만 적용돼요).'; } catch (e) { document.getElementById('pm-msg').textContent = '⚠️ 저장하지 못했어요.'; } }); }); })();
 loadUsage(); loadNames();
 </script>
 </body>

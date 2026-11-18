@@ -1,6 +1,6 @@
 /* PDF를 내려받지 않고 바로 인쇄: 쪽마다 그림으로 바꿔 숨은 창에 넣고 브라우저 인쇄를 부른다 (pdf.js 필요)
    브라우저가 인쇄 창을 반드시 띄우니, 「인쇄」를 한 번 누르면 돼요. (Edge/Chrome을 --kiosk-printing 으로 켜면 창 없이 바로 나가요) */
-async function printPdfBytes(bytes, onProg) {
+async function printPdfRaster(bytes, onProg) {
   if (!window.pdfjsLib) throw new Error('인쇄 준비가 안 됐어요 (pdf.js)');
   const doc = await pdfjsLib.getDocument({ data: bytes.slice ? bytes.slice(0) : bytes }).promise, n = doc.numPages;
   if (n > 120 && !confirm('쪽수가 ' + n + '쪽으로 많아서 준비에 시간이 걸려요. 계속할까요?')) return false;
@@ -38,4 +38,15 @@ async function printPdfNative(bytes) {
   try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { cleanup(); throw new Error('이 브라우저에서는 숨은 창 인쇄가 막혀 있어요: ' + e.message); }
   setTimeout(cleanup, 10 * 60 * 1000);
   return true;
+}
+
+/* 인쇄 방식: 기본은 「빠른 인쇄」(PDF를 그대로), 안 되면 자동으로 「그림으로 바꿔 인쇄」(예전 방식). 데이터 관리에서 고를 수 있다 */
+function printMode() { try { return localStorage.getItem('printMode') === 'raster' ? 'raster' : 'fast'; } catch (e) { return 'fast'; } }
+async function printPdfBytes(bytes, onProg) {
+  if (printMode() === 'fast') {
+    try { return await printPdfNative(bytes); }
+    catch (e) { try { console.warn('빠른 인쇄 실패 → 예전 방식으로 인쇄', e); } catch (_) {} }
+  }
+  if (!window.pdfjsLib && typeof setupPdfJs === 'function') { try { setupPdfJs(); } catch (e) {} }
+  return printPdfRaster(bytes, onProg);
 }
