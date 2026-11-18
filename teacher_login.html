@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>로그인 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611182200">
+<link rel="stylesheet" href="css/style.css?v=202611182300">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -23,9 +23,9 @@
   </form>
 </template>
 
-<script src="js/config.js?v=202611182200"></script>
-<script src="js/api.js?v=202611182200"></script>
-<script src="js/common.js?v=202611182200"></script>
+<script src="js/config.js?v=202611182300"></script>
+<script src="js/api.js?v=202611182300"></script>
+<script src="js/common.js?v=202611182300"></script>
 <script>
 renderHeader();
 if (getTeacherPassword()) { location.replace('index.html'); }
@@ -43,7 +43,7 @@ document.getElementById('login-form').addEventListener('submit', async function 
       try { const n = sessionStorage.getItem('login_next'); sessionStorage.removeItem('login_next'); if (n && /^[A-Za-z0-9_\-]+\.html(\?[^\s]*)?$/.test(n) && n !== 'teacher_login.html') next = n; } catch (e) {}
       location.href = next;
     } else {
-      errorBox.innerHTML = '<div class="banner error">비밀번호가 올바르지 않아요.</div>';
+      errorBox.innerHTML = '<div class="banner error">' + (res.locked ? res.error : '비밀번호가 올바르지 않아요.') + '</div>';
     }
   } catch (err) {
     errorBox.innerHTML = '<div class="banner error">서버에 연결할 수 없어요. API_URL 설정을 확인해주세요.</div>';

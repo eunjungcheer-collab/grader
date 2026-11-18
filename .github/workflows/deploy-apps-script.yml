@@ -1,0 +1,43 @@
+# AppsScript_Code.gs 가 바뀌어 GitHub에 올라오면, 구글 Apps Script에 자동으로 올리고 「기존 웹앱 배포」를 새 버전으로 갱신한다.
+# (웹앱 주소는 그대로 유지돼요.) 처음 한 번 설정이 필요해요 → docs/자동배포_설정방법.md
+name: Apps Script 자동 배포
+on:
+  push:
+    branches: [main]
+    paths: ['AppsScript_Code.gs']
+  workflow_dispatch:
+concurrency: { group: apps-script-deploy, cancel-in-progress: false }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: 문법 검사
+        run: node -e "new Function(require('fs').readFileSync('AppsScript_Code.gs','utf8'))"
+      - name: 설정 확인
+        env: { SID: '${{ secrets.APPS_SCRIPT_ID }}', DID: '${{ secrets.APPS_SCRIPT_DEPLOYMENT_ID }}', RC: '${{ secrets.CLASPRC_JSON }}' }
+        run: |
+          for v in SID DID RC; do if [ -z "${!v}" ]; then echo "::error::GitHub Secrets 설정이 빠졌어요 (docs/자동배포_설정방법.md 참고)"; exit 1; fi; done
+      - name: clasp 설치
+        run: npm install -g @google/clasp@2
+      - name: 로그인 정보와 프로젝트 연결
+        env: { SID: '${{ secrets.APPS_SCRIPT_ID }}', RC: '${{ secrets.CLASPRC_JSON }}' }
+        run: |
+          printf '%s' "$RC" > ~/.clasprc.json
+          mkdir -p gas && cd gas && printf '{"scriptId":"%s","rootDir":"."}' "$SID" > .clasp.json
+      - name: 현재 프로젝트 설정(appsscript.json) 받아오기
+        run: cd gas && clasp pull
+      - name: 코드 덮어쓰기 (프로젝트에 코드 파일이 하나일 때만)
+        run: |
+          cd gas
+          n=$(ls *.gs *.js 2>/dev/null | wc -l)
+          if [ "$n" != "1" ]; then echo "::error::Apps Script 프로젝트에 코드 파일이 $n개예요. 하나(Code.gs)만 있어야 자동 배포가 안전해요."; ls; exit 1; fi
+          f=$(ls *.gs *.js); cp ../AppsScript_Code.gs "$f"; echo "덮어쓴 파일: $f"
+      - name: 올리고 기존 배포 갱신
+        env: { DID: '${{ secrets.APPS_SCRIPT_DEPLOYMENT_ID }}' }
+        run: |
+          cd gas
+          clasp push -f
+          clasp deploy -i "$DID" -d "자동 배포 ${GITHUB_SHA::7}"

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611182200">
+<link rel="stylesheet" href="css/style.css?v=202611182300">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -29,10 +29,17 @@
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"><button type="button" class="btn outline" id="dv-clean" style="padding:8px 14px;">올리다 남은 임시 조각 지우기</button><a class="btn outline" href="cover_edit.html" style="padding:8px 14px;text-decoration:none;">🎨 교재 관리에서 안 쓰는 교재 지우기</a></div>
     <div id="dv-msg" class="hint" style="margin-top:6px;"></div>
   </div>
+  <div class="card"><b>👥 학생 이름 합치기</b>
+    <div class="hint" style="margin-top:4px;">같은 학생인데 이름이 다르게 저장됐다면(예: 「홍 길동」, 「홍길동」) 합쳐요. <b>합칠 이름을 체크</b>하고, <b>통일할 이름 하나에 ●</b>를 눌러 주세요. 합치기 전에 자동으로 백업해 둬요.</div>
+    <div id="nm-sim" class="hint" style="margin-top:8px;"></div>
+    <div id="nm-list" style="margin-top:8px;max-height:320px;overflow:auto;"></div>
+    <div style="margin-top:10px;"><button type="button" class="btn primary" id="nm-go" style="padding:8px 14px;">체크한 이름을 ●한 이름으로 합치기</button></div>
+    <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
+  </div>
 </template>
-<script src="js/config.js?v=202611182200"></script>
-<script src="js/api.js?v=202611182200"></script>
-<script src="js/common.js?v=202611182200"></script>
+<script src="js/config.js?v=202611182300"></script>
+<script src="js/api.js?v=202611182300"></script>
+<script src="js/common.js?v=202611182300"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -52,7 +59,22 @@ $('bk-now').addEventListener('click', async () => { $('bk-msg').textContent = '�
 $('bk-auto').addEventListener('click', async () => { try { const r = await callApi('installBackup', { password: getTeacherPassword() }); $('bk-msg').textContent = r.ok ? '✅ 자동 백업을 켰어요' : '⚠️ ' + r.error; load(); } catch (x) { $('bk-msg').textContent = '⚠️ ' + x.message; } });
 $('bk-trim').addEventListener('click', async () => { if (!confirm('자동 백업을 최근 4개만 남기고 오래된 것은 휴지통으로 보낼까요?')) return; try { const r = await callApi('dataTrim', { password: getTeacherPassword(), keep: 4 }); $('bk-msg').textContent = r.ok ? '✅ 오래된 자동 백업 ' + r.removed + '개를 정리했어요' : '⚠️ ' + r.error; load(); } catch (x) { $('bk-msg').textContent = '⚠️ ' + x.message; } });
 $('dv-clean').addEventListener('click', async () => { if (!confirm('올리다 남은 임시 조각을 지울까요?\n(지금 올리는 중인 교재가 있다면 끝난 뒤에 눌러 주세요)')) return; $('dv-msg').textContent = '지우는 중...'; let tot = 0; try { for (let i = 0; i < 40; i++) { const r = await callApi('mergeCleanup', { password: getTeacherPassword(), all: true }); if (!r.ok) throw new Error(r.error); tot += r.removed; $('dv-msg').textContent = '지우는 중... ' + tot + '개'; if (!r.removed) break; } $('dv-msg').textContent = '✅ 임시 조각 ' + tot + '개를 정리했어요'; load(); } catch (x) { $('dv-msg').textContent = '⚠️ ' + x.message; } });
-load();
+let NM = { names: [], similar: [] };
+async function loadNames() {
+  try {
+    const r = await callApi('nameGroups', { password: getTeacherPassword() }); if (!r.ok) { $('nm-list').textContent = r.error || '불러오지 못했어요'; return; }
+    NM = r; const simSet = {}; r.similar.forEach(p => { simSet[p[0]] = 1; simSet[p[1]] = 1; });
+    $('nm-sim').innerHTML = r.similar.length ? '⚠️ 비슷한 이름 ' + r.similar.length + '쌍: ' + r.similar.map(p => '<b>' + e(p[0]) + '</b> ↔ <b>' + e(p[1]) + '</b>').join(' · ') + '<br><span style="font-size:12px;">서로 다른 학생일 수도 있으니 직접 확인하고 합쳐 주세요.</span>' : '비슷한 이름이 없어요 👍';
+    $('nm-list').innerHTML = r.names.map(n => '<label style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-top:1px solid var(--line);' + (simSet[n.name] ? 'background:#fff8e1;' : '') + '"><input type="checkbox" class="nm-chk" value="' + e(n.name) + '"><input type="radio" name="nm-to" class="nm-to" value="' + e(n.name) + '"><span style="flex:1;"><b>' + e(n.name) + '</b> <span class="hint" style="margin:0;">기록 ' + n.count + '건</span></span></label>').join('') || '<span class="hint">기록이 없어요.</span>';
+  } catch (x) { $('nm-list').textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
+}
+$('nm-go').addEventListener('click', async () => {
+  const to = (document.querySelector('.nm-to:checked') || {}).value, from = Array.from(document.querySelectorAll('.nm-chk:checked')).map(c => c.value).filter(v => v !== to);
+  if (!to) { $('nm-msg').textContent = '통일할 이름 하나를 ●로 골라 주세요.'; return; } if (!from.length) { $('nm-msg').textContent = '합칠 이름을 체크해 주세요.'; return; }
+  if (!confirm('「' + from.join(', ') + '」 기록을 모두 「' + to + '」로 바꿀까요?\n(합치기 전에 자동 백업해요. 되돌리려면 백업을 사용해야 해요.)')) return;
+  $('nm-msg').textContent = '합치는 중...'; try { const r = await callApi('mergeNames', { password: getTeacherPassword(), from: from, to: to }); $('nm-msg').textContent = r.ok ? '✅ ' + r.changed + '곳을 「' + to + '」로 통일했어요' : '⚠️ ' + r.error; loadNames(); } catch (x) { $('nm-msg').textContent = '⚠️ ' + x.message; }
+});
+load(); loadNames();
 </script>
 </body>
 </html>

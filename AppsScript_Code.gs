@@ -72,9 +72,20 @@ function getOrCreateFolder_() {
   return DriveApp.createFolder(DRIVE_FOLDER_NAME);
 }
 
+// 비밀번호를 짧은 시간에 너무 많이 틀리면 10분 동안 모든 시도를 막는다 (누가 비밀번호를 계속 넣어 보는 것 방지)
+const PW_FAIL_MAX = 20, PW_LOCK_SEC = 600;
+function pwLocked_() { try { return !!CacheService.getScriptCache().get('pwlock'); } catch (e) { return false; } }
 function checkPassword_(pw) {
+  if (pwLocked_()) return false;
   const stored = PropertiesService.getScriptProperties().getProperty('TEACHER_PASSWORD');
-  return pw === stored;
+  if (pw === stored) return true;
+  if (pw) {       // 비어 있는 값(로그인 전 화면 등)은 틀린 횟수에 세지 않는다
+    try {
+      const c = CacheService.getScriptCache(), n = (parseInt(c.get('pwfail'), 10) || 0) + 1;
+      if (n >= PW_FAIL_MAX) { c.put('pwlock', '1', PW_LOCK_SEC); c.remove('pwfail'); } else c.put('pwfail', String(n), PW_LOCK_SEC);
+    } catch (e) {}
+  }
+  return false;
 }
 
 function json_(obj) {
@@ -170,6 +181,8 @@ function handle_(e) {
       case 'approveStudent': result = actionApproveStudent_(params); break;
       case 'installBackup': result = actionInstallBackup_(params); break;
       case 'studentNames': result = actionStudentNames_(params); break;
+      case 'nameGroups': result = actionNameGroups_(params); break;
+      case 'mergeNames': result = actionMergeNames_(params); break;
       case 'dataStatus': result = actionDataStatus_(params); break;
       case 'dataTrim': result = actionDataTrim_(params); break;
       case 'retryCheck': result = actionRetryCheck_(params); break;
@@ -205,6 +218,7 @@ function handle_(e) {
 }
 
 function actionLogin_(p) {
+  if (pwLocked_()) return { ok: false, locked: true, error: '비밀번호를 너무 많이 틀려서 10분 동안 막혔어요. 잠시 뒤에 다시 해 주세요.' };
   return { ok: checkPassword_(p.password) };
 }
 
@@ -2211,6 +2225,38 @@ function actionInstallBackup_(p) {
     if (!hasTrigger_('autoBackup_')) ScriptApp.newTrigger('autoBackup_').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
     return { ok: true };
   } catch (e) { return { ok: false, error: '자동 백업을 켜지 못했어요: ' + e.message + ' (편집기에서 setupAlerts를 한 번 실행해 권한을 허용해 주세요)' }; }
+}
+// ── 학생 이름 합치기: 철자가 다르게 적힌 같은 학생의 기록을 한 이름으로 통일 ──
+function actionNameGroups_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SCORES), cnt = {}, last = {};
+  if (sh && sh.getLastRow() >= 2) sh.getRange(2, 2, sh.getLastRow() - 1, 5).getValues().forEach(function (r) { const n = String(r[0]).trim(); if (!n) return; cnt[n] = (cnt[n] || 0) + 1; const t = String(r[4]); if (!last[n] || t > last[n]) last[n] = t; });
+  const names = Object.keys(cnt).sort(), list = names.map(function (n) { return { name: n, count: cnt[n], last: last[n] || '' }; });
+  const sim = [];       // 띄어쓰기·대소문자만 다르거나, 3글자 이상에서 한 글자만 다른 이름 쌍
+  for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
+    const a = names[i], b = names[j], ka = nameKey_(a), kb = nameKey_(b);
+    if (ka === kb || (ka.length >= 3 && kb.length >= 3 && Math.abs(ka.length - kb.length) <= 1 && lev_(ka, kb) <= 1)) sim.push([a, b]);
+  }
+  return { ok: true, names: list, similar: sim };
+}
+function actionMergeNames_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const to = String(p.to || '').trim(), from = (Array.isArray(p.from) ? p.from : []).map(function (x) { return String(x).trim(); }).filter(function (x) { return x && x !== to; });
+  if (!to || !from.length) return { ok: false, error: '합칠 이름을 고르고, 통일할 이름을 정해 주세요.' };
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    try { makeBackup_('이름합치기 전'); } catch (e) {}
+    const ss = SpreadsheetApp.getActiveSpreadsheet(), set = {}; from.forEach(function (x) { set[x] = 1; });
+    let n = 0;
+    [[SHEET_SCORES, 2], ['RetryWrong', 2], [SHEET_ASSIGN, 3]].forEach(function (pr) {
+      const sh = ss.getSheetByName(pr[0]); if (!sh || sh.getLastRow() < 2) return;
+      const rng = sh.getRange(2, pr[1], sh.getLastRow() - 1, 1), v = rng.getValues(); let ch = false;
+      v.forEach(function (r) { const x = String(r[0]).trim(); if (set[x]) { r[0] = to; n++; ch = true; } });
+      if (ch) rng.setValues(v);
+    });
+    bustCache_();
+    return { ok: true, changed: n, to: to, from: from };
+  } finally { lock.releaseLock(); }
 }
 // ── 데이터 관리: 백업·드라이브 사용 현황, 오래된 백업 정리 ──
 function backupFiles_() {
