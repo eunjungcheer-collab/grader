@@ -550,7 +550,7 @@ function gradeAnswers_(correctAnswers, studentAnswers) {
 }
 
 // 학생이 제출한 답안을 나중에 고치거나(밀려 쓴 경우) 비워 둔 구간을 이어서 채울 때: 기록을 새로 만들지 않고 그 기록을 고친다.
-// 제출했을 때 받은 시각(submittedAt)과 이름이 맞아야 하고, 제출한 지 3일 안에만 고칠 수 있다. 정답은 알려 주지 않는다.
+// 제출했을 때 받은 시각(submittedAt)과 이름이 맞아야 한다. 비워 둔 문항을 채우는 것은 기간 제한이 없고, 이미 입력한 답을 고치는 것은 30분 안에 한 번만 된다. 정답은 알려 주지 않는다.
 const EDIT_WINDOW_MS_ = 3 * 24 * 3600 * 1000;
 function actionEditSubmission_(p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -571,15 +571,14 @@ function actionEditSubmission_(p) {
       if (new Date(data[i][5]).getTime() === want) { hit = i; break; }
     }
     if (hit < 0) return { ok: false, error: '고칠 기록을 찾지 못했어요. (선생님이 기록을 지웠거나 이름이 달라요)' };
-    if (Date.now() - want > EDIT_WINDOW_MS_) return { ok: false, error: '제출한 지 3일이 지나서 더 고칠 수 없어요. 선생님께 말씀해 주세요.' };
-    // 이미 입력한 답을 바꾸는 것은 「밀려 쓴 것 같을 때」에 30분 안에 한 번만 (결과를 보고 답을 바꿔 찍는 것을 막는다). 비워 둔('~') 문항을 채우는 것은 3일 안이면 언제든 된다.
+    // 이미 입력한 답을 바꾸는 것은 30분 안에 딱 한 번만, 밀려 쓴 것 같으면 몇 개든, 아니면 마킹 실수 정도(3문항까지)만 (결과를 보고 답을 바꿔 찍는 것을 막는다). 비워 둔('~') 문항을 채우는 것은 기간 제한 없이 된다.
     const oldAns = String(data[hit][2]).split(','), nOld = oldAns.length;
     let changed = 0; for (let i = 0; i < nOld; i++) { const o0 = String(oldAns[i]).trim(), n0 = String(studentAnswers[i] === undefined ? '' : studentAnswers[i]).trim(); if (o0 !== '~' && o0 !== '' && o0 !== n0) changed++; }
     if (changed) {
       const cnt = Number(sheet.getRange(hit + 2, 8).getValue()) || 0;
       if (cnt >= 1) return { ok: false, error: '답안은 한 번만 고칠 수 있어요. 선생님께 말씀해 주세요.' };
       if (Date.now() - want > 30 * 60 * 1000) return { ok: false, error: '이미 입력한 답은 제출한 지 30분 안에만 고칠 수 있어요. 선생님께 말씀해 주세요.' };
-      if (!shiftSuspect_(correctAnswers, oldAns.map(function (a) { return String(a).trim(); }))) return { ok: false, error: '이미 입력한 답은 고칠 수 없어요. 답이 밀려 입력된 것 같으면 선생님께 말씀해 주세요.' };
+      if (!shiftSuspect_(correctAnswers, oldAns.map(function (a) { return String(a).trim(); })) && changed > 3) return { ok: false, error: '마킹을 잘못한 문항은 최대 3개까지만 고칠 수 있어요. 답이 많이 밀려 입력됐다면 선생님께 말씀해 주세요.' };
       sheet.getRange(hit + 2, 8).setValue(cnt + 1);
     }
     const g = gradeAnswers_(correctAnswers, studentAnswers), score100 = g.objective ? Math.round(g.score / g.objective * 100) : 0;

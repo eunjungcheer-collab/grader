@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 여러 단원 채점 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190700">
+<link rel="stylesheet" href="css/style.css?v=202611190800">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,9 +14,9 @@
 <template id="page-content">
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
-<script src="js/config.js?v=202611190700"></script>
-<script src="js/api.js?v=202611190700"></script>
-<script src="js/common.js?v=202611190700"></script>
+<script src="js/config.js?v=202611190800"></script>
+<script src="js/api.js?v=202611190800"></script>
+<script src="js/common.js?v=202611190800"></script>
 <script>
 const numLbl = (id, i) => { const f = (typeof state !== 'undefined' && state[id]) ? state[id].info : null; return (f && f.nums && f.nums.length === f.answerCount) ? f.nums[i] : i + 1; };
 renderHeader();
@@ -171,8 +171,13 @@ async function submitAll() {
   showResults(results);
 }
 
+function editGo(exId, mode, subm, answers, shift) {
+  try { sessionStorage.setItem('sx_edit_' + exId, JSON.stringify({ mode: mode, submittedAt: subm, answers: answers, name: studentName, shift: !!shift })); } catch (e) {}
+  location.href = 'student_exam.html?id=' + encodeURIComponent(exId);
+}
 function showResults(results) {
   let sc = 0, tot = 0;
+  results.forEach(({ ex, res }) => { try { localStorage.setItem('sx_last_' + ex.id, JSON.stringify({ name: studentName, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], answers: res.studentAnswers })); } catch (e) {} });
   results.forEach(({ res }) => { sc += res.score || 0; tot += res.total || 0; });
   area().innerHTML = `
     <h1>채점 결과</h1>
@@ -183,11 +188,19 @@ function showResults(results) {
     </div>
     ${results.map(({ ex, res }) => `
       <h2>${ex.unit ? esc(ex.unit) + '단원 ' : ''}${esc(ex.label)} — ${res.total ? res.score + '/' + res.total : '객관식 없음'}</h2>
+      ${(res.skipped && res.skipped.length) || res.submittedAt ? `<div class="card" style="margin-bottom:8px;">
+        ${res.skipped && res.skipped.length ? `<p class="hint" style="margin:0 0 6px;">📝 비워 둔 문항이 ${res.skipped.length}개 있어요. 언제든 이어서 입력할 수 있어요.</p><button type="button" class="btn primary" data-edit="fill" data-ex="${esc(ex.id)}" style="width:100%; margin-bottom:6px;">이어서 입력하기</button>` : ''}
+        ${res.shiftSuspect ? `<p class="hint" style="margin:0 0 6px;">⚠️ 답이 한 칸씩 밀려 입력된 것 같아요. 30분 안에 한 번만 고칠 수 있어요.</p>` : `<p class="hint" style="margin:0 0 6px;">마킹을 잘못 눌렀다면 30분 안에 한 번만, 최대 3문항까지 고칠 수 있어요.</p>`}
+        <button type="button" class="btn ${res.shiftSuspect ? 'primary' : 'outline'}" data-edit="fix" data-ex="${esc(ex.id)}" style="width:100%;">✏️ 답안 수정하기</button></div>` : ''}
       <div class="card">${res.results.map((rs, i) => rs === 'subj' ? `
         <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${numLbl(ex.id, i)}번</span><span>주관식 (자동 채점 제외)</span></div>` : rs === 'skip' ? `
         <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${numLbl(ex.id, i)}번</span><span>안 푼 문항 (채점 제외)</span></div>` : `
         <div class="submission-row"><span>${numLbl(ex.id, i)}번</span><span>내 답: ${fmtAnswer(res.studentAnswers[i])} ${rs === 'ok' ? '✅' : '❌'}</span></div>`).join('')}</div>`).join('')}
     <button type="button" class="btn outline" style="width:100%;" onclick="location.reload()">다른 단원 또 채점하기</button>`;
+  area().querySelectorAll('button[data-edit]').forEach(bt => bt.addEventListener('click', () => {
+    const r = results.find(x => String(x.ex.id) === bt.dataset.ex); if (!r) return;
+    editGo(r.ex.id, bt.dataset.edit, r.res.submittedAt, r.res.studentAnswers, r.res.shiftSuspect);
+  }));
 }
 load();
 </script>
