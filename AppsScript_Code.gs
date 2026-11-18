@@ -2871,11 +2871,12 @@ function actionListHomework_(p) {
 
 // 삭제한 뒤 같은 단원으로 다시 등록한 시험지를 찾아, 예전 QR(예전 시험 번호)이 새 시험지로 열리게 이어 준다.
 // 휴지통(30일)에 있는 삭제된 시험지의 교재 번호+단원 이름이 지금 시험지와 같으면 짝으로 본다.
+// p.apply 가 없으면 「후보만 보여 주기」(아무것도 바꾸지 않음), 있으면 [{oldId,newId}] 중 후보와 일치하는 것만 이어 준다.
 function actionRelinkOldQr_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
-  const done = [], none = [];
+  const cands = []; let noneN = 0, linked = 0;
   try {
     const tr = trashRead_(ss), data = exams.getDataRange().getValues(), live = [];
     for (let i = 1; i < data.length; i++) { const rc = safeJson_(data[i][8], null); if (rc && rc.book) live.push({ i: i, id: String(data[i][0]), rc: rc, title: String(data[i][1]) }); }
@@ -2889,14 +2890,22 @@ function actionRelinkOldQr_(p) {
       const books = [String(orc.book)].concat((orc.books || []).map(String));
       const label = String(orc.label || row[1]);
       const cand = live.filter(function (x) { const xb = [String(x.rc.book)].concat((x.rc.books || []).map(String)); return xb.some(function (b) { return books.indexOf(b) >= 0; }) && String(x.rc.label || x.title) === label; });
-      if (cand.length !== 1) { none.push(label + (cand.length > 1 ? ' (같은 단원이 여러 개)' : ' (다시 등록된 시험지를 못 찾음)')); return; }
-      const c = cand[0], al = (c.rc.aliases || []).map(String);
-      if (al.indexOf(oldId) < 0) { al.push(oldId); c.rc.aliases = al; exams.getRange(c.i + 1, 9).setValue(JSON.stringify(c.rc)); }
-      done.push(label);
+      if (cand.length !== 1) { noneN++; return; }
+      const c = cand[0];
+      if ((c.rc.aliases || []).map(String).indexOf(oldId) >= 0) return;      // 이미 이어져 있음
+      cands.push({ oldId: oldId, newId: c.id, label: label, oldTitle: String(row[1]), newTitle: c.title, deletedAt: it.at, _c: c });
     });
+    if (Array.isArray(p.apply)) {
+      const want = {}; p.apply.forEach(function (x) { want[String(x.oldId) + '>' + String(x.newId)] = 1; });
+      cands.forEach(function (k) {
+        if (!want[k.oldId + '>' + k.newId]) return;
+        const al = (k._c.rc.aliases || []).map(String); al.push(k.oldId); k._c.rc.aliases = al;
+        exams.getRange(k._c.i + 1, 9).setValue(JSON.stringify(k._c.rc)); linked++;
+      });
+    }
   } finally { lock.releaseLock(); }
-  if (done.length) bustCache_();
-  return { ok: true, linked: done.length, done: done, none: none };
+  if (linked) bustCache_();
+  return { ok: true, linked: linked, candidates: cands.map(function (k) { return { oldId: k.oldId, newId: k.newId, label: k.label, oldTitle: k.oldTitle, newTitle: k.newTitle, deletedAt: k.deletedAt }; }), noneCount: noneN };
 }
 
 // 이 시험지에 이어붙인 예전 QR(별칭)을 모두 해제한다. 해제하면 그 예전 QR은 다시 「존재하지 않는 시험」이 된다.
@@ -2906,6 +2915,15 @@ function actionUnlinkOldQr_(p) {
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
   let n = 0;
   try {
+    if (p.all === true) {
+      const all = exams.getDataRange().getValues();
+      for (let i = 1; i < all.length; i++) {
+        const t = String(all[i][8] || ''); if (t.indexOf('"aliases"') < 0) continue;
+        const rc0 = safeJson_(t, null); if (rc0 && rc0.aliases && rc0.aliases.length) { n += rc0.aliases.length; delete rc0.aliases; exams.getRange(i + 1, 9).setValue(JSON.stringify(rc0)); }
+      }
+      if (n) bustCache_();
+      return { ok: true, removed: n };
+    }
     const data = exams.getDataRange().getValues();
     let rowIndex = 0; for (let i = 1; i < data.length; i++) if (String(data[i][0]) === String(p.id)) { rowIndex = i + 1; break; }
     if (!rowIndex) return { ok: false, error: '존재하지 않는 시험이에요.' };

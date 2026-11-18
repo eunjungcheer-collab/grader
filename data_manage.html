@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190545">
+<link rel="stylesheet" href="css/style.css?v=202611190555">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -26,9 +26,13 @@
   </div>
   <div class="card" id="rq-card">
       <b>🔗 삭제 후 다시 등록한 시험지의 예전 QR 이어붙이기</b>
-      <p class="hint" style="margin:6px 0 8px;">시험지를 삭제하고 같은 단원으로 다시 등록하면, 이미 나눠 준 교재의 그 단원 QR은 「존재하지 않는 시험」이 돼요. 이 버튼을 누르면 휴지통(30일)에 있는 예전 시험지를 찾아, 예전 QR이 새로 등록한 시험지로 열리게 이어 줘요. 여러 번 눌러도 안전해요.</p>
-      <button type="button" class="btn primary" id="rq-btn">🔗 예전 QR 이어붙이기</button>
+      <p class="hint" style="margin:6px 0 8px;">시험지를 삭제하고 같은 단원으로 다시 등록하면, 이미 나눠 준 교재의 그 단원 QR은 「존재하지 않는 시험」이 돼요. 먼저 후보를 찾아 보여 드리고, <b>체크한 것만</b> 이어 줘요. (휴지통 30일 이내의 삭제된 시험지만 찾을 수 있어요)</p>
+      <button type="button" class="btn primary" id="rq-find">🔍 이어 줄 후보 찾기</button>
+      <div id="rq-list" style="margin-top:10px;"></div>
       <div class="hint" id="rq-msg" style="margin-top:8px;"></div>
+      <hr style="border:0;border-top:1px solid #ddd;margin:12px 0;">
+      <button type="button" class="btn outline" id="rq-clear" style="font-size:13px;">이어붙인 것 전부 해제</button>
+      <span class="hint">(한 시험지씩 해제하려면 그 시험지 화면에서 해제하세요)</span>
     </div>
     <div class="card" id="pc-card">
       <b>💾 인쇄용 PDF 보관 (이 컴퓨터)</b>
@@ -63,10 +67,10 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611190545"></script>
-<script src="js/api.js?v=202611190545"></script>
-<script src="js/common.js?v=202611190545"></script>
-<script src="js/pdfui.js?v=202611190545"></script>
+<script src="js/config.js?v=202611190555"></script>
+<script src="js/api.js?v=202611190555"></script>
+<script src="js/common.js?v=202611190555"></script>
+<script src="js/pdfui.js?v=202611190555"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -127,14 +131,29 @@ load();
   on.addEventListener('change', () => { try { localStorage.setItem('pdfCache', on.checked ? 'on' : 'off'); } catch (e) {} $('pc-msg').textContent = on.checked ? '켰어요.' : '껐어요 (이미 보관한 PDF는 그대로예요).'; });
   $('pc-clear').addEventListener('click', async () => { const n = await pdfCacheClear(); $('pc-msg').textContent = n + '개를 지웠어요.'; show(); });
   show(); })();
-$('rq-btn').addEventListener('click', async () => {
-  const b = $('rq-btn'), m = $('rq-msg'); b.disabled = true; m.textContent = '찾는 중...';
+let rqC = [];
+$('rq-find').addEventListener('click', async () => {
+  const b = $('rq-find'), m = $('rq-msg'), L = $('rq-list'); b.disabled = true; m.textContent = '찾는 중...'; L.innerHTML = '';
   try {
     const r = await callApi('relinkOldQr', { password: getTeacherPassword() });
-    if (!r.ok) { m.textContent = r.error || '실패했어요'; }
-    else m.innerHTML = (r.linked ? '✅ ' + r.linked + '개 단원의 예전 QR을 이어 줬어요.<br>' + r.done.map(e).join('<br>') : '이어 줄 시험지가 없어요.') + (r.none.length ? '<br><span style="color:#B45309;">이어 주지 못한 것: ' + r.none.map(e).join(' / ') + '</span>' : '');
+    if (!r.ok) { m.textContent = r.error || '실패했어요'; b.disabled = false; return; }
+    rqC = r.candidates;
+    if (!rqC.length) { m.textContent = '새로 이어 줄 후보가 없어요.' + (r.noneCount ? ' (삭제만 하고 다시 등록하지 않은 시험지 ' + r.noneCount + '개는 이을 곳이 없어요)' : ''); b.disabled = false; return; }
+    m.textContent = '이어 줄 후보 ' + rqC.length + '개 (체크한 것만 이어요)' + (r.noneCount ? ' · 다시 등록하지 않은 삭제 시험지 ' + r.noneCount + '개는 이을 곳이 없어 빠졌어요' : '');
+    L.innerHTML = '<label style="font-weight:700;display:block;margin-bottom:6px;"><input type="checkbox" id="rq-all"> 전체 선택</label>' + rqC.map((c, i) => '<label style="display:block;padding:6px 0;border-top:1px solid #eee;"><input type="checkbox" class="rq-c" data-i="' + i + '"> <b>' + e(c.label) + '</b><br><span style="font-size:12px;color:#555;">삭제한 시험지: ' + e(c.oldTitle) + ' (' + e(D(c.deletedAt)) + ')<br>이어 줄 새 시험지: ' + e(c.newTitle) + '</span></label>').join('') + '<button type="button" class="btn primary" id="rq-apply" style="margin-top:10px;">선택한 것 이어붙이기</button>';
+    $('rq-all').addEventListener('change', ev => document.querySelectorAll('.rq-c').forEach(c => { c.checked = ev.target.checked; }));
+    $('rq-apply').addEventListener('click', async () => {
+      const pick = Array.from(document.querySelectorAll('.rq-c')).filter(c => c.checked).map(c => rqC[+c.dataset.i]);
+      if (!pick.length) { m.textContent = '체크한 것이 없어요.'; return; }
+      $('rq-apply').disabled = true; m.textContent = '이어 주는 중...';
+      try { const r2 = await callApi('relinkOldQr', { password: getTeacherPassword(), apply: pick.map(c => ({ oldId: c.oldId, newId: c.newId })) }); m.textContent = r2.ok ? '✅ ' + r2.linked + '개를 이어 줬어요.' : (r2.error || '실패했어요'); if (r2.ok) L.innerHTML = ''; } catch (x) { m.textContent = '서버에 연결할 수 없어요.'; }
+    });
   } catch (x) { m.textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
   b.disabled = false;
+});
+$('rq-clear').addEventListener('click', async () => {
+  const m = $('rq-msg'); if (!confirm('이어붙인 예전 QR을 모두 해제할까요? 해제하면 그 QR들은 다시 「존재하지 않는 시험」이 돼요. (새 시험지와 제출 기록은 그대로예요)')) return;
+  try { const r = await callApi('unlinkOldQr', { password: getTeacherPassword(), all: true }); m.textContent = r.ok ? '예전 QR ' + r.removed + '개의 이어붙임을 모두 해제했어요.' : (r.error || '실패했어요'); } catch (x) { m.textContent = '서버에 연결할 수 없어요.'; }
 });
 loadUsage(); loadNames();
 </script>
