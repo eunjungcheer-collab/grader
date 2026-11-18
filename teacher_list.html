@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611190304">
+<link rel="stylesheet" href="css/style.css?v=202611190318">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -42,11 +42,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611190304"></script>
-<script src="js/api.js?v=202611190304"></script>
-<script src="js/common.js?v=202611190304"></script>
-<script src="js/bankcore.js?v=202611190304"></script>
-<script src="js/pdfui.js?v=202611190304"></script>
+<script src="js/config.js?v=202611190318"></script>
+<script src="js/api.js?v=202611190318"></script>
+<script src="js/common.js?v=202611190318"></script>
+<script src="js/bankcore.js?v=202611190318"></script>
+<script src="js/pdfui.js?v=202611190318"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -182,8 +182,8 @@ renderHeader();
         </a>
         <a class="btn outline" href="teacher_new.html?review=${encodeURIComponent(ex.id)}" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;">✏️ 단원·정답 수정</a>
         <a class="btn outline" href="alerts.html?exam=${encodeURIComponent(ex.id)}#assign" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;">👥 학생에게 배정</a>
-        <a class="btn primary" href="teacher_exam.html?id=${encodeURIComponent(ex.id)}&print=student" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;" title="시험지 화면이 열리면서 학생용이 바로 인쇄돼요">🖨️ 학생용 인쇄</a>
-        <a class="btn outline" href="teacher_exam.html?id=${encodeURIComponent(ex.id)}&print=teacher" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;" title="시험지 화면이 열리면서 강사용이 바로 인쇄돼요">🖨️ 강사용 인쇄</a>
+        <a class="btn primary list-print" href="teacher_exam.html?id=${encodeURIComponent(ex.id)}&print=student" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;" title="시험지 화면이 열리면서 학생용이 바로 인쇄돼요">🖨️ 학생용 인쇄</a>
+        <a class="btn outline list-print" href="teacher_exam.html?id=${encodeURIComponent(ex.id)}&print=teacher" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;" title="시험지 화면이 열리면서 강사용이 바로 인쇄돼요">🖨️ 강사용 인쇄</a>
         <button type="button" class="btn outline dup-exam-btn" data-id="${ex.id}" data-title="${escapeHtml(ex.title)}" style="margin-top:8px; padding:7px 12px; font-size:13px;">📄 복사해서 새 시험 만들기</button>
         <button type="button" class="btn danger del-exam-btn" data-id="${ex.id}" data-title="${escapeHtml(ex.title)}" style="margin-top:8px; padding:7px 12px; font-size:13px;">삭제</button>
       </div>`).join('') : '<div class="card center muted">조건에 맞는 시험지가 없어요.</div>';
@@ -302,6 +302,36 @@ renderHeader();
     container.innerHTML = '<div class="banner error">서버에 연결할 수 없어요.</div>';
   }
 })();
+
+// 목록에서 「학생용/강사용 인쇄」: 시험지 화면으로 넘어가지 않고, 숨은 창에서 그 화면을 열어 인쇄하고 진행 상황만 여기에 보여 준다
+let printFrame = null;
+function printModal(title) {
+  let m = document.getElementById('lp-modal'); if (m) m.remove();
+  m = document.createElement('div'); m.id = 'lp-modal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px;';
+  m.innerHTML = '<div style="background:#fff;border-radius:14px;padding:22px 22px 18px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3);"><div id="lp-t" style="font-size:18px;font-weight:800;color:#1F3A6B;"></div><div style="height:18px;background:#e6e1d6;border-radius:10px;overflow:hidden;margin:14px 0 8px;"><div id="lp-f" style="height:100%;width:8%;background:#1f6f4a;transition:width .5s linear;"></div></div><div id="lp-m" style="font-size:14px;line-height:1.5;color:#374151;min-height:42px;word-break:break-all;"></div><div style="text-align:right;margin-top:10px;"><button type="button" id="lp-x" class="btn outline" style="padding:8px 18px;display:none;">닫기</button></div></div>';
+  document.body.appendChild(m);
+  m.querySelector('#lp-x').addEventListener('click', () => m.remove());
+  m.querySelector('#lp-t').textContent = title;
+  return { t: m.querySelector('#lp-t'), f: m.querySelector('#lp-f'), m: m.querySelector('#lp-m'), x: m.querySelector('#lp-x') };
+}
+document.addEventListener('click', ev => {
+  const a = ev.target.closest && ev.target.closest('a.list-print'); if (!a) return;
+  ev.preventDefault();
+  const M = printModal('🖨️ 인쇄 준비 중이에요'); M.m.textContent = '시험지를 불러오는 중...';
+  let timer = setTimeout(() => { M.t.textContent = '⚠️ 시간이 오래 걸려요'; M.m.textContent = '응답이 없어요. 시험지 화면에서 직접 인쇄해 주세요.'; M.x.style.display = ''; }, 120000);
+  const onMsg = e => {
+    if (e.origin !== location.origin || !e.data || !e.data.wnPrint) return;
+    clearTimeout(timer); const d = e.data;
+    if (d.wnPrint === 'progress') { M.m.textContent = d.text || ''; const g = String(d.text || '').match(/(\d+)\s*\/\s*(\d+)/), p = String(d.text || '').match(/(\d+)%/); M.f.style.width = (g ? Math.max(8, Math.round(g[1] / g[2] * 100)) : p ? Math.max(8, +p[1]) : 20) + '%'; timer = setTimeout(() => {}, 1); }
+    else if (d.wnPrint === 'done') { M.f.style.width = '100%'; M.t.textContent = '✅ 인쇄 창으로 보냈어요'; M.m.textContent = ''; M.x.style.display = ''; window.removeEventListener('message', onMsg); setTimeout(() => { const mm = document.getElementById('lp-modal'); if (mm) mm.remove(); }, 2500); }
+    else if (d.wnPrint === 'error') { M.t.textContent = '⚠️ 인쇄하지 못했어요'; M.m.textContent = d.text || ''; M.x.style.display = ''; window.removeEventListener('message', onMsg); }
+  };
+  window.addEventListener('message', onMsg);
+  if (printFrame) printFrame.remove();
+  printFrame = document.createElement('iframe'); printFrame.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;';
+  printFrame.src = a.getAttribute('href') + '&embed=1'; document.body.appendChild(printFrame);
+});
 </script>
 </body>
 </html>
