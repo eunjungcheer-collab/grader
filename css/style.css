@@ -612,3 +612,6 @@ details:not([open]) .month-summary::before{transform:rotate(-90deg);}
 .rv-img { border:1px solid var(--line); border-radius:8px; padding:4px; background:#fff; max-width:100%; }
 .rv-img b { display:block; font-size:12px; color:#C1392B; }
 .rv-img img { max-width:100%; width:380px; display:block; }
+
+.nav-back{display:inline-block; padding:6px 12px; border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--navy,#0B1F5C); font-size:14px; font-weight:700; text-decoration:none; white-space:nowrap;}
+.nav-back:hover{background:#F3F4F6;}
