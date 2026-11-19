@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191340">
+<link rel="stylesheet" href="css/style.css?v=202611191400">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -39,14 +39,18 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191340"></script>
-<script src="js/api.js?v=202611191340"></script>
-<script src="js/common.js?v=202611191340"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191340"></script>
-<script src="js/bankcore.js?v=202611191340"></script>
+<script src="js/config.js?v=202611191400"></script>
+<script src="js/api.js?v=202611191400"></script>
+<script src="js/common.js?v=202611191400"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191400"></script>
+<script src="js/vendor/pdf.min.js?v=202611191400"></script>
+<script src="js/printpdf.js?v=202611191400"></script>
+<script src="js/pdfui.js?v=202611191400"></script>
+<script src="js/pdfview.js?v=202611191400"></script>
+<script src="js/bankcore.js?v=202611191400"></script>
 <script>
 requireLogin();
-renderHeader();
+renderHeader({ wider: true });
 
 function rangeInfo(q, picks) {
   const m = String(q.textPreview || '').match(/^\s*[\[(【]\s*(\d{1,2})\s*[~∼～\-–]\s*(\d{1,2})\s*(?:번)?\s*[\])】]/);
@@ -207,10 +211,31 @@ function goBack(ev) { if (ev) ev.preventDefault(); $('ac-detail').style.display 
 // 문제은행에서 그림을 못 찾는 시험지(PDF로만 올린 것 등): 번호별로 정답만 고치게 한다
 function renderNoImages(exam, why) {
   const box = $('ac-detail');
-  box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2><div class="banner" style="text-align:left;">이 시험지는 문제 그림을 문제은행에서 찾지 못해 보기 표시를 자동으로 확인할 수 없어요.<br><span class="hint">' + escapeHtml(why) + '</span><br>' + (exam.pdfUrl ? '<a href="' + escapeHtml(exam.pdfUrl) + '" target="_blank" rel="noopener">📄 학생용 시험지 PDF 열어 보기</a><br>' : '') + '시험지(또는 교재)를 보면서 아래 번호의 정답을 직접 적어 주세요. 정답이 이미 있는 문항은 바뀌지 않아요.</div><div id="ac-qs"></div><div id="ac-save-bar"></div>';
+  box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2>'
+    + '<div class="split"><div class="pane-left"><div class="vhead"><b>시험지 PDF</b><input type="number" id="ac-go" min="1" placeholder="쪽"><button type="button" class="btn ghost" id="ac-gob">이동</button><button type="button" class="btn ghost" id="ac-last">마지막 쪽</button><button type="button" class="btn ghost" id="ac-zo">−</button><button type="button" class="btn ghost" id="ac-zi">＋</button></div><div class="vscroll" id="ac-pdf"><p class="muted" style="padding:12px;">시험지 PDF를 불러오는 중...</p></div></div>'
+    + '<div><div class="banner" style="text-align:left;margin-top:0;">이 시험지는 문제 그림을 문제은행에서 찾지 못해 보기 표시를 자동으로 확인할 수 없어요. 왼쪽 PDF를 보면서 <b>주관식(-)으로 저장된 번호</b>의 정답을 적어 주세요. 진짜 서술형은 비워 두세요. 정답이 이미 있는 문항은 바뀌지 않아요.<br><span class="hint">' + escapeHtml(why) + '</span></div><div id="ac-qs"></div><div id="ac-save-bar"></div></div></div>';
   $('ac-back').onclick = goBack;
-  const items = exam.answers.map((a, i) => a === '-' ? { slot: { start: i + 1, k: 1 }, q: null, b64: '', mc: false, idx: i } : null).filter(Boolean);
-  drawCards(exam, items.map(x => ({ k: x.idx, q: null, slot: x.slot, b64: '', mc: false })));
+  const items = exam.answers.map((a, i) => a === '-' ? { slot: { start: i + 1, k: 1 }, q: null, b64: '', mc: false, k: i } : null).filter(Boolean);
+  drawCards(exam, items);
+  loadPdfPane(exam);
+}
+// 시험지 PDF를 왼쪽에 띄운다 (시험지 등록 화면과 같은 뷰어). 구글 드라이브에서 받아 오므로 PDF가 없는 시험지(교재 QR 등)는 안내만 한다
+async function loadPdfPane(exam) {
+  const host = $('ac-pdf'), say = m => { host.innerHTML = '<p class="muted" style="padding:12px;">' + escapeHtml(m) + '</p>'; };
+  const fid = (String(exam.pdfUrl || '').match(/[?&]id=([^&]+)/) || [])[1];
+  if (!fid) return say('이 시험지에는 올려 둔 PDF가 없어요. 시험지나 교재를 보면서 정답을 적어 주세요.');
+  try {
+    setupPdfJs();
+    const blob = await driveDirectBlob(fid, (g, tot) => { if (tot) say('시험지 PDF를 받는 중... ' + Math.floor(g / tot * 100) + '%'); });
+    if (!blob) return say('PDF를 받지 못했어요. 서버(Apps Script)가 새 버전인지 확인하거나, 아래 링크로 열어 주세요.' + (exam.pdfUrl ? ' ' : ''));
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+    const pane = new PdfPane(host); await pane.setDoc(doc, 1);
+    $('ac-go').max = doc.numPages;
+    $('ac-gob').onclick = () => { const n = parseInt($('ac-go').value, 10); if (n >= 1 && n <= doc.numPages) pane.scrollToPage(n); };
+    $('ac-last').onclick = () => pane.scrollToPage(doc.numPages);
+    $('ac-zo').onclick = () => pane.setScale(Math.max(0.6, pane.scale - 0.2));
+    $('ac-zi').onclick = () => pane.setScale(Math.min(2.6, pane.scale + 0.2));
+  } catch (e) { say('PDF를 열지 못했어요: ' + (e.message || e)); }
 }
 function renderExam(exam, found) {
   const box = $('ac-detail'), mcN = found.filter(f => f.mc || f.weak).length;
