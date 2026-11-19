@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192115">
+<link rel="stylesheet" href="css/style.css?v=202611192130">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611192115"></script>
-<script src="js/api.js?v=202611192115"></script>
-<script src="js/common.js?v=202611192115"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192115"></script>
-<script src="js/vendor/pdf.min.js?v=202611192115"></script>
-<script src="js/printpdf.js?v=202611192115"></script>
-<script src="js/pdfui.js?v=202611192115"></script>
-<script src="js/pdfview.js?v=202611192115"></script>
-<script src="js/bankcore.js?v=202611192115"></script>
+<script src="js/config.js?v=202611192130"></script>
+<script src="js/api.js?v=202611192130"></script>
+<script src="js/common.js?v=202611192130"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192130"></script>
+<script src="js/vendor/pdf.min.js?v=202611192130"></script>
+<script src="js/printpdf.js?v=202611192130"></script>
+<script src="js/pdfui.js?v=202611192130"></script>
+<script src="js/pdfview.js?v=202611192130"></script>
+<script src="js/bankcore.js?v=202611192130"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -201,19 +201,24 @@ async function attachAnswerPdf(exam, f) {
 async function unitsUi(exam) {
   const host = $('ac-units'); if (!host) return;
   const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const seen = {}, rows = [];
-  const add = q => { if (q && q.id && !seen[q.id]) { seen[q.id] = 1; rows.push(q); } };
-  ((CUR && CUR.picks) || []).forEach(add);
-  (BANK || []).filter(q => nz(q.source) === nz(exam.title)).forEach(add);
-  rows.sort((a, b) => (Number(a.num) || 999) - (Number(b.num) || 999));
+  // 시험지의 1번부터 끝 번호까지 빠짐없이 한 줄씩: 문제은행 문항이 있으면 단원 칸, 묶음 문항(예: 20~21번)은 한 줄로, 문항이 없으면 없다고 표시
+  const seen = {}, rows = [], lab = {}, byNum = {}, covered = {};
+  const slotsC = (CUR && CUR.slots) || [], picksC = (CUR && CUR.picks) || [];
+  picksC.forEach((q, k) => { const sl = slotsC[k]; if (q && sl) { byNum[sl.start] = q; lab[q.id] = sl.label; for (let t = sl.start + 1; t < sl.start + sl.k; t++) covered[t] = sl.start; } });
+  (BANK || []).filter(q => nz(q.source) === nz(exam.title) && Number(q.num) > 0).forEach(q => { if (!byNum[Number(q.num)] && !covered[Number(q.num)]) byNum[Number(q.num)] = q; });
+  const lines = [];
+  for (let i = 1; i <= exam.answers.length; i++) {
+    if (covered[i]) continue;
+    const q = byNum[i];
+    if (q && !seen[q.id]) { seen[q.id] = 1; rows.push(q); lines.push({ n: i, q: q }); } else lines.push({ n: i, q: null });
+  }
   if (!rows.length) { host.innerHTML = '<details style="margin:8px 0;"><summary class="hint" style="cursor:pointer;">🧭 단원·소단원 — 이 시험지에 연결된 문제은행 문항을 찾지 못했어요</summary></details>'; return; }
   await ensureToc();
   const NU = (BankCore && BankCore.NO_UNIT) || '(단원 미지정)';
   const bad = q => !String(q.unit || '').trim() || q.unit === NU || (() => { const e = tocEntryFor(q.grade, q.unit); return !!(e && (e.subs || []).length && !String(q.sub || '').trim()); })();
   const nBad = rows.filter(bad).length;
-  host.innerHTML = '<details' + (nBad ? ' open' : '') + ' style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">🧭 단원·소단원 확인/수정 (' + rows.length + '문항' + (nBad ? ', <span style="color:#B91C1C">비었거나 확인 필요 ' + nBad + '개</span>' : ', 모두 설정됨') + ')</summary><div class="card" style="padding:8px 12px;">' + rows.map(q =>
-    '<div class="ac-urow" data-id="' + escapeHtml(String(q.id)) + '" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 4px;border-bottom:1px solid #eee;' + (bad(q) ? 'background:#FEF3C7;' : '') + '"><b style="min-width:34px;">' + escapeHtml(String(q.num || '?')) + '번</b>'
-    + '<select class="u" style="max-width:260px;">' + unitSelectOptions(q.grade, q.unit, q.grade) + '</select><span class="sub-wrap"><select class="subsel" style="max-width:260px;"></select></span><span class="hint flash"></span></div>').join('') + '</div></details>';
+  host.innerHTML = '<details' + (nBad ? ' open' : '') + ' style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">🧭 단원·소단원 확인/수정 (' + rows.length + '문항' + (nBad ? ', <span style="color:#B91C1C">비었거나 확인 필요 ' + nBad + '개</span>' : ', 모두 설정됨') + ')</summary><div class="card" style="padding:8px 12px;">' + lines.map(ln => { const q = ln.q; if (!q) return '<div style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid #eee;color:#9CA3AF;"><b style="min-width:34px;">' + ln.n + '번</b><span>문제은행에 이 번호 문항이 없어요 (삭제됐거나 가져오지 않았어요)</span></div>'; return '<div class="ac-urow" data-id="' + escapeHtml(String(q.id)) + '" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 4px;border-bottom:1px solid #eee;' + (bad(q) ? 'background:#FEF3C7;' : '') + '"><b style="min-width:34px;">' + escapeHtml(String(lab[q.id] || ln.n)) + '번</b>'
+    + '<select class="u" style="max-width:260px;">' + unitSelectOptions(q.grade, q.unit, q.grade) + '</select><span class="sub-wrap"><select class="subsel" style="max-width:260px;"></select></span><span class="hint flash"></span></div>'; }).join('') + '</div></details>';
   host.querySelectorAll('.ac-urow').forEach(el => {
     const q = rows.find(x => String(x.id) === el.getAttribute('data-id')), us = el.querySelector('.u'), ss = el.querySelector('.subsel'), fl = el.querySelector('.flash');
     refreshSubSelect(ss, tocEntryFor(q.grade, q.unit), q.sub || '');
