@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192110">
+<link rel="stylesheet" href="css/style.css?v=202611192115">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611192110"></script>
-<script src="js/api.js?v=202611192110"></script>
-<script src="js/common.js?v=202611192110"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192110"></script>
-<script src="js/vendor/pdf.min.js?v=202611192110"></script>
-<script src="js/printpdf.js?v=202611192110"></script>
-<script src="js/pdfui.js?v=202611192110"></script>
-<script src="js/pdfview.js?v=202611192110"></script>
-<script src="js/bankcore.js?v=202611192110"></script>
+<script src="js/config.js?v=202611192115"></script>
+<script src="js/api.js?v=202611192115"></script>
+<script src="js/common.js?v=202611192115"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192115"></script>
+<script src="js/vendor/pdf.min.js?v=202611192115"></script>
+<script src="js/printpdf.js?v=202611192115"></script>
+<script src="js/pdfui.js?v=202611192115"></script>
+<script src="js/pdfview.js?v=202611192115"></script>
+<script src="js/bankcore.js?v=202611192115"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -129,10 +129,10 @@ let EXAMS = [], BANK = null;
 // 1단계: 서버가 이미 알고 있는 숫자(문항 수·주관식 수)만으로 의심 정도를 매긴다
 // 「검사해 보니 이상 없음」으로 확인한 시험지는 (문항 수·주관식 수가 그대로인 동안) 의심에서 뺀다. 이 브라우저에 기억
 function okSet() { try { return JSON.parse(localStorage.getItem('ac_ok') || '{}') || {}; } catch (e) { return {}; } }
-function markOk(ex, on) { try { const d = okSet(); if (on) d[String(ex.id)] = (ex.answerCount || 0) + ':' + (ex.subjectiveCount || 0); else delete d[String(ex.id)]; localStorage.setItem('ac_ok', JSON.stringify(d)); } catch (e) {} }
+function markOk(ex, on) { try { const d = okSet(); if (on) d[String(ex.id)] = new Date().toISOString().slice(0, 10); else delete d[String(ex.id)]; localStorage.setItem('ac_ok', JSON.stringify(d)); } catch (e) {} }
 function risk(ex) {
   const n = ex.answerCount || 0, s = ex.subjectiveCount || 0;
-  if (okSet()[String(ex.id)] === n + ':' + s) return { lv: 'ok', label: '✔ 확인함 · 이상 없음', score: 0, checked: true };
+  if (okSet()[String(ex.id)]) return { lv: 'ok', label: '✔ 확인함 · 이상 없음', score: 0, checked: true };
   if (!s || !n) return { lv: 'ok', label: '주관식 없음', score: 0 };
   if (/서술형|서답형|논술형/.test(String(ex.title || '')) && s / n < 0.4) return { lv: 'lo', label: '서술형 포함 시험지', score: 1 };
   const r = s / n, pct = Math.round(r * 100);
@@ -484,7 +484,7 @@ function saveBar(exam, found) {
   $('ac-tolist').addEventListener('click', () => { goBack(); window.scrollTo(0, 0); });
   { const ex0 = EXAMS.find(x => String(x.id) === String(exam.id)) || exam, ob = $('ac-okbox'), lb = $('ac-oklbl');
     const paint = () => { lb.style.background = ob.checked ? '#15803D' : '#fff'; lb.style.color = ob.checked ? '#fff' : '#15803D'; };
-    ob.checked = okSet()[String(ex0.id)] === (ex0.answerCount || 0) + ':' + (ex0.subjectiveCount || 0); paint();
+    ob.checked = !!okSet()[String(ex0.id)]; paint();
     ob.addEventListener('change', () => { markOk(ex0, ob.checked); paint(); renderList(); }); }
 }
 function drawGrid(exam) {
