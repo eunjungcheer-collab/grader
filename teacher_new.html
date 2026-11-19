@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192350">
+<link rel="stylesheet" href="css/style.css?v=202611192358">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611192350"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192350"></script>
-<script src="js/printpdf.js?v=202611192350"></script>
-<script src="js/vendor/pdf.min.js?v=202611192350"></script>
-<script src="js/config.js?v=202611192350"></script>
-<script src="js/api.js?v=202611192350"></script>
-<script src="js/common.js?v=202611192350"></script>
-<script src="js/ocr.js?v=202611192350"></script>
-<script src="js/bankcore.js?v=202611192350"></script>
-<script src="js/pdfui.js?v=202611192350"></script>
-<script src="js/pdfview.js?v=202611192350"></script>
+<script src="js/vendor/qrcode.min.js?v=202611192358"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192358"></script>
+<script src="js/printpdf.js?v=202611192358"></script>
+<script src="js/vendor/pdf.min.js?v=202611192358"></script>
+<script src="js/config.js?v=202611192358"></script>
+<script src="js/api.js?v=202611192358"></script>
+<script src="js/common.js?v=202611192358"></script>
+<script src="js/ocr.js?v=202611192358"></script>
+<script src="js/bankcore.js?v=202611192358"></script>
+<script src="js/pdfui.js?v=202611192358"></script>
+<script src="js/pdfview.js?v=202611192358"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1877,7 +1877,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
       }
     }
     else if (res.ok && IS_CHILD) { childReport({ type: 'done', title: title, examId: examId, answers: answers.slice(), unread: (window.__unread || []).slice(), dash: (window.__dash || []).slice(), dashImg: window.__dashImg || {}, bankIds: window.__bankIds || {}, warning: bankWarning, unassigned: unassignedCount, units: Array.from(new Set(Array.from(document.querySelectorAll('.qunit-sel')).map(x => x.value || '(단원 미지정)'))), autoUnits: document.querySelectorAll('.qunit-sel[data-auto="1"]').length, tm: Object.assign({}, TM, { bs: window.__bankStat || null }), qthumb: window.__qthumb || {}, unreadImg: window.__unreadImg || {}, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) }); }
-    else if (res.ok) { if (bankWarning) alert(bankWarning); location.href = (window.__auto && unassignedCount && confirm('단원을 못 정한 문항이 ' + unassignedCount + '개 있어요. 「확인」을 누르면 그 문항만 문제은행에서 바로 열어요.')) ? 'bank_list.html?unassigned=1' : 'teacher_exam.html?id=' + examId; }
+    else if (res.ok) { if (bankWarning) alert(bankWarning); location.href = (window.__auto && unassignedCount && confirm('단원을 못 정한 문항이 ' + unassignedCount + '개 있어요. 「확인」을 누르면 그 문항만 문제은행에서 바로 열어요.')) ? 'bank_list.html?unassigned=1' : 'teacher_exam.html?id=' + examId + (window.APP_BACK_TO ? '&from=ac' : ''); }
     else { window.__auto = false; if (IS_CHILD) childReport({ type: 'error', title: title, msg: res.error || '등록 실패' }); errorBox.innerHTML = '<div class="banner error">' + escapeHtml(res.error || '등록에 실패했어요.') + '</div>'; $('submit-btn').disabled = false; window.scrollTo(0, 0); }
   } catch (err) {
     rcClear(); hideSpinner(); window.__auto = false; if (IS_CHILD) childReport({ type: 'error', title: title, msg: err.message });
