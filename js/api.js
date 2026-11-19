@@ -1,3 +1,4 @@
+const WORD_JUNG_API = /(밤|낮|새벽|한밤|하는|하던|되는|있는|없는|공부|수업|식사|여행|운전|근무|방송|통화|작업|실험|관찰|측정|비행|운동|활동|학습|설명|조사|검사|회의|상담|출장|휴식|휴가|연습|훈련|제작|제조|생산|사용|이용|운영|운행|공사|수리|점검|준비|예약|접수|처리|진료|치료|입원|재판|연구|개발|발표|촬영|녹화|방영|전송|이동|보관|운반|작동|가동|통신|거래|판매|영업|주문|배송|검토|심사|논의|토론)중$/;      // 학교 이름이 아닌 「~중」 낱말 (pdfui.js의 WORD_JUNG와 같은 목록)
 // Apps Script 웹앱 호출 헬퍼.
 // Content-Type을 지정하지 않아야(text/plain 기본값) CORS preflight 없이 바로 호출된다.
 // ── 문제은행 목록 캐시: 문항이 수천 개가 되어도 페이지를 옮길 때마다 전부 다시 내려받지 않게 한다 ──
@@ -329,7 +330,8 @@ function guessMeta(fileName) {
     let sc = s.replace(/\[[^\]]*\]/g, ' ').replace(/\(([^)]*)\)/g, (mm, inner) => /(중학교|중|고등학교|고)\s*$/.test(inner.trim()) ? ' ' + inner + ' ' : ' ');
     sc = stripGrade(sc).replace(/(^|\s)과학(?=\s|$)/g, ' ').replace(/기출\s*문제|기출/g, ' ').replace(/중등|\bPDF\b/gi, ' ');
     sc = sc.replace(/20\d\d\s*(학년도|년도|년)?/g, ' ').replace(/\s+/g, ' ').trim();
-    const sm = sc.match(/(^|\s)([가-힣]{2,6}(?:중학교|중))(?=\s|$)/);                     // 학교 이름은 맨 앞으로: "불암중 1학기 기말고사"
+    let sm = sc.match(/(^|\s)([가-힣]{2,6}(?:중학교|중))(?=\s|$)/);
+    if (sm && !/중학교$/.test(sm[2]) && WORD_JUNG_API.test(sm[2])) sm = null;      // 「한밤중」·「공부중」 같은 낱말은 학교 이름이 아니다                     // 학교 이름은 맨 앞으로: "불암중 1학기 기말고사"
     if (sm && sm[2] !== '중등' && !/^중[123]?$/.test(sm[2])) sc = (sm[2] + ' ' + sc.replace(sm[0], ' ')).replace(/\s+/g, ' ').trim();
     return { grade: grade, unit: '', kind: kind, school: sc, year: year };
   }
