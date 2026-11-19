@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200105">
+<link rel="stylesheet" href="css/style.css?v=202611200125">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200105"></script>
-<script src="js/api.js?v=202611200105"></script>
-<script src="js/common.js?v=202611200105"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200105"></script>
-<script src="js/vendor/pdf.min.js?v=202611200105"></script>
-<script src="js/printpdf.js?v=202611200105"></script>
-<script src="js/pdfui.js?v=202611200105"></script>
-<script src="js/pdfview.js?v=202611200105"></script>
-<script src="js/bankcore.js?v=202611200105"></script>
+<script src="js/config.js?v=202611200125"></script>
+<script src="js/api.js?v=202611200125"></script>
+<script src="js/common.js?v=202611200125"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200125"></script>
+<script src="js/vendor/pdf.min.js?v=202611200125"></script>
+<script src="js/printpdf.js?v=202611200125"></script>
+<script src="js/pdfui.js?v=202611200125"></script>
+<script src="js/pdfview.js?v=202611200125"></script>
+<script src="js/bankcore.js?v=202611200125"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -213,6 +213,53 @@ async function redoBank(exam, why, msgEl, btnEl) {
     location.href = 'teacher_new.html?replace=' + encodeURIComponent(String(exam.id));
   } catch (e) { if (msgEl) msgEl.textContent = '⚠️ ' + (e.message || e) + ' (일부만 지워졌을 수 있어요)'; if (btnEl) btnEl.disabled = false; }
 }
+// 빠진 번호만 채우기: 서버에 올려 둔 시험지 PDF를 다시 읽어, 문제은행에 없는 번호의 문항만 잘라서 저장한다 (이미 있는 문항은 건드리지 않는다 → 중복 없음)
+async function fillMissing(exam, miss, msgEl, btnEl) {
+  const say = m => { if (msgEl) msgEl.textContent = m; };
+  const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const fid = (String(exam.pdfUrl || '').match(/[?&]id=([^&]+)/) || [])[1];
+  if (!fid) return say('⚠️ 이 시험지에는 올려 둔 PDF가 없어서 문항을 만들 수 없어요. 「통째로 다시 올리기」를 쓰세요.');
+  if (btnEl) btnEl.disabled = true;
+  try {
+    setupPdfJs(); say('시험지 PDF를 받는 중...');
+    const blob = await driveDirectBlob(fid, (g, tot) => { if (tot) say('시험지 PDF를 받는 중... ' + Math.floor(g / tot * 100) + '%'); });
+    if (!blob) throw new Error('PDF를 받지 못했어요');
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+    say('문항을 찾는 중...'); const sc = await BankCore.scanPdf(doc);
+    if (!(sc.questions || []).length) throw new Error('이 PDF는 글자가 없는 스캔본이라 문항을 자를 수 없어요. 「통째로 다시 올리기」를 쓰세요.');
+    const mine = (BANK || []).filter(q => nz(q.source) === nz(exam.title) && Number(q.num) > 0);
+    const ref = mine[0] || {}, near = n => { let b = null, bd = 1e9; mine.forEach(q => { const d = Math.abs(Number(q.num) - n); if (d < bd && q.unit) { bd = d; b = q; } }); return b || ref; };
+    const keys = new Set((BANK || []).map(q => dupKey(q.textPreview)).filter(k => k.length >= 25));
+    const picks = [], notFound = [], skipped = [];
+    for (const n of miss) {
+      const q = sc.questions.find(x => x.num === n); if (!q) { notFound.push(n); continue; }
+      const tp = await BankCore.textPreviewQ(doc, q, 240);
+      if (dupKey(tp).length >= 25 && keys.has(dupKey(tp))) { skipped.push(n); continue; }
+      const nb = near(n), ex = sc.explanations && sc.explanations[n];
+      picks.push({ q: q, ex: ex, rec: { id: 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), unit: nb.unit || '(단원 미지정)', sub: '', auto: 2, grade: nb.grade || '', kind: nb.kind || '', school: nb.school || '', year: nb.year || '', answer: String(exam.answers[n - 1] == null ? '' : exam.answers[n - 1]), source: exam.title, textPreview: tp, num: n, difficulty: '', diffScore: null } });
+    }
+    let saved = 0;
+    for (let i = 0; i < picks.length; i += 5) {
+      const chunk = picks.slice(i, i + 5), payload = [];
+      for (const it of chunk) {
+        say('문항 그림을 만드는 중... ' + (saved + payload.length + 1) + '/' + picks.length);
+        const canvas = await BankCore.renderQuestion(doc, it.q, BankCore.CROP_SCALE, true, true);
+        let ec = null; try { if (it.ex) ec = await BankCore.renderExplanation(doc, it.ex, 2.2); } catch (e) {}
+        const rec = it.rec; rec.imageBase64 = BankCore.canvasToBase64(canvas); rec.numRect = relNum(it.q, canvas);
+        rec.explBase64 = ec ? BankCore.canvasToBase64(ec) : ''; rec.explNumRect = (it.ex && it.ex.numRect && it.ex.segments && it.ex.segments[0]) ? relRect(it.ex.numRect, it.ex.segments[0].rect) : null;
+        payload.push(rec);
+      }
+      let res = null, err = null;
+      for (let at = 0; at < 4; at++) { try { res = await callApi('saveQuestions', { password: getTeacherPassword(), questions: payload }); if (res && res.ok) break; err = new Error((res && res.error) || '저장 실패'); } catch (e) { err = e; res = null; } if (at < 3) await new Promise(r => setTimeout(r, 1500 * (at + 1))); }
+      if (!res || !res.ok) throw new Error((err && err.message) || '저장 실패');
+      saved += payload.length;
+    }
+    BANK = null; delete SCAN[String(exam.id)];
+    const rest = notFound.concat(skipped);
+    say('✅ ' + saved + '문항을 채웠어요' + (notFound.length ? ' · PDF에서 못 찾은 번호: ' + notFound.join(', ') + '번' : '') + (skipped.length ? ' · 이미 같은 문항이 있어 건너뜀: ' + skipped.join(', ') + '번' : '') + '. 단원은 이웃 문항을 따라 넣었으니 소단원을 확인해 주세요. 화면을 다시 불러와요...');
+    setTimeout(() => inspect(exam.id), 1800);
+  } catch (e) { say('⚠️ ' + (e.message || e)); if (btnEl) btnEl.disabled = false; }
+}
 async function unitsUi(exam) {
   const host = $('ac-units'); if (!host) return;
   const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -239,7 +286,7 @@ async function unitsUi(exam) {
     + '<select class="u" style="max-width:260px;">' + unitSelectOptions(q.grade, q.unit, q.grade) + '</select><span class="sub-wrap"><select class="subsel" style="max-width:260px;"></select></span><span class="hint flash"></span></div>'; }).join('') + '</div></details>';
   { const okN = lines.filter(l => l.q).length, tot = lines.length, allOk = okN === tot; host.insertAdjacentHTML('afterbegin', '<div style="margin:8px 0;padding:8px 12px;border-radius:10px;font-weight:800;font-size:16px;' + (allOk ? 'background:#DCFCE7;color:#166534;' : 'background:#FEE2E2;color:#991B1B;') + '">🔗 문제은행 연결: ' + tot + '개 번호 중 ' + okN + '개 연결됨' + (allOk ? ' — 모두 연결돼 있어요' : ' — 연결 안 된 번호 ' + (tot - okN) + '개') + '</div>'); }
   if (dupNums.length) host.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B91C1C;"><b>⚠️ 같은 번호 문항이 문제은행에 2개 이상 저장돼 있어요</b> (' + dupNums.slice(0, 12).join(', ') + '번). 이 화면은 그중 하나만 보여 주기 때문에 고친 소단원이 다시 안 보일 수 있어요. 아래 줄에 보이는 쪽을 고치세요. 이 시험지를 「다시 올리기」로 한 번 정리하면 한 개씩만 남아요.</div>');
-  { const miss = lines.filter(l => !l.q).map(l => l.n); if (miss.length) { host.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B45309;"><b>문제은행에 빠진 번호가 ' + miss.length + '개 있어요</b> (' + miss.slice(0, 12).join(', ') + (miss.length > 12 ? ' …' : '') + '번). 하나씩 만들지 말고, 시험지를 통째로 다시 올리는 게 빨라요.<br><button type="button" class="btn primary" id="ac-redo2" style="margin-top:8px;padding:10px 16px;">🔁 이 시험지 통째로 다시 올리기 (QR 그대로)</button> <span class="hint" id="ac-redo2-msg"></span></div>'); $('ac-redo2').addEventListener('click', () => redoBank(exam, '문제은행에 빠진 번호: ' + miss.join(', ') + '번', $('ac-redo2-msg'), $('ac-redo2'))); } }
+  { const miss = lines.filter(l => !l.q).map(l => l.n); if (miss.length) { host.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B45309;"><b>문제은행에 빠진 번호가 ' + miss.length + '개 있어요</b> (' + miss.slice(0, 12).join(', ') + (miss.length > 12 ? ' …' : '') + '번). 하나씩 만들지 말고 아래 버튼을 누르세요.<br><button type="button" class="btn primary" id="ac-fill" style="margin-top:8px;padding:10px 16px;">🧩 빠진 ' + miss.length + '개 번호만 채우기 (있는 문항은 그대로)</button> <span class="hint" id="ac-fill-msg"></span><br><button type="button" class="btn outline" id="ac-redo2" style="margin-top:8px;padding:8px 14px;">🔁 이 시험지 통째로 다시 올리기 (QR 그대로)</button> <span class="hint" id="ac-redo2-msg"></span></div>'); $('ac-fill').addEventListener('click', () => fillMissing(exam, miss, $('ac-fill-msg'), $('ac-fill'))); $('ac-redo2').addEventListener('click', () => redoBank(exam, '문제은행에 빠진 번호: ' + miss.join(', ') + '번', $('ac-redo2-msg'), $('ac-redo2'))); } }
   host.querySelectorAll('.ac-urow').forEach(el => {
     const q = rows.find(x => String(x.id) === el.getAttribute('data-id')), us = el.querySelector('.u'), ss = el.querySelector('.subsel'), fl = el.querySelector('.flash');
     refreshSubSelect(ss, tocEntryFor(q.grade, q.unit), q.sub || '');
