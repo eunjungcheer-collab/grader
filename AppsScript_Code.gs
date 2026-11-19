@@ -262,8 +262,33 @@ function actionNudgeMissing_(p) {
   });
   return { ok: true, sent: sent, targets: targets };
 }
+// 같은 시험지를 다시 올려 등록할 때 (replaceId): 새 시험 번호를 만들지 않고 기존 시험지 줄을 그대로 쓴다. QR·제출 기록·단원 연결은 그대로, PDF·정답·문항 글만 새로 바뀐다. 예전 PDF는 휴지통으로 간다
+function replaceExamFromRegistration_(p) {
+  if (!p.pdfBase64) return { ok: false, error: '새 PDF가 없어요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
+  const found = findExamRow_(exams, p.replaceId);
+  if (!found) return { ok: false, error: '다시 등록할 시험지를 찾지 못했어요.' };
+  const id = String(found.row[0]), old = examAnswers_(found.row), next = (p.answers || []).map(normAns_);
+  let hasSub = false;
+  const sc = ss.getSheetByName(SHEET_SCORES), last = sc.getLastRow();
+  if (last >= 2) { const ids = sc.getRange(2, 1, last - 1, 1).getValues(); for (let i = 0; i < ids.length; i++) if (String(ids[i][0]) === id) { hasSub = true; break; } }
+  if (hasSub && next.length !== old.length) return { ok: false, error: '이 시험지에는 제출 기록이 있어서 문항 수(' + old.length + '개)가 다른 PDF로는 바꿀 수 없어요. 새 시험지로 등록해 주세요.' };
+  const bytes = Utilities.base64Decode(p.pdfBase64);
+  const file = getOrCreateFolder_().createFile(Utilities.newBlob(bytes, 'application/pdf', (p.filename || String(found.row[1] || 'exam')) + '.pdf'));
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  const url = 'https://drive.google.com/uc?export=download&id=' + file.getId(), oldPdf = String(found.row[4] || '');
+  exams.getRange(found.rowIndex, 5, 1, 2).setValues([[file.getId(), url]]);
+  if (p.questionTexts) exams.getRange(found.rowIndex, 10).setValue(JSON.stringify(p.questionTexts));
+  if (oldPdf) { try { DriveApp.getFileById(oldPdf).setTrashed(true); } catch (e) {} }
+  if (next.length === old.length) {
+    if (next.join(',') !== old.join(',')) { const r = actionUpdateExamAnswers_({ password: p.password, id: id, answers: next }); if (!r.ok) return r; }
+  } else exams.getRange(found.rowIndex, 3).setValue(next.join(','));
+  bustCache_();
+  return { ok: true, id: id, pdfUrl: url, replaced: true };
+}
 function actionCreateExam_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  if (p.replaceId) return replaceExamFromRegistration_(p);
   let fileId = '', pdfUrl = '';
   if (p.pdfBase64) {
     const folder = getOrCreateFolder_();

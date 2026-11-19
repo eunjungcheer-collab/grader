@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192140">
+<link rel="stylesheet" href="css/style.css?v=202611192200">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611192140"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192140"></script>
-<script src="js/printpdf.js?v=202611192140"></script>
-<script src="js/vendor/pdf.min.js?v=202611192140"></script>
-<script src="js/config.js?v=202611192140"></script>
-<script src="js/api.js?v=202611192140"></script>
-<script src="js/common.js?v=202611192140"></script>
-<script src="js/ocr.js?v=202611192140"></script>
-<script src="js/bankcore.js?v=202611192140"></script>
-<script src="js/pdfui.js?v=202611192140"></script>
-<script src="js/pdfview.js?v=202611192140"></script>
+<script src="js/vendor/qrcode.min.js?v=202611192200"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192200"></script>
+<script src="js/printpdf.js?v=202611192200"></script>
+<script src="js/vendor/pdf.min.js?v=202611192200"></script>
+<script src="js/config.js?v=202611192200"></script>
+<script src="js/api.js?v=202611192200"></script>
+<script src="js/common.js?v=202611192200"></script>
+<script src="js/ocr.js?v=202611192200"></script>
+<script src="js/bankcore.js?v=202611192200"></script>
+<script src="js/pdfui.js?v=202611192200"></script>
+<script src="js/pdfview.js?v=202611192200"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -754,6 +754,8 @@ async function autoFillUnits() {
 // 여러 시험지를 자동 등록할 때는 시험지마다 보이지 않는 작은 창(이 페이지를 한 번 더 연 것)을 띄워서 동시에 처리한다.
 // 서버 저장을 기다리는 동안 다른 시험지가 같이 진행되니, 한 개씩 할 때보다 훨씬 빠르다.
 const IS_CHILD = new URLSearchParams(location.search).get('child') === '1';
+let REPLACE_TITLE = '';
+let REPLACE_ID = new URLSearchParams(location.search).get('child') === '1' ? '' : (new URLSearchParams(location.search).get('replace') || '');      // 정답 점검에서 「다시 올리기」로 들어온 경우: 이 시험지를 같은 QR로 덮어 등록한다
 const IS_PEEK = IS_CHILD && new URLSearchParams(location.search).get('peek') === '1';       // 정답 이미지만 만들어 돌려주는 숨은 창 (등록은 하지 않는다)
 function childReport(o) { try { parent.postMessage(Object.assign({ kind: 'teacher-new-child' }, o), location.origin); } catch (e) {} }
 let queueSkipped = [], queueNotes = [], unassignedCount = 0;
@@ -1702,14 +1704,14 @@ $('new-exam-form').addEventListener('submit', async function (e) {
   const errorBox = $('error-banner');
   errorBox.innerHTML = '';
   syncTitleSuffix();
-  const title = $('title').value.trim();
+  const title = (REPLACE_ID && REPLACE_TITLE && queueTotal <= 1 && !window.__auto) ? REPLACE_TITLE : $('title').value.trim();      // 다시 등록이면 기존 시험 이름을 그대로 쓴다
   if ((!title && isGarbledName(curFileName)) || (title && isGarbledName(title))) { alert('시험지 이름을 한글로 입력해 주세요. (파일 이름이 깨져서 이름이 비어 있어요)'); try { $('title').focus(); } catch (e) {} return; }
   try { if (answerInputs.length && answerInputs.every(i => i.value)) findDupExam(answerInputs.map(i => i.value)).catch(() => {}); } catch (e) {}      // 내용 중복 비교를 미리 시작해 이름 비교와 같이 진행한다 (결과는 아래에서 그대로 이어 받는다)
   try {                                                   // 같은 이름의 시험지가 이미 있으면 한 번 더 물어본다
     const ex = await callApi('listExams', { password: getTeacherPassword() });
     const same = ex && ex.ok ? (ex.exams || []).filter(x => String(x.title).trim() === title).length : 0;
     if (same && window.__auto) { await autoSkip(title + ' (같은 이름이 이미 있어요)'); return; }
-    if (same && !confirm('"' + title + '" 이름의 시험지가 이미 ' + same + '개 있어요.\n같은 PDF를 또 올리는 거라면 중복이에요. 그래도 새로 등록할까요?\n(취소하면 이 시험지는 건너뛰고 다음 시험지로 넘어가요)')) { if (queueTotal > 1) await skipToNext(title + ' (중복)'); return; }
+    if (same && !REPLACE_ID && !confirm('"' + title + '" 이름의 시험지가 이미 ' + same + '개 있어요.\n같은 PDF를 또 올리는 거라면 중복이에요. 그래도 새로 등록할까요?\n(취소하면 이 시험지는 건너뛰고 다음 시험지로 넘어가요)')) { if (queueTotal > 1) await skipToNext(title + ' (중복)'); return; }
   } catch (e) {}
   const answers = answerInputs.map(i => i.value);
   const missing = answers.map((a, i) => a ? null : i + 1).filter(Boolean);
@@ -1725,12 +1727,13 @@ $('new-exam-form').addEventListener('submit', async function (e) {
     const dupOf = await findDupExam(answers);
     hideSpinner();
     if (dupOf && window.__auto) { await autoSkip(title + ' (「' + dupOf.title + '」와 내용이 같아요)'); return; }
-    if (dupOf && !confirm('이미 등록된 「' + dupOf.title + '」와 내용이 같은 시험지예요' + (dupOf.hit ? ' (문항 ' + dupOf.hit + '/' + dupOf.n + '개 일치)' : ' (정답이 모두 같아요)') + '.\n제목만 다르게 또 올리는 거라면 중복이에요.\n\n그래도 새로 등록할까요?\n(취소하면 이 시험지는 건너뛰고 다음 시험지로 넘어가요)')) { if (queueTotal > 1) await skipToNext(title + ' (중복)'); return; }
+    if (dupOf && !REPLACE_ID && !confirm('이미 등록된 「' + dupOf.title + '」와 내용이 같은 시험지예요' + (dupOf.hit ? ' (문항 ' + dupOf.hit + '/' + dupOf.n + '개 일치)' : ' (정답이 모두 같아요)') + '.\n제목만 다르게 또 올리는 거라면 중복이에요.\n\n그래도 새로 등록할까요?\n(취소하면 이 시험지는 건너뛰고 다음 시험지로 넘어가요)')) { if (queueTotal > 1) await skipToNext(title + ' (중복)'); return; }
   } catch (e) { hideSpinner(); console.warn('중복 비교 실패', e); }
   $('submit-btn').disabled = true;
   showSpinner('QR 만들고 PDF에 찍는 중...');
   try {
-    const examId = genExamId();
+    const replacing = (REPLACE_ID && queueTotal <= 1 && !window.__auto) ? REPLACE_ID : '';
+    const examId = replacing || genExamId();
     const redactions = pane ? pane.redactions : [];
     const hasAnswerPages = $('strip-answer').checked && scanned.answerPages.length;
 
@@ -1804,8 +1807,9 @@ $('new-exam-form').addEventListener('submit', async function (e) {
     if (bankP) bankP.catch(() => {});
     const res = await callApi('createExam', {
       password: getTeacherPassword(), id: examId, title: title, answers: answers,
-      pdfBase64: pdfBase64, filename: title, questionTexts: questionTexts,
+      pdfBase64: pdfBase64, filename: title, questionTexts: questionTexts, replaceId: replacing,
     });
+    if (replacing && res.ok) REPLACE_ID = '';
     mark('exam1');
     if (res.ok) {      // 강사용 PDF도 같이 만들어 이 브라우저에 보관 → 등록 완료 화면에서 학생용을 받을 때 함께 받아진다
       try { updateSpinner('강사용 시험지 정리하는 중...'); const tr = await teacherP; if (tr) await teacherPdfSave(examId, title + ' 강사용.pdf', tr.bytes); }
@@ -1846,6 +1850,13 @@ $('new-exam-form').addEventListener('submit', async function (e) {
 handoffInto('pdf-file', el => el.dispatchEvent(new Event('change')));       // 단원 판별 화면에서 넘어온 파일
 
 if ($('open-saved-review')) $('open-saved-review').addEventListener('click', () => openSavedReview());
+if (REPLACE_ID) (async () => {      // 다시 등록 안내: 새 시험지가 생기지 않고 기존 시험지가 새 PDF로 바뀌며 QR은 그대로
+  try { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: REPLACE_ID }); const h = document.querySelector('h1'); if (!h) return;
+    const b = document.createElement('div'); b.className = 'banner'; b.style.cssText = 'text-align:left;border:2px solid #B45309;';
+    if (!d.ok) { REPLACE_ID = ''; b.innerHTML = '⚠️ 다시 등록할 시험지를 찾지 못해서 일반 등록으로 진행해요.'; }
+    else { REPLACE_TITLE = d.title; b.innerHTML = '🔁 <b>「' + escapeHtml(d.title) + '」</b>를 다시 등록하는 중이에요. 같은 시험지 PDF(정답지 포함)를 올려 주세요. <b>QR·제출 기록은 그대로 쓰이고</b> PDF·정답·문항 그림만 새로 바뀌어요. (시험 이름은 기존 이름을 유지해요)'; }
+    h.insertAdjacentElement('afterend', b); } catch (e) {}
+})();
 { const rv = new URLSearchParams(location.search).get('review'); if (rv && !IS_CHILD) setTimeout(() => openSavedReview(rv === '1' ? null : rv.split(',').filter(Boolean)), 50); }
 </script>
 </body>
