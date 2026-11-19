@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200930">
+<link rel="stylesheet" href="css/style.css?v=202611200958">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -85,11 +85,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611200930"></script>
-<script src="js/api.js?v=202611200930"></script>
-<script src="js/common.js?v=202611200930"></script>
-<script src="js/bankcore.js?v=202611200930"></script>
-<script src="js/pdfui.js?v=202611200930"></script>
+<script src="js/config.js?v=202611200958"></script>
+<script src="js/api.js?v=202611200958"></script>
+<script src="js/common.js?v=202611200958"></script>
+<script src="js/bankcore.js?v=202611200958"></script>
+<script src="js/pdfui.js?v=202611200958"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -883,16 +883,20 @@ $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuest
       rest.forEach(q => { const k = q.source || '(이름 없음)'; (restBy[k] = restBy[k] || []).push(q); });
       const manualHtml = () => {
         const keys = Object.keys(restBy).sort((a, b) => restBy[b].length - restBy[a].length).slice(0, 12); if (!keys.length) return '';
-        const opts = exams.map(e => '<option value="' + escapeHtml(String(e.id)) + '">' + escapeHtml(String(e.title || '')) + '</option>').join('');
+        const optsFor = k => { const q0 = restBy[k][0], st = stemOf(q0), yr = ansYear(q0); const hit = e => st && String(e.title || '').indexOf(st) >= 0, both = e => hit(e) && (!yr || String(e.title || '').indexOf(yr) >= 0);
+          const sorted = exams.slice().sort((a, b) => (both(b) ? 2 : hit(b) ? 1 : 0) - (both(a) ? 2 : hit(a) ? 1 : 0)), one = exams.filter(both);
+          return sorted.map(e => '<option value="' + escapeHtml(String(e.title || '')) + '"></option>').join(''); };
+        const defTitle = k => { const q0 = restBy[k][0], st = stemOf(q0), yr = ansYear(q0), one = exams.filter(e => st && String(e.title || '').indexOf(st) >= 0 && (!yr || String(e.title || '').indexOf(yr) >= 0)); return one.length === 1 ? String(one[0].title || '') : ''; };
         return '<div style="margin-top:10px;border-top:1px solid #E5E7EB;padding-top:8px;"><b>🧩 자동으로 못 찾은 문항 (직접 시험지를 골라 맞추기)</b><div class="hint" style="margin:2px 0 6px;">같은 이름으로 묶인 문항들의 시험지를 고르면, 그 시험지 정답표의 같은 번호 정답(①~⑤)으로 맞춰요. 정답표가 서술형(-)인 번호는 그대로 둬요.</div>'
-          + keys.map((k, i) => '<div style="margin:6px 0;font-size:13px;"><div>' + escapeHtml(k) + ' <span class="muted">(' + restBy[k].length + '개)</span></div><select class="mx-sel" data-k="' + i + '" style="max-width:100%;"><option value="">시험지 고르기</option>' + opts + '</select> <button type="button" class="btn outline mx-go" data-k="' + i + '" style="padding:4px 10px;">정답표로 맞추기</button> <span class="mx-msg hint" data-k="' + i + '"></span></div>').join('') + '</div>';
+          + keys.map((k, i) => '<div style="margin:6px 0;font-size:13px;"><div>' + escapeHtml(k) + ' <span class="muted">(' + restBy[k].length + '개)</span></div><input type="text" class="mx-sel" data-k="' + i + '" list="mx-dl-' + i + '" placeholder="시험지 이름을 입력해서 검색 (예: 중평중 2023)" value="' + escapeHtml(defTitle(k)) + '" style="width:100%;max-width:520px;padding:6px 8px;"><datalist id="mx-dl-' + i + '">' + optsFor(k) + '</datalist> <button type="button" class="btn outline mx-go" data-k="' + i + '" style="padding:4px 10px;">정답표로 맞추기</button> <span class="mx-msg hint" data-k="' + i + '"></span></div>').join('') + '</div>';
       };
       const bindManual = () => { box.querySelectorAll('.mx-go').forEach(btn => btn.addEventListener('click', async () => {
         const i = Number(btn.getAttribute('data-k')), key = Object.keys(restBy).sort((a, b) => restBy[b].length - restBy[a].length)[i], sel = box.querySelector('.mx-sel[data-k="' + i + '"]'), mm = box.querySelector('.mx-msg[data-k="' + i + '"]');
-        if (!sel.value) { mm.textContent = '시험지를 먼저 고르세요.'; return; }
+        const picked = exams.filter(e => nz(e.title) === nz(sel.value)); if (picked.length !== 1) { mm.textContent = picked.length ? '같은 이름의 시험지가 여러 개예요. 이름을 더 정확히 입력하세요.' : '목록에 있는 시험지 이름을 입력해서 고르세요.'; return; }
+        const exId = picked[0].id;
         btn.disabled = true; mm.textContent = '정답표 불러오는 중...';
         try {
-          const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: sel.value }); if (!d || !d.ok) throw new Error('정답표를 불러오지 못했어요');
+          const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: exId }); if (!d || !d.ok) throw new Error('정답표를 불러오지 못했어요');
           const ups = restBy[key].map(q => ({ q: q, a: d.answers && d.answers[Number(q.num) - 1] })).filter(x => okAns(x.a));
           if (!ups.length) { mm.textContent = '이 시험지 정답표에는 맞출 객관식 정답이 없어요.'; btn.disabled = false; return; }
           if (!confirm('「' + key + '」 문항 ' + ups.length + '개의 정답을 선택한 시험지 정답표로 맞출까요?\n(문항 번호와 정답표 번호가 같다고 보고 맞춰요)')) { mm.textContent = ''; btn.disabled = false; return; }
