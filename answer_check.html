@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191940">
+<link rel="stylesheet" href="css/style.css?v=202611191950">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191940"></script>
-<script src="js/api.js?v=202611191940"></script>
-<script src="js/common.js?v=202611191940"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191940"></script>
-<script src="js/vendor/pdf.min.js?v=202611191940"></script>
-<script src="js/printpdf.js?v=202611191940"></script>
-<script src="js/pdfui.js?v=202611191940"></script>
-<script src="js/pdfview.js?v=202611191940"></script>
-<script src="js/bankcore.js?v=202611191940"></script>
+<script src="js/config.js?v=202611191950"></script>
+<script src="js/api.js?v=202611191950"></script>
+<script src="js/common.js?v=202611191950"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191950"></script>
+<script src="js/vendor/pdf.min.js?v=202611191950"></script>
+<script src="js/printpdf.js?v=202611191950"></script>
+<script src="js/pdfui.js?v=202611191950"></script>
+<script src="js/pdfview.js?v=202611191950"></script>
+<script src="js/bankcore.js?v=202611191950"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -133,7 +133,7 @@ function markOk(ex, on) { try { const d = okSet(); if (on) d[String(ex.id)] = (e
 function risk(ex) {
   const n = ex.answerCount || 0, s = ex.subjectiveCount || 0;
   if (!s || !n) return { lv: 'ok', label: '주관식 없음', score: 0 };
-  if (okSet()[String(ex.id)] === n + ':' + s) return { lv: 'ok', label: '✔ 확인함 · 이상 없음', score: 0 };
+  if (okSet()[String(ex.id)] === n + ':' + s) return { lv: 'ok', label: '✔ 확인함 · 이상 없음', score: 0, checked: true };
   if (/서술형|서답형|논술형/.test(String(ex.title || '')) && s / n < 0.4) return { lv: 'lo', label: '서술형 포함 시험지', score: 1 };
   const r = s / n, pct = Math.round(r * 100);
   if (r >= 0.4) return { lv: 'hi', label: '정답 못 읽음 (주관식 ' + pct + '%)', score: 5 + r, unread: true };
@@ -222,11 +222,11 @@ function reviewUrl(id) { return 'teacher_new.html?review=' + encodeURIComponent(
 function reviewBtn(id) { return '<a class="btn primary" href="' + reviewUrl(id) + '" style="padding:8px 14px;text-decoration:none;">✏️ PDF 보며 정답 고치기 (등록 화면으로 열기)</a>'; }
 function renderList() {
   const flt = $('ac-flt').value, showAll = $('ac-all').checked && !flt, kw = $('ac-q').value.trim().toLowerCase();
-  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.score > 0 || doneSet()[String(x.ex.id)] || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || (flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
-  rows.sort((a, b) => (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
+  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.checked || x.r.score > 0 || doneSet()[String(x.ex.id)] || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || x.r.checked || (flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
+  rows.sort((a, b) => ((a.r.checked ? 1 : 0) - (b.r.checked ? 1 : 0)) || (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
   const susp = EXAMS.filter(ex => risk(ex).score >= 2).length;
   $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>, 이 중 <b style="color:#B91C1C">정답을 거의 못 읽은 시험지 ' + EXAMS.filter(ex => risk(ex).unread).length + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
-  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"><div class="t">' + (doneSet()[String(x.ex.id)] ? '<span title="' + doneSet()[String(x.ex.id)] + ' 수정함" style="color:#15803D;">✅ </span>' : '') + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
+  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"' + (x.r.checked ? ' style="background:#F0FDF4;"' : '') + '><div class="t">' + (doneSet()[String(x.ex.id)] ? '<span title="' + doneSet()[String(x.ex.id)] + ' 수정함" style="color:#15803D;">✅ </span>' : '') + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
   $('ac-list').querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => inspect(b.getAttribute('data-id'))));
 }
 
