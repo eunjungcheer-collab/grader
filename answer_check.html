@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192025">
+<link rel="stylesheet" href="css/style.css?v=202611192030">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611192025"></script>
-<script src="js/api.js?v=202611192025"></script>
-<script src="js/common.js?v=202611192025"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192025"></script>
-<script src="js/vendor/pdf.min.js?v=202611192025"></script>
-<script src="js/printpdf.js?v=202611192025"></script>
-<script src="js/pdfui.js?v=202611192025"></script>
-<script src="js/pdfview.js?v=202611192025"></script>
-<script src="js/bankcore.js?v=202611192025"></script>
+<script src="js/config.js?v=202611192030"></script>
+<script src="js/api.js?v=202611192030"></script>
+<script src="js/common.js?v=202611192030"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192030"></script>
+<script src="js/vendor/pdf.min.js?v=202611192030"></script>
+<script src="js/printpdf.js?v=202611192030"></script>
+<script src="js/pdfui.js?v=202611192030"></script>
+<script src="js/pdfview.js?v=202611192030"></script>
+<script src="js/bankcore.js?v=202611192030"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -444,8 +444,9 @@ function gridHtml(exam, editDash) {
   }).join('');
 }
 function saveBar(exam, found) {
-  $('ac-save-bar').innerHTML = '<div class="card" style="position:sticky;bottom:8px;"><button type="button" class="btn primary" id="ac-save" style="padding:10px 18px;">💾 저장</button> <label id="ac-oklbl" style="display:inline-flex;align-items:center;gap:8px;margin-left:12px;padding:9px 16px;border:2px solid #15803D;border-radius:10px;font-size:17px;font-weight:800;color:#15803D;cursor:pointer;background:#fff;"><input type="checkbox" id="ac-okbox" style="width:22px;height:22px;accent-color:#15803D;"> ✔ 확인했어요</label> <span class="hint" id="ac-msg"></span><div class="hint">정답은 한 개는 <b>3</b>, 모두 맞아야 하는 복수정답은 <b>35</b>, 둘 중 하나만 맞아도 되면 <b>3/5</b> 로 적어요. 비워 둔 칸은 그대로 주관식이에요.</div></div>';
+  $('ac-save-bar').innerHTML = '<div class="card" style="position:sticky;bottom:8px;"><button type="button" class="btn primary" id="ac-save" style="padding:10px 18px;">💾 저장</button> <label id="ac-oklbl" style="display:inline-flex;align-items:center;gap:8px;margin-left:12px;padding:9px 16px;border:2px solid #15803D;border-radius:10px;font-size:17px;font-weight:800;color:#15803D;cursor:pointer;background:#fff;"><input type="checkbox" id="ac-okbox" style="width:22px;height:22px;accent-color:#15803D;"> 확인했어요</label> <button type="button" class="btn outline" id="ac-tolist" style="margin-left:10px;padding:11px 18px;font-size:17px;font-weight:800;">← 목록으로</button> <span class="hint" id="ac-msg"></span><div class="hint">정답은 한 개는 <b>3</b>, 모두 맞아야 하는 복수정답은 <b>35</b>, 둘 중 하나만 맞아도 되면 <b>3/5</b> 로 적어요. 비워 둔 칸은 그대로 주관식이에요.</div></div>';
   $('ac-save').addEventListener('click', () => save(exam, found));
+  $('ac-tolist').addEventListener('click', () => { goBack(); window.scrollTo(0, 0); });
   { const ex0 = EXAMS.find(x => String(x.id) === String(exam.id)) || exam, ob = $('ac-okbox'), lb = $('ac-oklbl');
     const paint = () => { lb.style.background = ob.checked ? '#15803D' : '#fff'; lb.style.color = ob.checked ? '#fff' : '#15803D'; };
     ob.checked = okSet()[String(ex0.id)] === (ex0.answerCount || 0) + ':' + (ex0.subjectiveCount || 0); paint();
