@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200012">
+<link rel="stylesheet" href="css/style.css?v=202611200025">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200012"></script>
-<script src="js/api.js?v=202611200012"></script>
-<script src="js/common.js?v=202611200012"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200012"></script>
-<script src="js/vendor/pdf.min.js?v=202611200012"></script>
-<script src="js/printpdf.js?v=202611200012"></script>
-<script src="js/pdfui.js?v=202611200012"></script>
-<script src="js/pdfview.js?v=202611200012"></script>
-<script src="js/bankcore.js?v=202611200012"></script>
+<script src="js/config.js?v=202611200025"></script>
+<script src="js/api.js?v=202611200025"></script>
+<script src="js/common.js?v=202611200025"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200025"></script>
+<script src="js/vendor/pdf.min.js?v=202611200025"></script>
+<script src="js/printpdf.js?v=202611200025"></script>
+<script src="js/pdfui.js?v=202611200025"></script>
+<script src="js/pdfview.js?v=202611200025"></script>
+<script src="js/bankcore.js?v=202611200025"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -217,7 +217,7 @@ async function unitsUi(exam) {
   const host = $('ac-units'); if (!host) return;
   const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
   // 시험지의 1번부터 끝 번호까지 빠짐없이 한 줄씩: 문제은행 문항이 있으면 단원 칸, 묶음 문항(예: 20~21번)은 한 줄로, 문항이 없으면 없다고 표시
-  const seen = {}, rows = [], lab = {}, byNum = {}, covered = {};
+  const seen = {}, rows = [], lab = {}, byNum = {}, covered = {}, viaDup = {};
   const slotsC = (CUR && CUR.slots) || [], picksC = (CUR && CUR.picks) || [];
   picksC.forEach((q, k) => { const sl = slotsC[k]; if (q && sl) { byNum[sl.start] = q; lab[q.id] = sl.label; for (let t = sl.start + 1; t < sl.start + sl.k; t++) covered[t] = sl.start; } });
   (BANK || []).filter(q => nz(q.source) === nz(exam.title) && Number(q.num) > 0).forEach(q => { if (!byNum[Number(q.num)] && !covered[Number(q.num)]) byNum[Number(q.num)] = q; });
@@ -225,14 +225,15 @@ async function unitsUi(exam) {
   for (let i = 1; i <= exam.answers.length; i++) {
     if (covered[i]) { lines.push({ n: i, q: byNum[covered[i]] || null, shared: true }); continue; }      // 한 그림에 묶인 뒤 번호도 한 줄씩 보인다 (같은 문항이라 한쪽을 고치면 같이 바뀐다)
     const q = byNum[i];
-    if (q && !seen[q.id]) { seen[q.id] = 1; rows.push(q); lines.push({ n: i, q: q }); } else lines.push({ n: i, q: null });
+    if (q && !seen[q.id]) { seen[q.id] = 1; rows.push(q); lines.push({ n: i, q: q }); }
+    else { const dq = q ? null : dupBankMatch(exam, i); if (dq && !seen[dq.id]) { seen[dq.id] = 1; viaDup[dq.id] = dq.source || ''; rows.push(dq); lines.push({ n: i, q: dq, dup: true }); } else lines.push({ n: i, q: null }); }
   }
   if (!rows.length) { host.innerHTML = '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B45309;"><b>🧭 이 시험지에 연결된 문제은행 문항을 찾지 못했어요.</b> 단원·소단원을 고치려면 문제은행에 문항이 있어야 해요. 시험지를 통째로 다시 올리면 한 번에 만들어져요.<br><button type="button" class="btn primary" id="ac-redo2" style="margin-top:8px;padding:10px 16px;">🔁 시험지를 통째로 다시 올리기 (QR 그대로)</button> <span class="hint" id="ac-redo2-msg"></span></div>'; $('ac-redo2').addEventListener('click', () => redoBank(exam, '', $('ac-redo2-msg'), $('ac-redo2'))); return; }
   await ensureToc();
   const NU = (BankCore && BankCore.NO_UNIT) || '(단원 미지정)';
   const bad = q => !String(q.unit || '').trim() || q.unit === NU || (() => { const e = tocEntryFor(q.grade, q.unit); return !!(e && (e.subs || []).length && !String(q.sub || '').trim()); })();
   const nBad = rows.filter(bad).length;
-  host.innerHTML = '<details open style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">🧭 단원·소단원 확인/수정 (' + lines.length + '번호' + (nBad ? ', <span style="color:#B91C1C">비었거나 확인 필요 ' + nBad + '개</span>' : ', 모두 설정됨') + ')</summary><div class="card" style="padding:8px 12px;">' + lines.map(ln => { const q = ln.q; if (!q) return '<div style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid #eee;color:#9CA3AF;"><b style="min-width:34px;">' + numName(exam, ln.n) + '</b><span>문제은행에 이 번호 문항이 없어요 (삭제됐거나 가져오지 않았어요)</span></div>'; return '<div class="ac-urow" data-id="' + escapeHtml(String(q.id)) + '" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 4px;border-bottom:1px solid #eee;' + (bad(q) ? 'background:#FEF3C7;' : '') + '"><b style="min-width:34px;" title="' + ln.n + '번">' + numName(exam, ln.n) + '</b>' + (/~/.test(String(lab[q.id] || '')) ? '<span class="hint" style="min-width:110px;">(' + escapeHtml(lab[q.id]) + '번 한 그림)</span>' : '')
+  host.innerHTML = '<details open style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">🧭 단원·소단원 확인/수정 (' + lines.length + '번호' + (nBad ? ', <span style="color:#B91C1C">비었거나 확인 필요 ' + nBad + '개</span>' : ', 모두 설정됨') + ')</summary><div class="card" style="padding:8px 12px;">' + lines.map(ln => { const q = ln.q; if (!q) return '<div style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid #eee;color:#9CA3AF;"><b style="min-width:34px;">' + numName(exam, ln.n) + '</b><span>문제은행에 이 번호 문항이 없어요 (삭제됐거나 가져오지 않았어요)</span></div>'; return '<div class="ac-urow" data-id="' + escapeHtml(String(q.id)) + '" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 4px;border-bottom:1px solid #eee;' + (bad(q) ? 'background:#FEF3C7;' : '') + '"><b style="min-width:34px;" title="' + ln.n + '번">' + numName(exam, ln.n) + '</b>' + (ln.dup ? '<span class="hint" style="font-weight:700;color:#1D4ED8;" title="같은 문항을 중복 저장하지 않으려고, 이미 있던 문항을 이 번호에 연결했어요">🔗 「' + escapeHtml(viaDup[q.id] || '다른 시험지') + '」의 같은 문항</span>' : '') + (/~/.test(String(lab[q.id] || '')) ? '<span class="hint" style="min-width:110px;">(' + escapeHtml(lab[q.id]) + '번 한 그림)</span>' : '')
     + '<select class="u" style="max-width:260px;">' + unitSelectOptions(q.grade, q.unit, q.grade) + '</select><span class="sub-wrap"><select class="subsel" style="max-width:260px;"></select></span><span class="hint flash"></span></div>'; }).join('') + '</div></details>';
   { const okN = lines.filter(l => l.q).length, tot = lines.length, allOk = okN === tot; host.insertAdjacentHTML('afterbegin', '<div style="margin:8px 0;padding:8px 12px;border-radius:10px;font-weight:800;font-size:16px;' + (allOk ? 'background:#DCFCE7;color:#166534;' : 'background:#FEE2E2;color:#991B1B;') + '">🔗 문제은행 연결: ' + tot + '개 번호 중 ' + okN + '개 연결됨' + (allOk ? ' — 모두 연결돼 있어요' : ' — 연결 안 된 번호 ' + (tot - okN) + '개') + '</div>'); }
   { const miss = lines.filter(l => !l.q).map(l => l.n); if (miss.length) { host.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B45309;"><b>문제은행에 빠진 번호가 ' + miss.length + '개 있어요</b> (' + miss.slice(0, 12).join(', ') + (miss.length > 12 ? ' …' : '') + '번). 하나씩 만들지 말고, 시험지를 통째로 다시 올리는 게 빨라요.<br><button type="button" class="btn primary" id="ac-redo2" style="margin-top:8px;padding:10px 16px;">🔁 이 시험지 통째로 다시 올리기 (QR 그대로)</button> <span class="hint" id="ac-redo2-msg"></span></div>'); $('ac-redo2').addEventListener('click', () => redoBank(exam, '문제은행에 빠진 번호: ' + miss.join(', ') + '번', $('ac-redo2-msg'), $('ac-redo2'))); } }
@@ -301,6 +302,12 @@ function titlePicks(exam) {
 }
 // 문제은행 연결 확인: 시험지 이름과 같은 출처로 저장된 문항이 1번부터 끝 번호까지 있는지 (묶음 문항 [20~21]은 뒤 번호도 있는 것으로 본다). 일부만 있으면 「빠진 번호」로 걸러낸다
 const LINK = {};
+// 문제은행에 같은 글자의 문항이 다른 시험지 이름으로 이미 있으면(기출 중복 방지로 다시 저장하지 않은 것) 그 문항이 이 번호의 문항이다
+function dupBankMatch(exam, n) {
+  const t = (exam.questionTexts || [])[n - 1]; if (!t || typeof dupKey !== 'function') return null;
+  const k = dupKey(t); if (k.length < 25) return null;
+  return (BANK || []).find(q => dupKey(q.textPreview) === k) || null;
+}
 function linkScan(exam) {
   const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(), n = (exam.answers || []).length, have = {}, sj = (exam.answers || []).map(a => String(a).trim() === '-');
   (BANK || []).filter(q => Number(q.num) > 0 && nz(q.source) === nz(exam.title)).forEach(q => {
@@ -308,7 +315,7 @@ function linkScan(exam) {
     const m = /\[\s*(\d{1,2})\s*[~～∼\-]\s*(\d{1,2})\s*\]/.exec(String(q.textPreview || ''));
     if (m && Number(m[1]) === k) for (let t = k + 1; t <= Number(m[2]) && t <= n; t++) have[t] = 1;
   });
-  const miss = []; let cnt = 0; for (let i = 1; i <= n; i++) { if (sj[i - 1]) continue; if (have[i]) cnt++; else miss.push(i); }
+  const miss = []; let cnt = 0; for (let i = 1; i <= n; i++) { if (sj[i - 1]) continue; if (have[i] || dupBankMatch(exam, i)) cnt++; else miss.push(i); }
   LINK[String(exam.id || '')] = { n: n, have: cnt, miss: miss };
 }
 async function scanExam(id, say) {
