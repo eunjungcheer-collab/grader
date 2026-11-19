@@ -846,7 +846,7 @@ function parseRect_(v) {
 
 function actionListQuestions_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
-  const ck = 'lq_' + dataVer_(), hit = bigGet_(ck); if (hit) return hit;
+  const ck = 'lq_' + dataVer_(), hit = p.fresh ? null : bigGet_(ck); if (hit) return hit;      // fresh: 정답 점검처럼 방금 고친 값이 꼭 보여야 하는 화면은 기억해 둔 목록을 건너뛴다
   const out = listQuestionsBuild_(); bigPut_(ck, out, 600); return out;
 }
 function listQuestionsBuild_() {

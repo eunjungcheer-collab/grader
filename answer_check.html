@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200145">
+<link rel="stylesheet" href="css/style.css?v=202611200155">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200145"></script>
-<script src="js/api.js?v=202611200145"></script>
-<script src="js/common.js?v=202611200145"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200145"></script>
-<script src="js/vendor/pdf.min.js?v=202611200145"></script>
-<script src="js/printpdf.js?v=202611200145"></script>
-<script src="js/pdfui.js?v=202611200145"></script>
-<script src="js/pdfview.js?v=202611200145"></script>
-<script src="js/bankcore.js?v=202611200145"></script>
+<script src="js/config.js?v=202611200155"></script>
+<script src="js/api.js?v=202611200155"></script>
+<script src="js/common.js?v=202611200155"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200155"></script>
+<script src="js/vendor/pdf.min.js?v=202611200155"></script>
+<script src="js/printpdf.js?v=202611200155"></script>
+<script src="js/pdfui.js?v=202611200155"></script>
+<script src="js/pdfview.js?v=202611200155"></script>
+<script src="js/bankcore.js?v=202611200155"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -389,7 +389,7 @@ function linkScan(exam) {
 async function scanExam(id, say) {
   say = say || function () {};
   // 시험지와 문제은행을 동시에 불러온다 (문제은행은 한 번 불러오면 계속 쓴다)
-  const bankP = BANK ? null : callApi('listQuestions', { password: getTeacherPassword() });
+  const bankP = BANK ? null : callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 });
   if (bankP) bankP.catch(() => {});
   const exam = await callApi('getExamDetail', { password: getTeacherPassword(), id: id });
   if (!exam.ok) throw new Error(exam.error || '시험지를 불러오지 못했어요');
@@ -680,7 +680,7 @@ async function save(exam, found) {
     if (!r.ok) { $('ac-sum').textContent = r.error || '불러오지 못했어요'; return; }
     EXAMS = r.exams || []; renderList();
     // 문제은행을 한 번 불러와 모든 시험지의 「빠진 번호」를 미리 계산한다 (일부만 연결된 시험지가 목록 위로 올라온다)
-    (async () => { try { if (!BANK) { const lq = await callApi('listQuestions', { password: getTeacherPassword() }); if (lq.ok) BANK = lq.questions; } if (BANK) { EXAMS.forEach(ex => { const n = Math.max(0, (ex.answerCount || 0) - (ex.subjectiveCount || 0)); linkScan({ id: ex.id, title: ex.title, answers: new Array(n).fill('3') }); }); renderList(); } } catch (e) {} })();
+    (async () => { try { if (!BANK) { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (lq.ok) BANK = lq.questions; } if (BANK) { EXAMS.forEach(ex => { const n = Math.max(0, (ex.answerCount || 0) - (ex.subjectiveCount || 0)); linkScan({ id: ex.id, title: ex.title, answers: new Array(n).fill('3') }); }); renderList(); } } catch (e) {} })();
     $('ac-all').addEventListener('change', renderList); $('ac-flt').addEventListener('change', renderList); $('ac-scanall').addEventListener('click', scanAll); $('ac-q').addEventListener('input', renderList);
     const u = new URLSearchParams(location.search).get('id'); if (u) inspect(u);
   } catch (e) { $('ac-sum').textContent = '서버에 연결할 수 없어요.'; }

@@ -741,7 +741,7 @@ const dupKey = t => String(t || '').replace(/[^0-9A-Za-z가-힣]/g, '').slice(0,
 async function existingPreviewKeys() {
   const keys = new Map();      // 글자 → 그 문항의 출처(시험 이름). has()로 중복 확인, get()으로 어느 시험과 같은지
   try {
-    const r = await callApi('listQuestions', { password: getTeacherPassword() });
+    const r = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 });
     if (r && r.ok) r.questions.forEach(q => { const k = dupKey(q.textPreview); if (k.length >= 25 && !keys.has(k)) keys.set(k, q.source || ''); });
   } catch (e) {}
   return keys;
