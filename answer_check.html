@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191400">
+<link rel="stylesheet" href="css/style.css?v=202611191430">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -39,15 +39,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191400"></script>
-<script src="js/api.js?v=202611191400"></script>
-<script src="js/common.js?v=202611191400"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191400"></script>
-<script src="js/vendor/pdf.min.js?v=202611191400"></script>
-<script src="js/printpdf.js?v=202611191400"></script>
-<script src="js/pdfui.js?v=202611191400"></script>
-<script src="js/pdfview.js?v=202611191400"></script>
-<script src="js/bankcore.js?v=202611191400"></script>
+<script src="js/config.js?v=202611191430"></script>
+<script src="js/api.js?v=202611191430"></script>
+<script src="js/common.js?v=202611191430"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191430"></script>
+<script src="js/vendor/pdf.min.js?v=202611191430"></script>
+<script src="js/printpdf.js?v=202611191430"></script>
+<script src="js/pdfui.js?v=202611191430"></script>
+<script src="js/pdfview.js?v=202611191430"></script>
+<script src="js/bankcore.js?v=202611191430"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -151,6 +151,7 @@ function renderList() {
   $('ac-list').querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => inspect(b.getAttribute('data-id'))));
 }
 
+let CUR = null;
 const SCAN = {};   // 시험지 id -> {n: 보기 있는 주관식 문항 수, nums: [번호], err}
 async function scanExam(id, say) {
   say = say || function () {};
@@ -179,7 +180,7 @@ async function scanExam(id, say) {
   }
   const mcs = found.filter(f => f.mc), wk = found.filter(f => f.weak);
   SCAN[String(id)] = { n: mcs.length, weak: wk.length, nums: mcs.map(f => f.slot.start), wnums: wk.map(f => f.slot.start) };
-  return { exam: exam, found: found };
+  return { exam: exam, found: found, picks: picks, slots: slots };
 }
 async function scanAll() {
   const btn = $('ac-scanall'), targets = EXAMS.filter(ex => ex.subjectiveCount > 0);
@@ -203,8 +204,53 @@ async function inspect(id) {
     if (r.none) { box.innerHTML = back + '<div class="banner">이 시험지에는 주관식으로 저장된 문항이 없어요.</div>'; $('ac-back').onclick = goBack; return; }
     if (r.noimg) return renderNoImages(r.exam, r.noimg);
     const exam = r.exam, found = r.found;
+    CUR = { picks: r.picks, slots: r.slots };
     renderExam(exam, found);
   } catch (e) { fail(e.message || String(e)); }
+}
+// 잘린 그림 의심: ① 객관식(정답 1~5)인데 ①~⑤가 5개 읽히지 않음 ② 그림 맨 위·아래 끝에 글자 획이 닿음. 확정이 아니라 의심이므로 그림을 보여 준다
+function edgeInk(canvas) {
+  const w = canvas.width, h = canvas.height; if (w < 40 || h < 30) return { top: 0, bottom: 0 };
+  const d = canvas.getContext('2d').getImageData(0, 0, w, h).data, cnt = y0 => { let c = 0; for (let y = y0; y < y0 + 2; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; if ((d[i] + d[i + 1] + d[i + 2]) / 3 < 170) c++; } return c; };
+  return { top: cnt(0), bottom: cnt(h - 2) };
+}
+// 그림(도형·사진)이 있는지: 긴 세로선(<보기> 테두리·표 선)을 빼고 줄 단위로 훑어, 글줄보다 훨씬 높게 이어진 덩어리가 있으면 그림으로 본다
+function hasFigure(canvas) {
+  const w = canvas.width, h = canvas.height; if (w < 60 || h < 60) return true;
+  const d = canvas.getContext('2d').getImageData(0, 0, w, h).data, ink = new Uint8Array(w * h), col = new Int32Array(w);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; if ((d[i] + d[i + 1] + d[i + 2]) / 3 < 200) { ink[y * w + x] = 1; col[x]++; } }
+  const mask = new Uint8Array(w), rows = new Int32Array(h);
+  for (let x = 0; x < w;) { if (col[x] > h * 0.35) { let e = x; while (e < w && col[e] > h * 0.35) e++; if (e - x <= 5) for (let k = x; k < e; k++) mask[k] = 1; x = e; } else x++; }   // 가는 세로선만 뺀다 (두꺼운 덩어리는 그림이다)
+  for (let y = 0; y < h; y++) { let c = 0; for (let x = 0; x < w; x++) if (ink[y * w + x] && !mask[x]) c++; rows[y] = c; }
+  const runs = []; let st = -1;
+  for (let y = 0; y <= h; y++) { const on = y < h && rows[y] > 1; if (on && st < 0) st = y; else if (!on && st >= 0) { runs.push(y - st); st = -1; } }
+  if (!runs.length) return false;
+  const sorted = runs.slice().sort((a, b) => a - b), med = sorted[Math.floor(sorted.length / 2)];
+  return runs.some(r => r >= Math.max(70, med * 2.4));
+}
+const FIG_WORDS = /그림|사진|모식도|그래프|도식/;
+async function cropCheck(exam) {
+  const msg = $('ac-crop-msg'), out = $('ac-crop-out'), btn = $('ac-crop'); if (!CUR) return;
+  btn.disabled = true; out.innerHTML = ''; const sus = [];
+  try {
+    _imgCache.clear(); prefetchImages(CUR.picks.map(q => q.fileId));
+    for (let k = 0; k < CUR.picks.length; k++) {
+      msg.textContent = '확인 중... ' + (k + 1) + '/' + CUR.picks.length;
+      const q = CUR.picks[k], sl = CUR.slots[k], im = (await getImgs([q.fileId]))[0];
+      const img = await new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = 'data:image/png;base64,' + im.base64; });
+      if (!img) { sus.push({ num: sl.label, reasons: ['그림 파일을 열지 못했어요 (손상됐거나 비어 있을 수 있어요)'], b64: '' }); continue; }
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height); cx.drawImage(img, 0, 0);
+      const reasons = [], isMc = /^[1-5]/.test(String(exam.answers[sl.start - 1] || '')), ed = edgeInk(c);
+      if (isMc) { let mk = null; try { mk = BankCore.detectOptionMarkers(c); } catch (e) {} if (!mk || mk.length < 5) reasons.push('객관식인데 보기 ①~⑤가 ' + (mk ? mk.length : 0) + '개만 읽혀요'); }
+      if (FIG_WORDS.test(String(q.textPreview || '')) && !hasFigure(c)) reasons.push('문항 글에 「그림」 같은 말이 있는데 그림 속에 도형이 보이지 않아요');
+      if (ed.bottom >= 6) reasons.push('그림 아래 끝에 글자가 닿아 있어요');
+      if (ed.top >= 6) reasons.push('그림 위 끝에 글자가 닿아 있어요');
+      if (reasons.length) sus.push({ num: sl.label, reasons: reasons, b64: im.base64 });
+    }
+    msg.textContent = sus.length ? '의심 ' + sus.length + '문항' : '잘린 것으로 보이는 문항이 없어요';
+    out.innerHTML = sus.map(x => '<div class="ac-q sus"><div class="hd"><b style="font-size:17px;">' + escapeHtml(String(x.num)) + '번</b><span class="ac-lv mid">잘림 의심</span><span class="hint">' + x.reasons.map(escapeHtml).join(' · ') + '</span></div>' + (x.b64 ? '<img alt="" src="data:image/png;base64,' + x.b64 + '">' : '') + '</div>').join('') + (sus.length ? '<p class="hint">그림을 보고 정말 잘렸으면 문제은행에서 그 문항을 다시 올리거나 다시 잘라 주세요. 이 화면은 정답만 고쳐요.</p>' : '');
+  } catch (e) { msg.textContent = '⚠️ ' + (e.message || e); }
+  btn.disabled = false;
 }
 function goBack(ev) { if (ev) ev.preventDefault(); $('ac-detail').style.display = 'none'; $('ac-list').style.display = 'block'; }
 
@@ -241,8 +287,9 @@ function renderExam(exam, found) {
   const box = $('ac-detail'), mcN = found.filter(f => f.mc || f.weak).length;
   box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2>'
     + '<div class="banner' + (mcN ? '' : '') + '" style="text-align:left;">주관식으로 저장된 문항 <b>' + found.length + '개</b> 중 <b style="color:#B45309">보기 ①~⑤가 있는 문항 ' + mcN + '개</b>가 있어요. ' + (mcN ? '노란 칸은 <b>객관식인데 주관식으로 저장된 것</b>일 가능성이 커요. 해설(정답) 그림을 보고 번호를 적어 주세요. 진짜 서술형이면 비워 두세요.' : '객관식처럼 보이는 문항은 없어요. 그래도 아래에서 직접 확인할 수 있어요.') + '</div>'
-    + '<div style="margin:8px 0;"><label class="bank-include-label"><input type="checkbox" id="ac-onlysus"' + (mcN ? ' checked' : '') + '> 보기가 있는 문항만 보기</label></div><div id="ac-qs"></div><div id="ac-save-bar"></div>';
+    + '<div style="margin:8px 0;"><label class="bank-include-label"><input type="checkbox" id="ac-onlysus"' + (mcN ? ' checked' : '') + '> 보기가 있는 문항만 보기</label></div><div style="margin:8px 0;"><button type="button" class="btn outline" id="ac-crop" style="padding:7px 14px;">✂️ 잘린 문항 확인 (이 시험지 전체)</button> <span class="hint" id="ac-crop-msg"></span></div><div id="ac-crop-out"></div><div id="ac-qs"></div><div id="ac-save-bar"></div>';
   $('ac-back').onclick = goBack;
+  $('ac-crop').onclick = () => cropCheck(exam);
   const draw = () => drawCards(exam, found, $('ac-onlysus').checked);
   $('ac-onlysus').addEventListener('change', draw); draw();
 }
