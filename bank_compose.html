@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200652">
+<link rel="stylesheet" href="css/style.css?v=202611200712">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611200652"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200652"></script>
-<script src="js/config.js?v=202611200652"></script>
-<script src="js/api.js?v=202611200652"></script>
-<script src="js/common.js?v=202611200652"></script>
-<script src="js/bankcore.js?v=202611200652"></script>
-<script src="js/vendor/pdf.min.js?v=202611200652"></script>
-<script src="js/printpdf.js?v=202611200652"></script>
-<script src="js/pdfui.js?v=202611200652"></script>
+<script src="js/vendor/qrcode.min.js?v=202611200712"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200712"></script>
+<script src="js/config.js?v=202611200712"></script>
+<script src="js/api.js?v=202611200712"></script>
+<script src="js/common.js?v=202611200712"></script>
+<script src="js/bankcore.js?v=202611200712"></script>
+<script src="js/vendor/pdf.min.js?v=202611200712"></script>
+<script src="js/printpdf.js?v=202611200712"></script>
+<script src="js/pdfui.js?v=202611200712"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -656,6 +656,7 @@ function renderReview() {
       </div>
       <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; align-items:stretch;">
         <button type="button" class="btn primary" id="finalize-print-btn" style="padding:16px 22px; font-size:18px; font-weight:800; flex:1 1 240px;" title="이 문항들을 시험지로 등록(QR 찍힘)하고, 학생용 문제지와 정답·해설을 바로 인쇄해요">🖨️ 학생용 인쇄</button>
+        <button type="button" class="btn outline" id="finalize-merged-btn" style="padding:10px 16px;" title="이 문항들을 시험지로 등록(QR 찍힘)하고, 학생용과 강사용을 한 PDF 파일로 합쳐서 받아요">📚 학생용 + 강사용 합쳐 받기</button>
         <button type="button" class="btn outline" id="finalize-btn" style="padding:10px 16px;" title="이 문항들을 시험지로 등록(QR 찍힘)하고 학생용 문제지와 정답·해설을 받아요">📄 학생용 시험지 받기 (${reviewPicks.length}문항)</button>
       </div>
       <p class="hint" style="margin:8px 0 0;">※ 학생용은 받거나 인쇄하는 순간 시험지로 자동 등록되고 학생 제출용 QR이 찍혀요. 강사용은 등록하지 않아요.</p>
@@ -667,8 +668,9 @@ function renderReview() {
     if (formCard) { $('review-area').style.display = 'none'; formCard.style.display = ''; }
     else history.back();
   });
-  $('finalize-btn').addEventListener('click', () => finalize(false));
-  $('finalize-print-btn').addEventListener('click', () => finalize(true));
+  $('finalize-btn').addEventListener('click', () => { window._finalDl = ''; finalize(false); });
+  $('finalize-merged-btn').addEventListener('click', () => { window._finalDl = 'merged'; finalize(false); });
+  $('finalize-print-btn').addEventListener('click', () => { window._finalDl = ''; finalize(true); });
   $('teacher-btn').addEventListener('click', () => makeTeacher(false));
   $('teacher-print-btn').addEventListener('click', () => makeTeacher(true));
   $('add-search').addEventListener('input', renderAddResults);
@@ -843,7 +845,7 @@ async function finalize(printAfter) {
   const picks = reviewPicks, title = reviewTitle, recipe = reviewRecipe;
   const dkey = title + '|' + picks.map(q => q.id).join(',');
   if (finalDone && finalDone.key === dkey) {       // 같은 구성은 이미 등록됨 → 새로 등록하지 않는다
-    if (printAfter !== true) { location.href = 'teacher_exam.html?id=' + finalDone.examId; return; }
+    if (printAfter !== true) { location.href = 'teacher_exam.html?id=' + finalDone.examId + (window._finalDl ? '&dl=' + window._finalDl : ''); return; }
     try { showSpinner('🖨️ 인쇄 준비 중...'); setupPdfJs(); await printPdfBytes(BankCore.b64ToBytes(finalDone.pdfBase64), (i, n) => updateSpinner('🖨️ 인쇄 준비 중... ' + i + '/' + n + '쪽')); }
     catch (pe) { err.innerHTML = '<div class="banner error">인쇄를 시작하지 못했어요: ' + escapeHtml(pe.message) + '</div>'; }
     hideSpinner(); return;
@@ -956,7 +958,7 @@ async function finalize(printAfter) {
       return;
     }
     hideSpinner();
-    if (res.ok) { if (explFillNote) alert(explFillNote); location.href = 'teacher_exam.html?id=' + examId; }
+    if (res.ok) { if (explFillNote) alert(explFillNote); location.href = 'teacher_exam.html?id=' + examId + (window._finalDl ? '&dl=' + window._finalDl : ''); }
     else { err.innerHTML = '<div class="banner error">' + escapeHtml(res.error || '등록 실패') + '</div>'; }
   } catch (e) {
     hideSpinner();
