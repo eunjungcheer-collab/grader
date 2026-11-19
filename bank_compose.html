@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200748">
+<link rel="stylesheet" href="css/style.css?v=202611200806">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611200748"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200748"></script>
-<script src="js/config.js?v=202611200748"></script>
-<script src="js/api.js?v=202611200748"></script>
-<script src="js/common.js?v=202611200748"></script>
-<script src="js/bankcore.js?v=202611200748"></script>
-<script src="js/vendor/pdf.min.js?v=202611200748"></script>
-<script src="js/printpdf.js?v=202611200748"></script>
-<script src="js/pdfui.js?v=202611200748"></script>
+<script src="js/vendor/qrcode.min.js?v=202611200806"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200806"></script>
+<script src="js/config.js?v=202611200806"></script>
+<script src="js/api.js?v=202611200806"></script>
+<script src="js/common.js?v=202611200806"></script>
+<script src="js/bankcore.js?v=202611200806"></script>
+<script src="js/vendor/pdf.min.js?v=202611200806"></script>
+<script src="js/printpdf.js?v=202611200806"></script>
+<script src="js/pdfui.js?v=202611200806"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -889,9 +889,23 @@ async function finalize(printAfter) {
           const exams = (le && le.ok && le.exams) || [], detail = {}, fixed = [], fixedK = new Set();
           for (const k of susK) {
             const q = picks[k], n = Number(q && q.num); if (!q || !(n > 0)) continue;
-            const ex = exams.find(e => nzs(e.title) === nzs(q.source)); if (!ex) continue;
-            if (!(ex.id in detail)) { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: ex.id }); detail[ex.id] = d && d.ok ? d.answers : null; }
-            const a = detail[ex.id] && detail[ex.id][n - 1];
+            const getD = async ex => { if (!(ex.id in detail)) { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: ex.id }); detail[ex.id] = d && d.ok ? d : null; } return detail[ex.id]; };
+            let a = null;
+            const ex = exams.find(e => nzs(e.title) === nzs(q.source));
+            if (ex) { const d = await getD(ex); a = d && d.answers && d.answers[n - 1]; }
+            if (!a) {
+              // 시험지 이름이 달라도(옛 이름으로 등록된 문항) 문제 글자가 같은 문항을 같은 학교 시험지의 정답표에서 찾는다. 딱 하나로 정해질 때만 쓴다
+              const an = t => String(t || '').replace(/[^0-9A-Za-z가-힣]/g, ''), key = an(q.textPreview).slice(0, 20);
+              const sm = String(q.school || q.source || '').match(/([가-힣]{2,5}?)중/), stemS = sm ? sm[1] : '';
+              if (key.length >= 15 && stemS) {
+                const hits = [];
+                for (const e2 of exams.filter(e => String(e.title || '').indexOf(stemS) >= 0)) {
+                  const d = await getD(e2); if (!d || !d.questionTexts) continue;
+                  d.questionTexts.forEach((t, i) => { if (an(t).slice(0, 20) === key) hits.push(d.answers && d.answers[i]); });
+                }
+                if (hits.length && hits.every(h => h && String(h) === String(hits[0]))) a = hits[0];
+              }
+            }
             if (a && /^[1-5]{1,5}(\/[1-5]{1,5})*$/.test(String(a))) { fixed.push({ id: q.id, answer: String(a) }); fixedK.add(k); q.answer = String(a); imgs[k].answer = String(a); }
           }
           if (fixed.length) { try { await callApi('updateQuestions', { password: getTeacherPassword(), updates: fixed }); } catch (e) {} sus = sus.filter((x, i) => !fixedK.has(susK[i])); }
