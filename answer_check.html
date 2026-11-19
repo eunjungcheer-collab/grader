@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191515">
+<link rel="stylesheet" href="css/style.css?v=202611191540">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191515"></script>
-<script src="js/api.js?v=202611191515"></script>
-<script src="js/common.js?v=202611191515"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191515"></script>
-<script src="js/vendor/pdf.min.js?v=202611191515"></script>
-<script src="js/printpdf.js?v=202611191515"></script>
-<script src="js/pdfui.js?v=202611191515"></script>
-<script src="js/pdfview.js?v=202611191515"></script>
-<script src="js/bankcore.js?v=202611191515"></script>
+<script src="js/config.js?v=202611191540"></script>
+<script src="js/api.js?v=202611191540"></script>
+<script src="js/common.js?v=202611191540"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191540"></script>
+<script src="js/vendor/pdf.min.js?v=202611191540"></script>
+<script src="js/printpdf.js?v=202611191540"></script>
+<script src="js/pdfui.js?v=202611191540"></script>
+<script src="js/pdfview.js?v=202611191540"></script>
+<script src="js/bankcore.js?v=202611191540"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -144,13 +144,36 @@ function scanBadge(x) {
   if (sc.weak) return '<span class="ac-lv mid">약한 후보 ' + sc.weak + '문항 (' + sc.wnums.slice(0, 6).join(', ') + '번)</span>';
   return '<span class="ac-lv ok">보기 있는 주관식 없음</span>';
 }
+// 이 컴퓨터에 남은 등록 기록(시험지 등록 때 입력·확인한 정답)을 찾는다. 서버에 저장된 정답과 다르면 불러와 채울 수 있게 한다
+async function localAnswers(exam) {
+  try {
+    const db = await new Promise((res, rej) => { const q = indexedDB.open('grader_review', 1); q.onupgradeneeded = () => q.result.createObjectStore('r'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+    const list = await new Promise(res => { const t = db.transaction('r').objectStore('r').get('list'); t.onsuccess = () => res(t.result || []); t.onerror = () => res([]); });
+    const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const hit = list.find(x => String(x.id) === String(exam.id)) || list.find(x => nz(x.title) === nz(exam.title));
+    return hit && Array.isArray(hit.answers) ? hit.answers.map(String) : null;
+  } catch (e) { return null; }
+}
+async function offerLocal(exam) {
+  const host = $('ac-local'); if (!host) return;
+  const loc = await localAnswers(exam); if (!loc || loc.length !== exam.answers.length) return;
+  const diff = loc.map((a, i) => ({ n: i + 1, a: a, cur: exam.answers[i] })).filter(x => x.a && x.a !== '-' && x.a !== x.cur);
+  if (!diff.length) return;
+  host.innerHTML = '<div class="banner" style="text-align:left;">💾 이 컴퓨터에 남은 <b>등록 기록</b>에는 서버와 다른 정답이 <b>' + diff.length + '개</b> 있어요 (서버에 저장된 정답 ' + exam.answers.filter(a => a !== '-').length + '개). <button type="button" class="btn outline" id="ac-loadlocal" style="padding:5px 12px;margin-left:6px;">불러와서 칸에 채우기</button><div class="hint">채우기만 하고 저장하지는 않아요. 칸을 확인한 뒤 「저장」을 누르면 「이전 → 이후」를 보여 드려요.</div></div>';
+  $('ac-loadlocal').onclick = () => {
+    let n = 0; diff.forEach(x => { const i = document.querySelector('#ac-detail input.aa[data-n="' + x.n + '"]') || document.querySelector('#ac-detail input.ai[data-n="' + x.n + '"]'); if (i) { i.value = x.a; n++; const c = i.closest('.ac-q'); if (c) c.classList.add('chg'); } });
+    host.querySelector('.hint').textContent = n + '개 칸을 채웠어요. 확인하고 저장해 주세요.' + (n < diff.length ? ' (' + (diff.length - n) + '개는 이 화면에 칸이 없어요)' : '');
+  };
+}
+function reviewUrl(id) { return 'teacher_new.html?review=' + encodeURIComponent(String(id)); }
+function reviewBtn(id) { return '<a class="btn primary" href="' + reviewUrl(id) + '" style="padding:8px 14px;text-decoration:none;">✏️ PDF 보며 정답 고치기 (등록 화면으로 열기)</a>'; }
 function renderList() {
   const flt = $('ac-flt').value, showAll = $('ac-all').checked && !flt, kw = $('ac-q').value.trim().toLowerCase();
   const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.score > 0) && (!flt || (flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
   rows.sort((a, b) => (((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
   const susp = EXAMS.filter(ex => risk(ex).score >= 2).length;
   $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>, 이 중 <b style="color:#B91C1C">정답을 거의 못 읽은 시험지 ' + EXAMS.filter(ex => risk(ex).unread).length + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
-  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"><div class="t">' + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
+  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"><div class="t">' + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button><a class="btn outline" href="' + reviewUrl(x.ex.id) + '" style="padding:7px 12px;text-decoration:none;">✏️ PDF 보며 정답 고치기</a></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
   $('ac-list').querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => inspect(b.getAttribute('data-id'))));
 }
 
@@ -260,12 +283,12 @@ function goBack(ev) { if (ev) ev.preventDefault(); $('ac-detail').style.display 
 // 문제은행에서 그림을 못 찾는 시험지(PDF로만 올린 것 등): 번호별로 정답만 고치게 한다
 function renderNoImages(exam, why) {
   const box = $('ac-detail');
-  box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2>'
+  box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2><p>' + reviewBtn(exam.id) + ' <span class="hint">시험지 등록 때 쓰는 좌우 화면(PDF + 정답 입력)이 열려요.</span></p><div id="ac-local"></div>'
     + '<div class="split"><div class="pane-left"><div class="vhead"><b>시험지 PDF</b><input type="number" id="ac-go" min="1" placeholder="쪽"><button type="button" class="btn ghost" id="ac-gob">이동</button><button type="button" class="btn ghost" id="ac-last">마지막 쪽</button><button type="button" class="btn ghost" id="ac-zo">−</button><button type="button" class="btn ghost" id="ac-zi">＋</button></div><div class="vscroll" id="ac-pdf"><p class="muted" style="padding:12px;">시험지 PDF를 불러오는 중...</p></div></div>'
     + '<div><div class="banner" style="text-align:left;margin-top:0;">이 시험지는 문제 그림을 문제은행에서 찾지 못해 보기 표시를 자동으로 확인할 수 없어요. 왼쪽 PDF를 보면서 오른쪽 <b>현재 정답표</b>를 확인하세요. 노란 칸은 <b>주관식(-)으로 저장된 번호</b>예요. 틀린 정답이나 잘못 저장된 번호만 고쳐 적고, 진짜 서술형은 비워 두세요.<br><span class="hint">' + escapeHtml(why) + '</span></div><div id="ac-qs"></div><div id="ac-save-bar"></div></div></div>';
   $('ac-back').onclick = goBack;
   drawGrid(exam);
-  loadPdfPane(exam);
+  loadPdfPane(exam); offerLocal(exam);
 }
 // 시험지 PDF를 왼쪽에 띄운다 (시험지 등록 화면과 같은 뷰어). 구글 드라이브에서 받아 오므로 PDF가 없는 시험지(교재 QR 등)는 안내만 한다
 async function loadPdfPane(exam) {
@@ -287,13 +310,13 @@ async function loadPdfPane(exam) {
 }
 function renderExam(exam, found) {
   const box = $('ac-detail'), mcN = found.filter(f => f.mc || f.weak).length;
-  box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2>'
+  box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2><p>' + reviewBtn(exam.id) + '</p><div id="ac-local"></div>'
     + '<div class="banner' + (mcN ? '' : '') + '" style="text-align:left;">주관식으로 저장된 문항 <b>' + found.length + '개</b> 중 <b style="color:#B45309">보기 ①~⑤가 있는 문항 ' + mcN + '개</b>가 있어요. ' + (mcN ? '노란 칸은 <b>객관식인데 주관식으로 저장된 것</b>일 가능성이 커요. 해설(정답) 그림을 보고 번호를 적어 주세요. 진짜 서술형이면 비워 두세요.' : '객관식처럼 보이는 문항은 없어요. 그래도 아래에서 직접 확인할 수 있어요.') + '</div>'
     + '<div style="margin:8px 0;"><label class="bank-include-label"><input type="checkbox" id="ac-onlysus"' + (mcN ? ' checked' : '') + '> 보기가 있는 문항만 보기</label></div><div style="margin:8px 0;"><button type="button" class="btn outline" id="ac-crop" style="padding:7px 14px;">✂️ 잘린 문항 확인 (이 시험지 전체)</button> <span class="hint" id="ac-crop-msg"></span></div><div id="ac-crop-out"></div><details style="margin:8px 0;"><summary class="hint" style="cursor:pointer;">📋 이미 입력된 정답 보기·고치기 (펼치기)</summary><div class="card" style="line-height:2.3;"><div style="display:flex;flex-wrap:wrap;gap:6px 12px;">' + gridHtml(exam, false) + '</div></div></details><div id="ac-qs"></div><div id="ac-save-bar"></div>';
   $('ac-back').onclick = goBack;
   $('ac-crop').onclick = () => cropCheck(exam);
   const draw = () => drawCards(exam, found, $('ac-onlysus').checked);
-  $('ac-onlysus').addEventListener('change', draw); draw();
+  $('ac-onlysus').addEventListener('change', draw); draw(); offerLocal(exam);
 }
 // 현재 정답표: 이미 입력된 정답을 보여 주고 필요하면 바로 고친다. editDash=true면 주관식(-)도 여기서 입력한다
 function gridHtml(exam, editDash) {

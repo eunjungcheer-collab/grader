@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191515">
+<link rel="stylesheet" href="css/style.css?v=202611191540">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,15 +17,15 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611191515"></script>
-<script src="js/config.js?v=202611191515"></script>
-<script src="js/api.js?v=202611191515"></script>
-<script src="js/common.js?v=202611191515"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191515"></script>
-<script src="js/bankcore.js?v=202611191515"></script>
-<script src="js/vendor/pdf.min.js?v=202611191515"></script>
-<script src="js/printpdf.js?v=202611191515"></script>
-<script src="js/pdfui.js?v=202611191515"></script>
+<script src="js/vendor/qrcode.min.js?v=202611191540"></script>
+<script src="js/config.js?v=202611191540"></script>
+<script src="js/api.js?v=202611191540"></script>
+<script src="js/common.js?v=202611191540"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191540"></script>
+<script src="js/bankcore.js?v=202611191540"></script>
+<script src="js/vendor/pdf.min.js?v=202611191540"></script>
+<script src="js/printpdf.js?v=202611191540"></script>
+<script src="js/pdfui.js?v=202611191540"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -238,7 +238,7 @@ async function makeTeacherFromBank(exam, say) {
         </div>
       </div>
 
-      <h2>정답표 <button type="button" class="btn outline" id="ans-edit-btn" style="padding:5px 12px; font-size:13px; margin-left:8px;">✏️ 정답 고치기</button></h2>
+      <h2>정답표 <a class="btn outline" id="ans-review-btn" href="teacher_new.html?review=${encodeURIComponent(res.id || examId)}" style="padding:5px 12px; font-size:13px; margin-left:8px; text-decoration:none;">✏️ 정답 고치기 (PDF 보며)</a> <button type="button" class="btn ghost" id="ans-edit-btn" style="padding:5px 10px; font-size:12px;">표로 간단히 고치기</button></h2>
       <div class="card" id="ans-edit" style="display:none;">
         <p class="hint" style="margin-top:0;">고칠 번호의 칸만 바꾸세요. 한 개는 <b>3</b>, 모두 맞아야 하는 복수정답은 <b>35</b>, 둘 중 하나만 맞아도 되면 <b>3/5</b>, 주관식은 <b>-</b> 로 적어요. 저장하면 이 시험의 <b>이미 제출된 학생 점수도 새 정답으로 다시 채점</b>돼요.</p>
         <div id="ans-edit-grid" style="display:flex; flex-wrap:wrap; gap:6px 10px;"></div>
