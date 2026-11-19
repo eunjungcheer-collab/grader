@@ -140,6 +140,7 @@ function handle_(e) {
       case 'updateQuestions': result = actionUpdateQuestions_(params); break;
       case 'deleteQuestions': result = actionDeleteQuestions_(params); break;
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
+      case 'replaceExamPdf': result = actionReplaceExamPdf_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
       case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
       case 'editSubmission': result = actionEditSubmission_(params); break;
@@ -1252,6 +1253,25 @@ function actionRenameBook_(p) {
   } finally { lock.releaseLock(); }
   if (ne || nq) bustCache_();
   return { ok: true, exams: ne, questions: nq };
+}
+
+// 이미 등록된 시험지의 PDF를 새 PDF로 바꾼다 (예: 정답지를 뒤에 붙인 PDF). 시험 번호·QR·정답·제출 기록은 그대로이고, 예전 PDF는 휴지통으로 보낸다(드라이브 휴지통에서 복구 가능)
+function actionReplaceExamPdf_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  if (!p.pdfBase64) return { ok: false, error: '새 PDF가 없어요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const exams = ss.getSheetByName(SHEET_EXAMS);
+  const found = findExamRow_(exams, p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const bytes = Utilities.base64Decode(p.pdfBase64);
+  if (bytes.length < 1000 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== '%PDF') return { ok: false, error: 'PDF 파일이 아니에요.' };
+  const oldId = String(found.row[4] || '');
+  const file = getOrCreateFolder_().createFile(Utilities.newBlob(bytes, 'application/pdf', (p.filename || String(found.row[1] || 'exam')) + '.pdf'));
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  const url = 'https://drive.google.com/uc?export=download&id=' + file.getId();
+  exams.getRange(found.rowIndex, 5, 1, 2).setValues([[file.getId(), url]]);
+  if (oldId) { try { DriveApp.getFileById(oldId).setTrashed(true); } catch (e) {} }
+  return { ok: true, id: String(found.row[0]), pdfUrl: url };
 }
 
 function actionUpdateExamAnswers_(p) {
