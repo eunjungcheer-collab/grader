@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191500">
+<link rel="stylesheet" href="css/style.css?v=202611191515">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -31,6 +31,7 @@
   <div class="card" style="padding:12px 14px;">
     <div id="ac-sum" class="muted">불러오는 중...</div>
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <select id="ac-flt" style="flex:0 1 190px;"><option value="">의심되는 것 모두</option><option value="unread">정답 못 읽은 시험지만</option><option value="mid">의심 이상만</option></select>
       <label class="bank-include-label" style="margin:0;"><input type="checkbox" id="ac-all"> 주관식이 없는 시험지도 보기</label>
        <button type="button" class="btn primary" id="ac-scanall" style="padding:8px 14px;">🔍 전체 검사 (후보 찾기)</button><input type="search" id="ac-q" placeholder="이름 검색" style="flex:1 1 150px;min-width:120px;">
     </div>
@@ -39,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191500"></script>
-<script src="js/api.js?v=202611191500"></script>
-<script src="js/common.js?v=202611191500"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191500"></script>
-<script src="js/vendor/pdf.min.js?v=202611191500"></script>
-<script src="js/printpdf.js?v=202611191500"></script>
-<script src="js/pdfui.js?v=202611191500"></script>
-<script src="js/pdfview.js?v=202611191500"></script>
-<script src="js/bankcore.js?v=202611191500"></script>
+<script src="js/config.js?v=202611191515"></script>
+<script src="js/api.js?v=202611191515"></script>
+<script src="js/common.js?v=202611191515"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191515"></script>
+<script src="js/vendor/pdf.min.js?v=202611191515"></script>
+<script src="js/printpdf.js?v=202611191515"></script>
+<script src="js/pdfui.js?v=202611191515"></script>
+<script src="js/pdfview.js?v=202611191515"></script>
+<script src="js/bankcore.js?v=202611191515"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -127,7 +128,8 @@ let EXAMS = [], BANK = null;
 function risk(ex) {
   const n = ex.answerCount || 0, s = ex.subjectiveCount || 0;
   if (!s || !n) return { lv: 'ok', label: '주관식 없음', score: 0 };
-  const r = s / n;
+  const r = s / n, pct = Math.round(r * 100);
+  if (r >= 0.4) return { lv: 'hi', label: '정답 못 읽음 (주관식 ' + pct + '%)', score: 5 + r, unread: true };
   if (s >= 8 && r >= 0.08 || r >= 0.25) return { lv: 'hi', label: '의심 큼', score: 3 + r };
   if (s >= 3 && r >= 0.04) return { lv: 'mid', label: '의심', score: 2 + r };
   return { lv: 'lo', label: '주관식 조금', score: 1 + r };
@@ -138,15 +140,16 @@ function scanBadge(x) {
   if (sc.unknown) return '<span class="ac-lv mid" title="' + escapeHtml(sc.unknown) + '">🔎 확인 불가 (직접 확인)</span>';
   if (sc.err) return '<span class="ac-lv lo" title="' + escapeHtml(sc.err) + '">확인 못함</span>';
   if (sc.n) return '<span class="ac-lv hi">⚠️ 후보 ' + sc.n + '문항 (' + sc.nums.slice(0, 6).join(', ') + (sc.nums.length > 6 ? ' …' : '') + '번)</span>';
+  if (x.r.unread) return '<span class="ac-lv hi">' + x.r.label + '</span>';
   if (sc.weak) return '<span class="ac-lv mid">약한 후보 ' + sc.weak + '문항 (' + sc.wnums.slice(0, 6).join(', ') + '번)</span>';
   return '<span class="ac-lv ok">보기 있는 주관식 없음</span>';
 }
 function renderList() {
-  const showAll = $('ac-all').checked, kw = $('ac-q').value.trim().toLowerCase();
-  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.score > 0) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
+  const flt = $('ac-flt').value, showAll = $('ac-all').checked && !flt, kw = $('ac-q').value.trim().toLowerCase();
+  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.score > 0) && (!flt || (flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
   rows.sort((a, b) => (((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
   const susp = EXAMS.filter(ex => risk(ex).score >= 2).length;
-  $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
+  $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>, 이 중 <b style="color:#B91C1C">정답을 거의 못 읽은 시험지 ' + EXAMS.filter(ex => risk(ex).unread).length + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
   $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"><div class="t">' + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
   $('ac-list').querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => inspect(b.getAttribute('data-id'))));
 }
@@ -365,7 +368,7 @@ async function save(exam, found) {
     const r = await callApi('listExams', { password: getTeacherPassword() });
     if (!r.ok) { $('ac-sum').textContent = r.error || '불러오지 못했어요'; return; }
     EXAMS = r.exams || []; renderList();
-    $('ac-all').addEventListener('change', renderList); $('ac-scanall').addEventListener('click', scanAll); $('ac-q').addEventListener('input', renderList);
+    $('ac-all').addEventListener('change', renderList); $('ac-flt').addEventListener('change', renderList); $('ac-scanall').addEventListener('click', scanAll); $('ac-q').addEventListener('input', renderList);
     const u = new URLSearchParams(location.search).get('id'); if (u) inspect(u);
   } catch (e) { $('ac-sum').textContent = '서버에 연결할 수 없어요.'; }
 })();
