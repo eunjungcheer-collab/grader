@@ -734,10 +734,10 @@ function setUnitSelect(sel, unit, grade) {
 // ── 중복 문항 거르기: 이미 문제은행에 있는 문항(같은 글자)은 다시 저장하지 않는다 ──
 const dupKey = t => String(t || '').replace(/[^0-9A-Za-z가-힣]/g, '').slice(0, 40);
 async function existingPreviewKeys() {
-  const keys = new Set();
+  const keys = new Map();      // 글자 → 그 문항의 출처(시험 이름). has()로 중복 확인, get()으로 어느 시험과 같은지
   try {
     const r = await callApi('listQuestions', { password: getTeacherPassword() });
-    if (r && r.ok) r.questions.forEach(q => { const k = dupKey(q.textPreview); if (k.length >= 25) keys.add(k); });
+    if (r && r.ok) r.questions.forEach(q => { const k = dupKey(q.textPreview); if (k.length >= 25 && !keys.has(k)) keys.set(k, q.source || ''); });
   } catch (e) {}
   return keys;
 }
