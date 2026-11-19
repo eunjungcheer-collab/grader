@@ -888,33 +888,44 @@ function findQuestionRow_(sheet, id) {
 
 function actionUpdateQuestion_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
-  const sheet = questionsSheet_();
-  const row = findQuestionRow_(sheet, p.id);
-  if (row < 0) return { ok: false, error: '문항을 찾을 수 없어요.' };
-  if (p.unit !== undefined) sheet.getRange(row, 2).setValue(p.unit);
-  if (p.answer !== undefined) sheet.getRange(row, 3).setValue(normAns_(p.answer));
-  if (p.difficulty !== undefined) sheet.getRange(row, 9).setValue(String(p.difficulty));
-  if (p.grade !== undefined) sheet.getRange(row, 13).setValue(cleanText_(p.grade, 20));
-  if (p.kind !== undefined) sheet.getRange(row, 14).setValue(normKind_(p.kind));
-  if (p.school !== undefined) sheet.getRange(row, 15).setValue(cleanText_(p.school, 80));
-  if (p.sub !== undefined) sheet.getRange(row, 19).setValue(cleanText_(p.sub, 80));
-  if (p.auto !== undefined) sheet.getRange(row, 20).setValue(Number(p.auto) || '');
-  if (p.year !== undefined) sheet.getRange(row, 16).setValue(normYear_(p.year));
+  // 다른 요청(많은 문항을 한꺼번에 고치는 요청 등)과 동시에 시트를 고치면, 한쪽이 읽어 둔 옛 값을 다시 써서 방금 고친 단원·소단원이 되돌아갈 수 있다 → 같은 잠금 안에서 고친다
+  const lockU = LockService.getScriptLock();
+  lockU.waitLock(30000);
+  try {
+    const sheet = questionsSheet_();
+    const row = findQuestionRow_(sheet, p.id);
+    if (row < 0) return { ok: false, error: '문항을 찾을 수 없어요.' };
+    if (p.unit !== undefined) sheet.getRange(row, 2).setValue(p.unit);
+    if (p.answer !== undefined) sheet.getRange(row, 3).setValue(normAns_(p.answer));
+    if (p.difficulty !== undefined) sheet.getRange(row, 9).setValue(String(p.difficulty));
+    if (p.grade !== undefined) sheet.getRange(row, 13).setValue(cleanText_(p.grade, 20));
+    if (p.kind !== undefined) sheet.getRange(row, 14).setValue(normKind_(p.kind));
+    if (p.school !== undefined) sheet.getRange(row, 15).setValue(cleanText_(p.school, 80));
+    if (p.sub !== undefined) sheet.getRange(row, 19).setValue(cleanText_(p.sub, 80));
+    if (p.auto !== undefined) sheet.getRange(row, 20).setValue(Number(p.auto) || '');
+    if (p.year !== undefined) sheet.getRange(row, 16).setValue(normYear_(p.year));
+
+  SpreadsheetApp.flush();
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lockU.releaseLock(); }
   return { ok: true };
 }
 
 function actionDeleteQuestion_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
-  const sheet = questionsSheet_();
-  const row = findQuestionRow_(sheet, p.id);
-  if (row < 0) return { ok: true };
-  try { const lc = sheet.getLastColumn(), v = sheet.getRange(row, 1, 1, lc).getValues()[0]; trashPut_(SpreadsheetApp.getActiveSpreadsheet(), Utilities.getUuid(), 'question', trashQLabel_(v), v); } catch (e) {}
-  const fileId = sheet.getRange(row, 7).getValue();
-  try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {}
-  const explId = sheet.getRange(row, 8).getValue();
-  if (explId) { try { DriveApp.getFileById(explId).setTrashed(true); } catch (e) {} }
-  sheet.deleteRow(row);
-  return { ok: true };
+  const lockD = LockService.getScriptLock();
+  lockD.waitLock(30000);
+  try {
+    const sheet = questionsSheet_();
+    const row = findQuestionRow_(sheet, p.id);
+    if (row < 0) return { ok: true };
+    try { const lc = sheet.getLastColumn(), v = sheet.getRange(row, 1, 1, lc).getValues()[0]; trashPut_(SpreadsheetApp.getActiveSpreadsheet(), Utilities.getUuid(), 'question', trashQLabel_(v), v); } catch (e) {}
+    const fileId = sheet.getRange(row, 7).getValue();
+    try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {}
+    const explId = sheet.getRange(row, 8).getValue();
+    if (explId) { try { DriveApp.getFileById(explId).setTrashed(true); } catch (e) {} }
+    sheet.deleteRow(row);
+    return { ok: true };
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lockD.releaseLock(); }
 }
 
 function actionGetQuestionImages_(p) {

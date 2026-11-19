@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200546">
+<link rel="stylesheet" href="css/style.css?v=202611200612">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200546"></script>
-<script src="js/api.js?v=202611200546"></script>
-<script src="js/common.js?v=202611200546"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200546"></script>
-<script src="js/vendor/pdf.min.js?v=202611200546"></script>
-<script src="js/printpdf.js?v=202611200546"></script>
-<script src="js/pdfui.js?v=202611200546"></script>
-<script src="js/pdfview.js?v=202611200546"></script>
-<script src="js/bankcore.js?v=202611200546"></script>
+<script src="js/config.js?v=202611200612"></script>
+<script src="js/api.js?v=202611200612"></script>
+<script src="js/common.js?v=202611200612"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200612"></script>
+<script src="js/vendor/pdf.min.js?v=202611200612"></script>
+<script src="js/printpdf.js?v=202611200612"></script>
+<script src="js/pdfui.js?v=202611200612"></script>
+<script src="js/pdfview.js?v=202611200612"></script>
+<script src="js/bankcore.js?v=202611200612"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -305,6 +305,21 @@ async function unitsUi(exam) {
   { const okN = lines.filter(l => l.q).length, tot = lines.length, allOk = okN === tot; host.insertAdjacentHTML('afterbegin', '<div style="margin:8px 0;padding:8px 12px;border-radius:10px;font-weight:800;font-size:16px;' + (allOk ? 'background:#DCFCE7;color:#166534;' : 'background:#FEE2E2;color:#991B1B;') + '">🔗 문제은행 연결: ' + tot + '개 번호 중 ' + okN + '개 연결됨' + (allOk ? ' — 모두 연결돼 있어요' : ' — 연결 안 된 번호 ' + (tot - okN) + '개') + '</div>'); }
   if (dupNums.length) host.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B91C1C;"><b>⚠️ 같은 번호 문항이 문제은행에 2개 이상 저장돼 있어요</b> (' + dupNums.slice(0, 12).join(', ') + '번). 이 화면은 그중 하나만 보여 주기 때문에 고친 소단원이 다시 안 보일 수 있어요. 아래 줄에 보이는 쪽을 고치세요. 이 시험지를 「다시 올리기」로 한 번 정리하면 한 개씩만 남아요.</div>');
   { const miss = lines.filter(l => !l.q).map(l => l.n); if (miss.length) { host.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B45309;"><b>문제은행에 빠진 번호가 ' + miss.length + '개 있어요</b> (' + miss.slice(0, 12).join(', ') + (miss.length > 12 ? ' …' : '') + '번). 하나씩 만들지 말고 아래 버튼을 누르세요.<br><button type="button" class="btn primary" id="ac-fill" style="margin-top:8px;padding:10px 16px;">🧩 빠진 ' + miss.length + '개 번호만 채우기 (있는 문항은 그대로)</button> <span class="hint" id="ac-fill-msg"></span><br><button type="button" class="btn outline" id="ac-redo2" style="margin-top:8px;padding:8px 14px;">🔁 이 시험지 통째로 다시 올리기 (QR 그대로)</button> <span class="hint" id="ac-redo2-msg"></span></div>'); $('ac-fill').addEventListener('click', () => fillMissing(exam, miss, $('ac-fill-msg'), $('ac-fill'))); $('ac-redo2').addEventListener('click', () => redoBank(exam, '문제은행에 빠진 번호: ' + miss.join(', ') + '번', $('ac-redo2-msg'), $('ac-redo2'))); } }
+  // 저장했다고 뜬 값이 서버에 실제로 남았는지, 잠시 뒤 서버에서 다시 읽어 확인한다. 다르면 한 번 다시 저장하고, 그래도 다르면 빨간 글씨로 알려 준다
+  let _vt = null, _vOkAt = '';
+  const verify = () => { clearTimeout(_vt); _vt = setTimeout(async () => {
+    const box = $('ac-verify') || (() => { const d = document.createElement('div'); d.id = 'ac-verify'; d.className = 'hint'; d.style.cssText = 'margin:6px 0;font-weight:700;'; host.insertBefore(d, host.firstChild); return d; })();
+    try {
+      for (let round = 0; round < 2; round++) {
+        const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (!lq || !lq.ok) throw new Error('다시 읽지 못했어요');
+        const byId = {}; (lq.questions || []).forEach(x => { byId[x.id] = x; });
+        const bad2 = rows.filter(r2 => { const sv = byId[r2.id]; return !sv || String(sv.unit || '') !== String(r2.unit || '') || String(sv.sub || '') !== String(r2.sub || ''); });
+        if (!bad2.length) { BANK = lq.questions; box.style.color = '#166534'; box.textContent = '✔ 서버에 저장된 것을 다시 읽어 확인했어요 (' + new Date().toTimeString().slice(0, 5) + ')'; return; }
+        if (round === 0) { for (const r2 of bad2) { if (byId[r2.id]) await callApi('updateQuestion', { password: getTeacherPassword(), id: r2.id, unit: r2.unit || '', sub: r2.sub || '', auto: r2.auto || 0 }); } }
+        else { box.style.color = '#B91C1C'; box.textContent = '⚠️ 서버에 저장이 안 된 문항이 있어요: ' + bad2.map(r2 => (r2.num || '?') + '번' + (byId[r2.id] ? '' : '(서버에 없음)')).join(', ') + ' — 이 번호는 다시 골라 주세요. 계속 이러면 알려 주세요.'; }
+      }
+    } catch (e) { box.style.color = '#B45309'; box.textContent = '저장 확인을 못 했어요: ' + (e.message || e); }
+  }, 2500); };
   host.querySelectorAll('.ac-urow').forEach(el => {
     const q = rows.find(x => String(x.id) === el.getAttribute('data-id')), us = el.querySelector('.u'), ss = el.querySelector('.subsel'), fl = el.querySelector('.flash');
     refreshSubSelect(ss, tocEntryFor(q.grade, q.unit), q.sub || '');
@@ -312,7 +327,7 @@ async function unitsUi(exam) {
       fl.textContent = '저장 중...';
       const auto = what === 'sub' ? ((q.auto || 0) & ~1) : (((q.auto || 0) & ~(q.unit === unit ? 0 : 2)) & (sub ? 3 : 2));      // 소단원을 직접 고르면 「자동 추정」 표시(1)를 지운다. 안 지우면 나중에 자동 채우기가 내가 고른 값을 덮어쓸 수 있다
       const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: q.id, unit: unit, sub: sub, auto: auto });
-      if (r.ok) { markDone(exam.id); markOk(exam, true); q.unit = unit; q.sub = sub; q.auto = auto; host.querySelectorAll('.ac-urow[data-id="' + String(q.id).replace(/"/g, '') + '"]').forEach(o => { const u2 = o.querySelector('.u'), s2 = o.querySelector('.subsel'); if (o !== el) { setUnitSelect(u2, unit, q.grade); refreshSubSelect(s2, tocEntryFor(q.grade, unit), sub); } o.style.background = bad(q) ? '#FEF3C7' : ''; const f2 = o.querySelector('.flash'); if (f2) f2.textContent = '✓ 저장'; }); } else { fl.textContent = '⚠️ ' + (r.error || '저장 못함'); }
+      if (r.ok) { markDone(exam.id); markOk(exam, true); q.unit = unit; q.sub = sub; q.auto = auto; host.querySelectorAll('.ac-urow[data-id="' + String(q.id).replace(/"/g, '') + '"]').forEach(o => { const u2 = o.querySelector('.u'), s2 = o.querySelector('.subsel'); if (o !== el) { setUnitSelect(u2, unit, q.grade); refreshSubSelect(s2, tocEntryFor(q.grade, unit), sub); } o.style.background = bad(q) ? '#FEF3C7' : ''; const f2 = o.querySelector('.flash'); if (f2) f2.textContent = '✓ 저장'; }); verify(); } else { fl.textContent = '⚠️ ' + (r.error || '저장 못함'); }
     };
     ss.addEventListener('change', () => persist(q.unit, ss.value, 'sub'));
     us.addEventListener('change', () => {
