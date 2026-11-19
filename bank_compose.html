@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191915">
+<link rel="stylesheet" href="css/style.css?v=202611191930">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611191915"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191915"></script>
-<script src="js/config.js?v=202611191915"></script>
-<script src="js/api.js?v=202611191915"></script>
-<script src="js/common.js?v=202611191915"></script>
-<script src="js/bankcore.js?v=202611191915"></script>
-<script src="js/vendor/pdf.min.js?v=202611191915"></script>
-<script src="js/printpdf.js?v=202611191915"></script>
-<script src="js/pdfui.js?v=202611191915"></script>
+<script src="js/vendor/qrcode.min.js?v=202611191930"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191930"></script>
+<script src="js/config.js?v=202611191930"></script>
+<script src="js/api.js?v=202611191930"></script>
+<script src="js/common.js?v=202611191930"></script>
+<script src="js/bankcore.js?v=202611191930"></script>
+<script src="js/vendor/pdf.min.js?v=202611191930"></script>
+<script src="js/printpdf.js?v=202611191930"></script>
+<script src="js/pdfui.js?v=202611191930"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -163,7 +163,18 @@ function matchesSearch(q) {
     return hay.indexOf(t) >= 0;
   });
 }
+let typeFilter = '';      // '' = 객관식+서술형 모두, 'obj' = 객관식만, 'sub' = 서술형만
+function renderTypeChips() {
+  const box = $('type-chips'); if (!box) return;
+  const isSub = q => q.answer === '-', pool = allQuestions.filter(q => !kindFilter || q.kind === kindFilter || (kindFilter === '일반' && !isPastExam(q) && !isBookQ(q)));
+  const nS = pool.filter(isSub).length, nO = pool.length - nS;
+  box.innerHTML = [['obj', '객관식만', nO], ['', '객관식 + 서술형', pool.length], ['sub', '서술형만', nS]].map(v =>
+    '<label class="kind-chip' + (typeFilter === v[0] ? ' on' : '') + '"><input type="radio" name="qtype" value="' + v[0] + '"' + (typeFilter === v[0] ? ' checked' : '') + '> ' + v[1] + ' <span class="muted">(' + v[2] + ')</span></label>').join('');
+  box.querySelectorAll('input').forEach(r => r.addEventListener('change', () => { typeFilter = r.value; renderTypeChips(); renderUnits(); showAvail(); }));
+}
 function passesFilters(q) {
+  if (typeFilter === 'obj' && q.answer === '-') return false;       // 객관식만: 서술형(정답 -) 빼기
+  if (typeFilter === 'sub' && q.answer !== '-') return false;      // 서술형만
   if (searchTokens.length) return matchesSearch(q);
   if (kindFilter && q.kind !== kindFilter) return false;
   if (bookFilter.size && q.kind === '교재' && !bookFilter.has(bookNameOf(q))) return false;       // 교재 선택은 내신교재 문제에만 적용
@@ -206,6 +217,7 @@ function renderKindChips() {
   $('kind-chips').innerHTML = [['일반', '일반 문제', n.normal], ['기출', '기출문제', n.past]].concat(n.book ? [['교재', '내신교재', n.book]] : []).concat([['', '전체 (일반·기출·내신교재 모두)', n.all]]).map(v =>
     '<label class="kind-chip' + (kindFilter === v[0] ? ' on' : '') + '"><input type="radio" name="kind" value="' + v[0] + '"' + (kindFilter === v[0] ? ' checked' : '') + '> ' + v[1] + ' <span class="muted">(' + v[2] + ')</span></label>').join('') +
     (n.past || n.book ? '' : '<span class="hint" style="margin-left:8px;">기출문제로 저장한 문항이 아직 없어요 (가져올 때 구분을 「기출문제」로 고르세요)</span>');
+  renderTypeChips();
   $('kind-chips').querySelectorAll('input').forEach(r => r.addEventListener('change', () => { kindFilter = r.value; renderKindChips(); renderBookFilter(); renderSchoolFilter(); renderYearFilter(); renderUnits(); showAvail(); }));
 }
 function renderBookFilter() {
@@ -410,6 +422,8 @@ async function loadRegenParams() {
       <div class="card">
         <label class="field-label-spaced">문제 종류</label>
         <div class="kind-chips" id="kind-chips"></div>
+        <label class="field-label-spaced">출제 유형 <span class="muted" style="font-weight:400;">(서술형은 자동 채점에서 빠져요)</span></label>
+        <div class="kind-chips" id="type-chips"></div>
         <div id="book-filter" class="school-filter" style="display:none;"></div>
         <details id="past-filter" style="display:none; margin:6px 0;"><summary class="hint" style="cursor:pointer;">학교·연도로 좁히기 (선택 — 안 고르면 기출문제 전부)</summary>
           <div id="school-filter" class="school-filter"></div>
