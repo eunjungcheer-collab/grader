@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200205">
+<link rel="stylesheet" href="css/style.css?v=202611200225">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -31,24 +31,24 @@
   <div class="card" style="padding:12px 14px;">
     <div id="ac-sum" class="muted">불러오는 중...</div>
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      <select id="ac-flt" style="flex:0 1 190px;"><option value="">의심되는 것 모두</option><option value="unread">정답 못 읽은 시험지만</option><option value="link">문제은행에 빠진 번호가 있는 것만</option><option value="mid">의심 이상만</option></select>
+      <select id="ac-flt" style="flex:0 1 190px;"><option value="">의심되는 것 모두</option><option value="unread">정답 못 읽은 시험지만</option><option value="link">문제은행에 빠진 번호가 있는 것만</option><option value="sj">서술형이 안 잡힌 것만</option><option value="mid">의심 이상만</option></select>
       <label class="bank-include-label" style="margin:0;"><input type="checkbox" id="ac-all"> 주관식이 없는 시험지도 보기</label>
-       <button type="button" class="btn primary" id="ac-scanall" style="padding:8px 14px;">🔍 전체 검사 (후보·문제은행 정답 불일치 찾기)</button><input type="search" id="ac-q" placeholder="이름 검색" style="flex:1 1 150px;min-width:120px;">
+       <button type="button" class="btn outline" id="ac-scansj" style="padding:8px 14px;">📝 서술형 빠짐 검사</button> <button type="button" class="btn primary" id="ac-scanall" style="padding:8px 14px;">🔍 전체 검사 (후보·문제은행 정답 불일치 찾기)</button><input type="search" id="ac-q" placeholder="이름 검색" style="flex:1 1 150px;min-width:120px;">
     </div>
   </div>
   <div id="ac-list" class="card" style="padding:4px 14px;"></div>
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200205"></script>
-<script src="js/api.js?v=202611200205"></script>
-<script src="js/common.js?v=202611200205"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200205"></script>
-<script src="js/vendor/pdf.min.js?v=202611200205"></script>
-<script src="js/printpdf.js?v=202611200205"></script>
-<script src="js/pdfui.js?v=202611200205"></script>
-<script src="js/pdfview.js?v=202611200205"></script>
-<script src="js/bankcore.js?v=202611200205"></script>
+<script src="js/config.js?v=202611200225"></script>
+<script src="js/api.js?v=202611200225"></script>
+<script src="js/common.js?v=202611200225"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200225"></script>
+<script src="js/vendor/pdf.min.js?v=202611200225"></script>
+<script src="js/printpdf.js?v=202611200225"></script>
+<script src="js/pdfui.js?v=202611200225"></script>
+<script src="js/pdfview.js?v=202611200225"></script>
+<script src="js/bankcore.js?v=202611200225"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -143,6 +143,7 @@ function risk(ex) {
 function scanBadge(x) {
   const sc = SCAN[String(x.ex.id)];
   if (x.r.checked) return '<span class="ac-lv ok">✔ 확인함 · 이상 없음</span>';
+  if (sjMissing(x.ex)) return '<span class="ac-lv hi" title="시험지 PDF에는 서술형이 있는데 정답 칸에 없어요: ' + SJ[String(x.ex.id)].nums.join(', ') + '번">📝 서술형 ' + SJ[String(x.ex.id)].n + '개 안 잡힘</span>';
   { const lk = LINK[String(x.ex.id)]; if (lk && lk.have > 0 && lk.miss.length) return '<span class="ac-lv hi" title="문제은행에 없는 번호: ' + lk.miss.join(', ') + '번">🔗 문제은행에 빠진 번호 ' + lk.miss.length + '개 (' + lk.miss.slice(0, 5).join(', ') + (lk.miss.length > 5 ? ' …' : '') + '번)</span>'; }      // 내가 확인 체크한 시험지는 검사 결과와 상관없이 이 표시를 먼저 보인다
   if (!sc) return '<span class="ac-lv ' + x.r.lv + '">' + x.r.label + '</span>';
   if (sc.unknown) return '<span class="ac-lv mid" title="' + escapeHtml(sc.unknown) + '">🔎 확인 불가 (직접 확인)</span>';
@@ -337,7 +338,7 @@ function reviewBtn(id) { return '<a class="btn primary" href="' + reviewUrl(id) 
 function linkMissing(ex) { const lk = LINK[String(ex.id)]; return !!(lk && lk.have > 0 && lk.miss.length); }
 function renderList() {
   const flt = $('ac-flt').value, showAll = $('ac-all').checked && !flt, kw = $('ac-q').value.trim().toLowerCase();
-  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.checked || x.r.score > 0 || linkMissing(x.ex) || doneSet()[String(x.ex.id)] || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || x.r.checked || (flt === 'link' ? linkMissing(x.ex) : flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
+  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.checked || x.r.score > 0 || linkMissing(x.ex) || sjMissing(x.ex) || doneSet()[String(x.ex.id)] || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || x.r.checked || (flt === 'sj' ? sjMissing(x.ex) : flt === 'link' ? linkMissing(x.ex) : flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
   rows.sort((a, b) => ((a.r.checked ? 1 : 0) - (b.r.checked ? 1 : 0)) || ((linkMissing(b.ex) ? 1 : 0) - (linkMissing(a.ex) ? 1 : 0)) || (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
   const susp = EXAMS.filter(ex => risk(ex).score >= 2).length;
   $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>, 이 중 <b style="color:#B91C1C">정답을 거의 못 읽은 시험지 ' + EXAMS.filter(ex => risk(ex).unread).length + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
@@ -531,6 +532,52 @@ function renderNoImages(exam, why) {
   loadPdfPane(exam); offerLocal(exam); ansFileUi(exam); unitsUi(exam);
 }
 // 시험지 PDF를 왼쪽에 띄운다 (시험지 등록 화면과 같은 뷰어). 구글 드라이브에서 받아 오므로 PDF가 없는 시험지(교재 QR 등)는 안내만 한다
+// 시험지 PDF에는 서술형이 있는데 정답 칸에는 없으면(예전 버전으로 등록한 시험지), 맨 뒤에 서술형(-)을 더하고 문제은행에도 채우게 한다
+const SJ = (() => { try { return JSON.parse(localStorage.getItem('ac_sjscan') || '{}') || {}; } catch (e) { return {}; } })();
+function sjSave() { try { localStorage.setItem('ac_sjscan', JSON.stringify(SJ)); } catch (e) {} }
+function sjMissing(ex) { const r = SJ[String(ex.id)]; return !!(r && r.n > 0); }
+async function subjExtra(len, doc) {
+  const sc = await BankCore.scanPdf(doc);
+  const extra = Array.from(new Set((sc.questions || []).map(q => q.num).filter(n => n > len))).sort((a, b) => a - b);
+  if (!extra.length || extra.length > 12 || extra[0] !== len + 1 || extra[extra.length - 1] !== len + extra.length) return [];      // 번호가 이어지는 경우만 (len+1, len+2, …)
+  return extra;
+}
+// 모든 시험지의 서버 PDF를 차례로 읽어, 서술형이 PDF에는 있는데 정답 칸에 없는 시험지를 찾는다 (결과는 이 컴퓨터에 기억해 두고, 이미 검사한 시험지는 건너뛴다)
+async function scanSubjAll() {
+  const btn = $('ac-scansj'); if (!btn || btn.disabled) return; btn.disabled = true; setupPdfJs();
+  const targets = EXAMS.filter(ex => !(SJ[String(ex.id)] && SJ[String(ex.id)].len === ex.answerCount)); let done = 0;
+  for (const ex of targets) {
+    btn.textContent = '서술형 검사 중... ' + (done + 1) + '/' + targets.length;
+    try {
+      const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: ex.id });
+      const fid = d.ok ? (String(d.pdfUrl || '').match(/[?&]id=([^&]+)/) || [])[1] : '';
+      if (fid) {
+        const blob = await driveDirectBlob(fid);
+        if (blob) { const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise; const extra = await subjExtra(d.answers.length, doc); SJ[String(ex.id)] = { n: extra.length, len: ex.answerCount, nums: extra }; sjSave(); }
+      }
+    } catch (e) {}
+    done++; renderList();
+  }
+  btn.disabled = false; btn.textContent = '📝 서술형 빠짐 검사 (' + EXAMS.filter(sjMissing).length + '개 발견)'; renderList();
+}
+async function offerSubjective(exam, doc) {
+  const len = (exam.answers || []).length; if (!len || !doc) return;
+  const extra = await subjExtra(len, doc);
+  SJ[String(exam.id)] = { n: extra.length, len: len, nums: extra }; sjSave();
+  if (!extra.length) return;
+  const host = $('ac-units'); if (!host || $('ac-addsj')) return;
+  host.insertAdjacentHTML('beforebegin', '<div class="card" id="ac-addsj" style="margin:8px 0;padding:10px 14px;border:2px solid #1D4ED8;"><b>📝 PDF에 서술형 ' + extra.length + '개가 더 있어요</b> (' + extra.join(', ') + '번 · 정답 칸에는 ' + len + '번까지만 있어요). 서술형은 채점에서 빠지니 학생 점수는 그대로예요.<br><button type="button" class="btn primary" id="ac-addsj-btn" style="margin-top:8px;padding:10px 16px;">➕ 서술형 ' + extra.length + '개 추가하고 문제은행에도 채우기</button> <span class="hint" id="ac-addsj-msg"></span></div>');
+  $('ac-addsj-btn').addEventListener('click', async () => {
+    const m = $('ac-addsj-msg'), b = $('ac-addsj-btn'); b.disabled = true; m.textContent = '정답 칸을 늘리는 중...';
+    try {
+      const next = exam.answers.concat(extra.map(() => '-'));
+      const r = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: exam.id, answers: next });
+      if (!r.ok) throw new Error(r.error || '저장 못함');
+      exam.answers = next; delete SCAN[String(exam.id)]; SJ[String(exam.id)] = { n: 0, len: next.length, nums: [] }; sjSave();
+      await fillMissing(exam, extra, m, b);
+    } catch (e) { m.textContent = '⚠️ ' + (e.message || e); b.disabled = false; }
+  });
+}
 async function loadPdfPane(exam) {
   const host = $('ac-pdf'), say = m => { host.innerHTML = '<p class="muted" style="padding:12px;">' + escapeHtml(m) + '</p>'; };
   const fid = (String(exam.pdfUrl || '').match(/[?&]id=([^&]+)/) || [])[1];
@@ -547,6 +594,7 @@ async function loadPdfPane(exam) {
       for (let i = doc.numPages; i >= 1 && i > doc.numPages - 8; i--) { const tc = await (await doc.getPage(i)).getTextContent(); if (re.test(tc.items.map(t => t.str).join(' '))) hit.push(i); }
       if (hit.length) { startPg = hit[0]; while (hit.indexOf(startPg - 1) >= 0) startPg--; } else if (doc.numPages > 1) startPg = doc.numPages;
     } catch (e) {}
+    try { offerSubjective(exam, doc); } catch (e) {}
     const pane = new PdfPane(host); await pane.setDoc(doc, startPg);
     $('ac-go').max = doc.numPages;
     $('ac-gob').onclick = () => { const n = parseInt($('ac-go').value, 10); if (n >= 1 && n <= doc.numPages) pane.scrollToPage(n); };
@@ -681,7 +729,7 @@ async function save(exam, found) {
     EXAMS = r.exams || []; renderList();
     // 문제은행을 한 번 불러와 모든 시험지의 「빠진 번호」를 미리 계산한다 (일부만 연결된 시험지가 목록 위로 올라온다)
     (async () => { try { if (!BANK) { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (lq.ok) BANK = lq.questions; } if (BANK) { EXAMS.forEach(ex => { const n = Math.max(0, (ex.answerCount || 0) - (ex.subjectiveCount || 0)); linkScan({ id: ex.id, title: ex.title, answers: new Array(n).fill('3') }); }); renderList(); } } catch (e) {} })();
-    $('ac-all').addEventListener('change', renderList); $('ac-flt').addEventListener('change', renderList); $('ac-scanall').addEventListener('click', scanAll); $('ac-q').addEventListener('input', renderList);
+    $('ac-all').addEventListener('change', renderList); $('ac-flt').addEventListener('change', renderList); $('ac-scansj').addEventListener('click', scanSubjAll); $('ac-scanall').addEventListener('click', scanAll); $('ac-q').addEventListener('input', renderList);
     const u = new URLSearchParams(location.search).get('id'); if (u) inspect(u);
   } catch (e) { $('ac-sum').textContent = '서버에 연결할 수 없어요.'; }
 })();

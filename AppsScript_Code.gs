@@ -1325,7 +1325,12 @@ function actionUpdateExamAnswers_(p) {
   if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
   const old = examAnswers_(found.row);
   const next = (p.answers || []).map(normAns_);
-  if (next.length !== old.length) return { ok: false, error: '문항 수(' + old.length + '개)는 바꿀 수 없어요.' };
+  // 맨 뒤에 서술형(-)만 덧붙이는 것은 허용한다 (서술형이 빠진 채 등록된 시험지를 고칠 때). 객관식 문항 수를 바꾸거나 중간을 늘리는 것은 안 된다
+  if (next.length > old.length) {
+    let okAdd = true;
+    for (let i = old.length; i < next.length; i++) if (!isSubjective_(next[i])) okAdd = false;
+    if (!okAdd) return { ok: false, error: '문항 수(' + old.length + '개)는 바꿀 수 없어요. 맨 뒤에 서술형(-)만 더할 수 있어요.' };
+  } else if (next.length !== old.length) return { ok: false, error: '문항 수(' + old.length + '개)는 바꿀 수 없어요.' };
   if (next.some(function (a) { return !a; })) return { ok: false, error: '비어 있는 정답이 있어요. 주관식은 - 로 적어 주세요.' };
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
