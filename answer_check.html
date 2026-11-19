@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191750">
+<link rel="stylesheet" href="css/style.css?v=202611191800">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191750"></script>
-<script src="js/api.js?v=202611191750"></script>
-<script src="js/common.js?v=202611191750"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191750"></script>
-<script src="js/vendor/pdf.min.js?v=202611191750"></script>
-<script src="js/printpdf.js?v=202611191750"></script>
-<script src="js/pdfui.js?v=202611191750"></script>
-<script src="js/pdfview.js?v=202611191750"></script>
-<script src="js/bankcore.js?v=202611191750"></script>
+<script src="js/config.js?v=202611191800"></script>
+<script src="js/api.js?v=202611191800"></script>
+<script src="js/common.js?v=202611191800"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191800"></script>
+<script src="js/vendor/pdf.min.js?v=202611191800"></script>
+<script src="js/printpdf.js?v=202611191800"></script>
+<script src="js/pdfui.js?v=202611191800"></script>
+<script src="js/pdfview.js?v=202611191800"></script>
+<script src="js/bankcore.js?v=202611191800"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -343,7 +343,14 @@ async function loadPdfPane(exam) {
     const blob = await driveDirectBlob(fid, (g, tot) => { if (tot) say('시험지 PDF를 받는 중... ' + Math.floor(g / tot * 100) + '%'); });
     if (!blob) return say('PDF를 받지 못했어요. 서버(Apps Script)가 새 버전인지 확인하거나, 아래 링크로 열어 주세요.' + (exam.pdfUrl ? ' ' : ''));
     const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
-    const pane = new PdfPane(host); await pane.setDoc(doc, 1);
+    // 정답 읽을 때는 정답이 있는 쪽이 맨 위에 보이게 한다: 글자로 된 정답표 쪽을 찾고, 못 찾으면 마지막 쪽(정답지는 보통 맨 뒤)
+    let startPg = 1;
+    try {
+      const hit = [], re = /정답\s*\/?\s*배점|교과목별\s*정답|정\s*답\s*표|객관식\s*답|정답\s*및\s*해설/;
+      for (let i = doc.numPages; i >= 1 && i > doc.numPages - 8; i--) { const tc = await (await doc.getPage(i)).getTextContent(); if (re.test(tc.items.map(t => t.str).join(' '))) hit.push(i); }
+      if (hit.length) { startPg = hit[0]; while (hit.indexOf(startPg - 1) >= 0) startPg--; } else if (doc.numPages > 1) startPg = doc.numPages;
+    } catch (e) {}
+    const pane = new PdfPane(host); await pane.setDoc(doc, startPg);
     $('ac-go').max = doc.numPages;
     $('ac-gob').onclick = () => { const n = parseInt($('ac-go').value, 10); if (n >= 1 && n <= doc.numPages) pane.scrollToPage(n); };
     $('ac-last').onclick = () => pane.scrollToPage(doc.numPages);
