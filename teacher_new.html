@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192320">
+<link rel="stylesheet" href="css/style.css?v=202611192330">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611192320"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192320"></script>
-<script src="js/printpdf.js?v=202611192320"></script>
-<script src="js/vendor/pdf.min.js?v=202611192320"></script>
-<script src="js/config.js?v=202611192320"></script>
-<script src="js/api.js?v=202611192320"></script>
-<script src="js/common.js?v=202611192320"></script>
-<script src="js/ocr.js?v=202611192320"></script>
-<script src="js/bankcore.js?v=202611192320"></script>
-<script src="js/pdfui.js?v=202611192320"></script>
-<script src="js/pdfview.js?v=202611192320"></script>
+<script src="js/vendor/qrcode.min.js?v=202611192330"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192330"></script>
+<script src="js/printpdf.js?v=202611192330"></script>
+<script src="js/vendor/pdf.min.js?v=202611192330"></script>
+<script src="js/config.js?v=202611192330"></script>
+<script src="js/api.js?v=202611192330"></script>
+<script src="js/common.js?v=202611192330"></script>
+<script src="js/ocr.js?v=202611192330"></script>
+<script src="js/bankcore.js?v=202611192330"></script>
+<script src="js/pdfui.js?v=202611192330"></script>
+<script src="js/pdfview.js?v=202611192330"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1250,6 +1250,7 @@ async function renderQUnits() {
   scheduleSubs();
   applyRedoSnapshot();
   paintRedo();
+  try { relabelSubj(); } catch (e) {}
 }
 // 다시 등록(정답 점검에서 들어옴): 지우기 전에 적어 둔 기존 단원·소단원을 번호별 칸에 먼저 채운다. 기존에 없던 번호만 자동 추정에 맡긴다
 async function applyRedoSnapshot() {
@@ -1540,7 +1541,16 @@ async function buildBoxes() {
 }
 $('regen-btn').addEventListener('click', buildBoxes);
 
+// 맨 뒤에 연속으로 이어지는 주관식은 「서술형 1번, 2번…」으로 부른다 (시험지에 적힌 이름과 같게). 중간에 섞인 주관식은 그냥 번호
+function relabelSubj() {
+  const ins = answerInputs || []; if (!ins.length) return;
+  let k = ins.length; while (k > 0 && ins[k - 1].disabled) k--;
+  const m = {}; if (k < ins.length) for (let i = k; i < ins.length; i++) m[ins[i].dataset.n] = i - k + 1;
+  ins.forEach(inp => { const c = inp.closest('.abox'), sp = c && c.firstElementChild; if (sp && sp.tagName === 'SPAN') { sp.textContent = m[inp.dataset.n] ? '서술' + m[inp.dataset.n] : inp.dataset.n; sp.title = inp.dataset.n + '번'; } });
+  document.querySelectorAll('#bank-qunits .qunit-row').forEach(r => { const sel = r.querySelector('.qunit-sel'), b = r.querySelector('b'); if (!sel || !b) return; const n = sel.dataset.n; b.textContent = m[n] ? '서술형 ' + m[n] + '번' : n + '번'; b.title = n + '번'; });
+}
 function updateSubNote(guessed) {
+  try { relabelSubj(); } catch (e) {}
   const subs = answerInputs.filter(i => i.disabled).map(i => i.dataset.n);
   const multis = answerInputs.filter(i => !i.disabled && i.dataset.multi === '1').map(i => i.dataset.n);
   const obj = answerInputs.length - subs.length;

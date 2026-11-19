@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192320">
+<link rel="stylesheet" href="css/style.css?v=202611192330">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611192320"></script>
-<script src="js/api.js?v=202611192320"></script>
-<script src="js/common.js?v=202611192320"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192320"></script>
-<script src="js/vendor/pdf.min.js?v=202611192320"></script>
-<script src="js/printpdf.js?v=202611192320"></script>
-<script src="js/pdfui.js?v=202611192320"></script>
-<script src="js/pdfview.js?v=202611192320"></script>
-<script src="js/bankcore.js?v=202611192320"></script>
+<script src="js/config.js?v=202611192330"></script>
+<script src="js/api.js?v=202611192330"></script>
+<script src="js/common.js?v=202611192330"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192330"></script>
+<script src="js/vendor/pdf.min.js?v=202611192330"></script>
+<script src="js/printpdf.js?v=202611192330"></script>
+<script src="js/pdfui.js?v=202611192330"></script>
+<script src="js/pdfview.js?v=202611192330"></script>
+<script src="js/bankcore.js?v=202611192330"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -231,7 +231,7 @@ async function unitsUi(exam) {
   const NU = (BankCore && BankCore.NO_UNIT) || '(단원 미지정)';
   const bad = q => !String(q.unit || '').trim() || q.unit === NU || (() => { const e = tocEntryFor(q.grade, q.unit); return !!(e && (e.subs || []).length && !String(q.sub || '').trim()); })();
   const nBad = rows.filter(bad).length;
-  host.innerHTML = '<details open style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">🧭 단원·소단원 확인/수정 (' + lines.length + '번호' + (nBad ? ', <span style="color:#B91C1C">비었거나 확인 필요 ' + nBad + '개</span>' : ', 모두 설정됨') + ')</summary><div class="card" style="padding:8px 12px;">' + lines.map(ln => { const q = ln.q; if (!q) return '<div style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid #eee;color:#9CA3AF;"><b style="min-width:34px;">' + ln.n + '번</b><span>문제은행에 이 번호 문항이 없어요 (삭제됐거나 가져오지 않았어요)</span></div>'; return '<div class="ac-urow" data-id="' + escapeHtml(String(q.id)) + '" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 4px;border-bottom:1px solid #eee;' + (bad(q) ? 'background:#FEF3C7;' : '') + '"><b style="min-width:34px;">' + ln.n + '번</b>' + (/~/.test(String(lab[q.id] || '')) ? '<span class="hint" style="min-width:110px;">(' + escapeHtml(lab[q.id]) + '번 한 그림)</span>' : '')
+  host.innerHTML = '<details open style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">🧭 단원·소단원 확인/수정 (' + lines.length + '번호' + (nBad ? ', <span style="color:#B91C1C">비었거나 확인 필요 ' + nBad + '개</span>' : ', 모두 설정됨') + ')</summary><div class="card" style="padding:8px 12px;">' + lines.map(ln => { const q = ln.q; if (!q) return '<div style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid #eee;color:#9CA3AF;"><b style="min-width:34px;">' + numName(exam, ln.n) + '</b><span>문제은행에 이 번호 문항이 없어요 (삭제됐거나 가져오지 않았어요)</span></div>'; return '<div class="ac-urow" data-id="' + escapeHtml(String(q.id)) + '" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 4px;border-bottom:1px solid #eee;' + (bad(q) ? 'background:#FEF3C7;' : '') + '"><b style="min-width:34px;" title="' + ln.n + '번">' + numName(exam, ln.n) + '</b>' + (/~/.test(String(lab[q.id] || '')) ? '<span class="hint" style="min-width:110px;">(' + escapeHtml(lab[q.id]) + '번 한 그림)</span>' : '')
     + '<select class="u" style="max-width:260px;">' + unitSelectOptions(q.grade, q.unit, q.grade) + '</select><span class="sub-wrap"><select class="subsel" style="max-width:260px;"></select></span><span class="hint flash"></span></div>'; }).join('') + '</div></details>';
   { const okN = lines.filter(l => l.q).length, tot = lines.length, allOk = okN === tot; host.insertAdjacentHTML('afterbegin', '<div style="margin:8px 0;padding:8px 12px;border-radius:10px;font-weight:800;font-size:16px;' + (allOk ? 'background:#DCFCE7;color:#166534;' : 'background:#FEE2E2;color:#991B1B;') + '">🔗 문제은행 연결: ' + tot + '개 번호 중 ' + okN + '개 연결됨' + (allOk ? ' — 모두 연결돼 있어요' : ' — 연결 안 된 번호 ' + (tot - okN) + '개') + '</div>'); }
   { const miss = lines.filter(l => !l.q).map(l => l.n); if (miss.length) { host.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B45309;"><b>문제은행에 빠진 번호가 ' + miss.length + '개 있어요</b> (' + miss.slice(0, 12).join(', ') + (miss.length > 12 ? ' …' : '') + '번). 하나씩 만들지 말고, 시험지를 통째로 다시 올리는 게 빨라요.<br><button type="button" class="btn primary" id="ac-redo2" style="margin-top:8px;padding:10px 16px;">🔁 이 시험지 통째로 다시 올리기 (QR 그대로)</button> <span class="hint" id="ac-redo2-msg"></span></div>'); $('ac-redo2').addEventListener('click', () => redoBank(exam, '문제은행에 빠진 번호: ' + miss.join(', ') + '번', $('ac-redo2-msg'), $('ac-redo2'))); } }
@@ -492,11 +492,17 @@ function syncBanner(exam, sync) {
   if (te) te.onclick = () => { let n = 0; sync.toExam.forEach(x => { const i = document.querySelector('#ac-detail input.aa[data-n="' + x.n + '"]') || document.querySelector('#ac-detail input.ai[data-n="' + x.n + '"]'); if (i) { i.value = x.ans; n++; const c = i.closest('.ac-q'); if (c) c.classList.add('chg'); } }); te.textContent = n + '개 칸을 채웠어요'; te.disabled = true; };
 }
 // 현재 정답표: 이미 입력된 정답을 보여 주고 필요하면 바로 고친다. editDash=true면 주관식(-)도 여기서 입력한다
+// 맨 뒤에 연속으로 이어지는 주관식(-)은 「서술형 1번, 2번…」으로 부른다 (시험지에 적힌 이름과 같게). 중간에 섞인 주관식은 그냥 번호
+function subjIdx(exam, n) {
+  const a = exam.answers || []; let k = a.length; while (k > 0 && a[k - 1] === '-') k--;
+  return (n > k && n <= a.length && k < a.length) ? n - k : 0;
+}
+function numName(exam, n, short) { const k = subjIdx(exam, n); return k ? (short ? '서술' + k : '서술형 ' + k + '번') : (short ? String(n) : n + '번'); }
 function gridHtml(exam, editDash) {
   return exam.answers.map((a, i) => {
     const n = i + 1;
-    if (a === '-' && !editDash) return '<span style="display:inline-block;min-width:78px;color:#9CA3AF;"><b>' + n + '</b>번 <span class="tag-sub">주관식</span></span>';
-    return '<label style="display:inline-flex;align-items:center;gap:4px;' + (a === '-' ? 'background:#FEF3C7;border-radius:8px;padding:2px 6px;' : '') + '"><b style="min-width:26px;text-align:right;">' + n + '</b><input type="text" class="aa" data-n="' + n + '" data-orig="' + escapeHtml(a) + '" value="' + (a === '-' ? '' : escapeHtml(a)) + '" placeholder="-" style="width:54px;text-align:center;font-size:16px;padding:4px;"></label>';
+    if (a === '-' && !editDash) return '<span style="display:inline-block;min-width:78px;color:#9CA3AF;"><b>' + numName(exam, n, true) + '</b>' + (subjIdx(exam, n) ? '' : '번') + ' <span class="tag-sub">주관식</span></span>';
+    return '<label style="display:inline-flex;align-items:center;gap:4px;' + (a === '-' ? 'background:#FEF3C7;border-radius:8px;padding:2px 6px;' : '') + '"><b style="min-width:26px;text-align:right;" title="' + n + '번">' + numName(exam, n, true) + '</b><input type="text" class="aa" data-n="' + n + '" data-orig="' + escapeHtml(a) + '" value="' + (a === '-' ? '' : escapeHtml(a)) + '" placeholder="-" style="width:54px;text-align:center;font-size:16px;padding:4px;"></label>';
   }).join('');
 }
 function saveBar(exam, found) {
@@ -516,7 +522,7 @@ function drawCards(exam, found, onlySus) {
   const qs = $('ac-qs'), shown = found.filter(f => !onlySus || f.mc || f.weak);
   qs.innerHTML = shown.length ? shown.map(f => {
     const nums = []; for (let j = f.slot.start - 1; j < f.slot.start - 1 + f.slot.k; j++) if (exam.answers[j] === '-') nums.push(j + 1);
-    return '<div class="ac-q' + (f.mc || f.weak ? ' sus' : '') + '" data-k="' + f.k + '"><div class="hd"><b style="font-size:17px;">' + nums.join('·') + '번</b>' + (f.mc ? '<span class="ac-lv hi">보기 ①~⑤ 있음</span>' : f.weak ? '<span class="ac-lv mid">보기 일부만 읽힘 (약한 후보)</span>' : '<span class="ac-lv lo">보기 없음</span>')
+    return '<div class="ac-q' + (f.mc || f.weak ? ' sus' : '') + '" data-k="' + f.k + '"><div class="hd"><b style="font-size:17px;">' + nums.map(x => numName(exam, x)).join('·').replace(/번·/g, '·') + (subjIdx(exam, nums[0]) ? '' : '') + '</b>' + (f.mc ? '<span class="ac-lv hi">보기 ①~⑤ 있음</span>' : f.weak ? '<span class="ac-lv mid">보기 일부만 읽힘 (약한 후보)</span>' : '<span class="ac-lv lo">보기 없음</span>')
       + nums.map(n => '<label>정답 <input class="ai" data-n="' + n + '" placeholder="-" inputmode="numeric"></label>').join('')
       + (f.q && f.q.explFileId ? '<button type="button" class="btn outline ex-btn" style="padding:5px 10px;font-size:13px;">해설 보기</button>' : '') + '</div>'
       + (f.b64 ? '<img alt="" src="data:image/png;base64,' + f.b64 + '">' : '') + '<div class="ex-box"></div></div>';
