@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200225">
+<link rel="stylesheet" href="css/style.css?v=202611200245">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611200225"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200225"></script>
-<script src="js/printpdf.js?v=202611200225"></script>
-<script src="js/vendor/pdf.min.js?v=202611200225"></script>
-<script src="js/config.js?v=202611200225"></script>
-<script src="js/api.js?v=202611200225"></script>
-<script src="js/common.js?v=202611200225"></script>
-<script src="js/ocr.js?v=202611200225"></script>
-<script src="js/bankcore.js?v=202611200225"></script>
-<script src="js/pdfui.js?v=202611200225"></script>
-<script src="js/pdfview.js?v=202611200225"></script>
+<script src="js/vendor/qrcode.min.js?v=202611200245"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200245"></script>
+<script src="js/printpdf.js?v=202611200245"></script>
+<script src="js/vendor/pdf.min.js?v=202611200245"></script>
+<script src="js/config.js?v=202611200245"></script>
+<script src="js/api.js?v=202611200245"></script>
+<script src="js/common.js?v=202611200245"></script>
+<script src="js/ocr.js?v=202611200245"></script>
+<script src="js/bankcore.js?v=202611200245"></script>
+<script src="js/pdfui.js?v=202611200245"></script>
+<script src="js/pdfview.js?v=202611200245"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1478,6 +1478,20 @@ function showCurrent(n) {
   if (pane && a && a.page && a.rect) pane.highlight(a.page, a.rect);
 }
 
+// 다시 등록 중: 이미 저장돼 있던 정답(선생님이 고쳐 둔 값 포함)과 새 PDF에서 읽은 값이 다른 번호를 눈에 띄게 보여 주고, 원하면 기존 값으로 되돌린다 (그냥 두면 PDF에서 읽은 값으로 덮어쓴다)
+async function paintReplaceDiff() {
+  if (!REPLACE_ID || queueTotal > 1 || window.__auto) return;
+  if (!window.__replaceAns) { try { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: REPLACE_ID }); if (d && d.ok) window.__replaceAns = d.answers || []; } catch (e) {} }
+  const old = window.__replaceAns; if (!old || !old.length) return;
+  const diffs = [];
+  answerInputs.forEach(inp => { const n = parseInt(inp.dataset.n, 10), o = String(old[n - 1] == null ? '' : old[n - 1]).trim(); if (n > old.length) return; const cur = inp.disabled ? '-' : String(inp.value).trim(); inp.closest('.abox').style.outline = ''; if (o && cur !== o) { diffs.push({ n: n, o: o, cur: cur || '(비어 있음)', inp: inp }); inp.closest('.abox').style.outline = '3px solid #F59E0B'; } });
+  const old0 = document.getElementById('rep-diff'); if (old0) old0.remove();
+  if (!diffs.length) return;
+  const box = document.createElement('div'); box.id = 'rep-diff'; box.className = 'banner'; box.style.cssText = 'text-align:left;margin:8px 0;border:2px solid #F59E0B;';
+  box.innerHTML = '⚠️ <b>기존에 저장된 정답과 다른 번호가 ' + diffs.length + '개 있어요</b> (주황 테두리). 그대로 등록하면 <b>PDF에서 읽은 값으로 바뀝니다.</b><br>' + diffs.slice(0, 15).map(x => x.n + '번: 기존 ' + escapeHtml(x.o) + ' → 지금 ' + escapeHtml(x.cur)).join(' · ') + (diffs.length > 15 ? ' …' : '') + '<br><button type="button" class="btn outline" id="rep-keep" style="margin-top:6px;padding:6px 12px;">기존 정답으로 되돌리기 (' + diffs.length + '개)</button>';
+  $('boxes').parentNode.insertBefore(box, $('boxes'));
+  $('rep-keep').addEventListener('click', () => { diffs.forEach(x => { if (x.o === '-') setSubjective(x.inp, true, x.inp.closest('.abox')); else { setSubjective(x.inp, false, x.inp.closest('.abox')); x.inp.value = x.o; x.inp.classList.add('filled'); } }); updateSubNote(); paintReplaceDiff(); });
+}
 async function buildBoxes() {
   const count = parseInt($('question-count').value, 10) || 0;
   $('cur-total').textContent = '/ 총 ' + count + '문항';
@@ -1522,6 +1536,7 @@ async function buildBoxes() {
   });
   $('submit-btn').disabled = false; $('teacher-btn').disabled = false; $('merge-btn').disabled = false; $('teacher-print-btn').disabled = false; $('merge-print-btn').disabled = false;
   updateSubNote(scanned && scanned.subj ? Object.keys(scanned.subj).filter(k => scanned.subj[k] && k <= count).length : 0);
+  try { paintReplaceDiff(); } catch (e) {}
   const firstOpen = answerInputs.find(i => !i.disabled);
   if (firstOpen) { showCurrent(parseInt(firstOpen.dataset.n, 10)); firstOpen.focus({ preventScroll: true }); }
 
