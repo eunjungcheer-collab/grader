@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200340">
+<link rel="stylesheet" href="css/style.css?v=202611200358">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200340"></script>
-<script src="js/api.js?v=202611200340"></script>
-<script src="js/common.js?v=202611200340"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200340"></script>
-<script src="js/vendor/pdf.min.js?v=202611200340"></script>
-<script src="js/printpdf.js?v=202611200340"></script>
-<script src="js/pdfui.js?v=202611200340"></script>
-<script src="js/pdfview.js?v=202611200340"></script>
-<script src="js/bankcore.js?v=202611200340"></script>
+<script src="js/config.js?v=202611200358"></script>
+<script src="js/api.js?v=202611200358"></script>
+<script src="js/common.js?v=202611200358"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200358"></script>
+<script src="js/vendor/pdf.min.js?v=202611200358"></script>
+<script src="js/printpdf.js?v=202611200358"></script>
+<script src="js/pdfui.js?v=202611200358"></script>
+<script src="js/pdfview.js?v=202611200358"></script>
+<script src="js/bankcore.js?v=202611200358"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -140,9 +140,19 @@ function risk(ex) {
   if (s >= 3 && r >= 0.04) return { lv: 'mid', label: '의심', score: 2 + r };
   return { lv: 'lo', label: '주관식 조금', score: 1 + r };
 }
+// 확인함/수정함으로 표시한 시험지라도 검사에서 구체적인 이상이 나오면 알려준다
+function checkedIssue(ex) {
+  const sc = SCAN[String(ex.id)] || {}, a = [];
+  if (sjMissing(ex)) a.push('서술형 ' + SJ[String(ex.id)].n + '개 안 잡힘');
+  if (linkMissing(ex)) a.push('문제은행에 빠진 번호 ' + LINK[String(ex.id)].miss.length + '개');
+  if (sc.sync && sc.sync.b) a.push('문제은행 정답 ‘-’ ' + sc.sync.b + '개');
+  if (sc.n) a.push('주관식 후보 ' + sc.n + '문항');
+  const n = ex.answerCount || 0, s = ex.subjectiveCount || 0; if (n && s / n >= 0.4 && !/서술형|서답형|논술형/.test(String(ex.title || ''))) a.push('주관식 비율 높음');
+  return a.join(', ');
+}
 function scanBadge(x) {
   const sc = SCAN[String(x.ex.id)];
-  if (x.r.checked) return '<span class="ac-lv ok">✔ 확인함 · 이상 없음</span>';
+  if (x.r.checked) { const bad = checkedIssue(x.ex); return bad ? '<span class="ac-lv hi" title="확인함으로 표시했지만 검사에서 이상이 나왔어요">⚠️ 확인함인데 이상 있음: ' + bad + '</span>' : '<span class="ac-lv ok">✔ 확인함 · 이상 없음</span>'; }
   if (sjMissing(x.ex)) return '<span class="ac-lv hi" title="시험지 PDF에는 서술형이 있는데 정답 칸에 없어요: ' + SJ[String(x.ex.id)].nums.join(', ') + '번">📝 서술형 ' + SJ[String(x.ex.id)].n + '개 안 잡힘</span>';
   { const lk = LINK[String(x.ex.id)]; if (lk && lk.have > 0 && lk.miss.length) return '<span class="ac-lv hi" title="문제은행에 없는 번호: ' + lk.miss.join(', ') + '번">🔗 문제은행에 빠진 번호 ' + lk.miss.length + '개 (' + lk.miss.slice(0, 5).join(', ') + (lk.miss.length > 5 ? ' …' : '') + '번)</span>'; }      // 내가 확인 체크한 시험지는 검사 결과와 상관없이 이 표시를 먼저 보인다
   if (!sc) return '<span class="ac-lv ' + x.r.lv + '">' + x.r.label + '</span>';
@@ -339,10 +349,10 @@ function linkMissing(ex) { const lk = LINK[String(ex.id)]; return !!(lk && lk.ha
 function renderList() {
   const flt = $('ac-flt').value, showAll = $('ac-all').checked && !flt, kw = $('ac-q').value.trim().toLowerCase();
   const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.checked || x.r.score > 0 || linkMissing(x.ex) || sjMissing(x.ex) || doneSet()[String(x.ex.id)] || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || x.r.checked || (flt === 'sj' ? sjMissing(x.ex) : flt === 'link' ? linkMissing(x.ex) : flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
-  rows.sort((a, b) => ((a.r.checked ? 1 : 0) - (b.r.checked ? 1 : 0)) || ((linkMissing(b.ex) ? 1 : 0) - (linkMissing(a.ex) ? 1 : 0)) || (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
+  rows.sort((a, b) => (((a.r.checked && !checkedIssue(a.ex)) ? 1 : 0) - ((b.r.checked && !checkedIssue(b.ex)) ? 1 : 0)) || ((linkMissing(b.ex) ? 1 : 0) - (linkMissing(a.ex) ? 1 : 0)) || (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
   const susp = EXAMS.filter(ex => risk(ex).score >= 2).length;
   $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>, 이 중 <b style="color:#B91C1C">정답을 거의 못 읽은 시험지 ' + EXAMS.filter(ex => risk(ex).unread).length + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
-  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"' + (x.r.checked ? ' style="background:#F0FDF4;"' : '') + '><label title="확인했으면 체크 (목록 아래쪽에 체크된 채로 남아요)" style="display:inline-flex;align-items:center;cursor:pointer;"><input type="checkbox" class="ac-rowok" data-id="' + escapeHtml(String(x.ex.id)) + '"' + (x.r.checked ? ' checked' : '') + ' style="width:24px;height:24px;accent-color:#15803D;"></label><div class="t">' + (doneSet()[String(x.ex.id)] ? '<span title="' + doneSet()[String(x.ex.id)] + ' 저장함" style="font-size:12px;font-weight:700;color:#1D4ED8;background:#DBEAFE;border-radius:6px;padding:1px 6px;margin-right:6px;">✏️ 수정함</span>' : '') + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
+  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"' + (x.r.checked && !checkedIssue(x.ex) ? ' style="background:#F0FDF4;"' : x.r.checked ? ' style="background:#FEF2F2;"' : '') + '><label title="확인했으면 체크 (목록 아래쪽에 체크된 채로 남아요)" style="display:inline-flex;align-items:center;cursor:pointer;"><input type="checkbox" class="ac-rowok" data-id="' + escapeHtml(String(x.ex.id)) + '"' + (x.r.checked ? ' checked' : '') + ' style="width:24px;height:24px;accent-color:#15803D;"></label><div class="t">' + (doneSet()[String(x.ex.id)] ? '<span title="' + doneSet()[String(x.ex.id)] + ' 저장함" style="font-size:12px;font-weight:700;color:#1D4ED8;background:#DBEAFE;border-radius:6px;padding:1px 6px;margin-right:6px;">✏️ 수정함</span>' : '') + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
   $('ac-list').querySelectorAll('.ac-rowok').forEach(c => c.addEventListener('change', () => { const ex = EXAMS.find(e => String(e.id) === c.getAttribute('data-id')); if (ex) { markOk(ex, c.checked); renderList(); } }));
   $('ac-list').querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => inspect(b.getAttribute('data-id'))));
 }
