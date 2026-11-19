@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200155">
+<link rel="stylesheet" href="css/style.css?v=202611200205">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200155"></script>
-<script src="js/api.js?v=202611200155"></script>
-<script src="js/common.js?v=202611200155"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200155"></script>
-<script src="js/vendor/pdf.min.js?v=202611200155"></script>
-<script src="js/printpdf.js?v=202611200155"></script>
-<script src="js/pdfui.js?v=202611200155"></script>
-<script src="js/pdfview.js?v=202611200155"></script>
-<script src="js/bankcore.js?v=202611200155"></script>
+<script src="js/config.js?v=202611200205"></script>
+<script src="js/api.js?v=202611200205"></script>
+<script src="js/common.js?v=202611200205"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200205"></script>
+<script src="js/vendor/pdf.min.js?v=202611200205"></script>
+<script src="js/printpdf.js?v=202611200205"></script>
+<script src="js/pdfui.js?v=202611200205"></script>
+<script src="js/pdfview.js?v=202611200205"></script>
+<script src="js/bankcore.js?v=202611200205"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -295,18 +295,18 @@ async function unitsUi(exam) {
   host.querySelectorAll('.ac-urow').forEach(el => {
     const q = rows.find(x => String(x.id) === el.getAttribute('data-id')), us = el.querySelector('.u'), ss = el.querySelector('.subsel'), fl = el.querySelector('.flash');
     refreshSubSelect(ss, tocEntryFor(q.grade, q.unit), q.sub || '');
-    const persist = async (unit, sub) => {
+    const persist = async (unit, sub, what) => {
       fl.textContent = '저장 중...';
-      const auto = ((q.auto || 0) & ~(q.unit === unit ? 0 : 2)) & (sub ? 3 : 2);
+      const auto = what === 'sub' ? ((q.auto || 0) & ~1) : (((q.auto || 0) & ~(q.unit === unit ? 0 : 2)) & (sub ? 3 : 2));      // 소단원을 직접 고르면 「자동 추정」 표시(1)를 지운다. 안 지우면 나중에 자동 채우기가 내가 고른 값을 덮어쓸 수 있다
       const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: q.id, unit: unit, sub: sub, auto: auto });
       if (r.ok) { q.unit = unit; q.sub = sub; q.auto = auto; host.querySelectorAll('.ac-urow[data-id="' + String(q.id).replace(/"/g, '') + '"]').forEach(o => { const u2 = o.querySelector('.u'), s2 = o.querySelector('.subsel'); if (o !== el) { setUnitSelect(u2, unit, q.grade); refreshSubSelect(s2, tocEntryFor(q.grade, unit), sub); } o.style.background = bad(q) ? '#FEF3C7' : ''; const f2 = o.querySelector('.flash'); if (f2) f2.textContent = '✓ 저장'; }); } else { fl.textContent = '⚠️ ' + (r.error || '저장 못함'); }
     };
-    ss.addEventListener('change', () => persist(q.unit, ss.value));
+    ss.addEventListener('change', () => persist(q.unit, ss.value, 'sub'));
     us.addEventListener('change', () => {
       const o = us.selectedOptions[0], unit = us.value.trim();
       if (o && o.dataset.g && q.grade !== o.dataset.g) q.grade = o.dataset.g;
       const ent = tocEntryFor(q.grade, unit), keep = ent && (ent.subs || []).some(sb => sb.name === q.sub) ? q.sub : '';
-      refreshSubSelect(ss, ent, keep); persist(unit, keep);
+      refreshSubSelect(ss, ent, keep); persist(unit, keep, 'unit');
     });
   });
 }
