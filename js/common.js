@@ -1,4 +1,4 @@
-window.APP_BUILD = '202611191800';
+window.APP_BUILD = '202611191815';
 // ── 새 버전 자동 적용: 켤 때마다 build.txt(캐시 없이)와 비교해 다르면 저장본을 비우고 한 번 새로고침 ──
 (function () {
   try {
@@ -26,7 +26,7 @@ function renderHeader(opts) {
 
   // 뒤로 버튼: 홈·로그인 화면에는 없다. 화면이 안쪽 단계(예: 시험지 하나를 연 상태)면 그 화면이 먼저 목록으로 돌아가고, 아니면 직전 화면으로, 직전 화면이 없으면 홈으로 간다
   const here = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
-  const backHtml = (here === 'index.html' || here === 'teacher_login.html' || here === 'student_app.html' || here.indexOf('student_') === 0) ? '' : '<a href="#" id="nav-back" class="nav-back">← 뒤로</a>';
+  const backHtml = (here === 'index.html' || here === 'teacher_login.html' || here === 'student_app.html' || here.indexOf('student_') === 0) ? '' : '<a href="index.html" id="nav-home" class="nav-back">🏠 홈</a>';
   document.body.insertAdjacentHTML('afterbegin', `
     <div class="wrap${opts && opts.wide ? ' wide' : ''}${opts && opts.wider ? ' wider' : ''}">
       <header class="topbar">
@@ -39,13 +39,17 @@ function renderHeader(opts) {
     </div>
   `);
 
-  const navBack = document.getElementById('nav-back');
-  if (navBack) navBack.addEventListener('click', function (e) {
+  // 위쪽 머리글에는 「홈」, 화면 안의 「← 홈으로」 자리는 「← 뒤로」로 바꾼다 (안쪽 단계면 그 화면이 먼저 닫히고, 아니면 직전 화면으로, 없으면 홈으로)
+  const goBackNav = function (e) {
     e.preventDefault();
-    if (!document.dispatchEvent(new Event('app:back', { cancelable: true }))) return;      // 화면이 안쪽 단계를 먼저 닫았으면 거기서 끝
+    if (!document.dispatchEvent(new Event('app:back', { cancelable: true }))) return;
     let sameSite = false; try { sameSite = !!document.referrer && new URL(document.referrer).origin === location.origin; } catch (err) {}
     if (window.history.length > 1 && sameSite) history.back(); else location.href = 'index.html';
-  });
+  };
+  const wireBack = function () {
+    document.querySelectorAll('.backlink a[href="index.html"]').forEach(function (a) { a.textContent = '← 뒤로'; a.id = 'nav-back'; a.addEventListener('click', goBackNav); });
+  };
+  if (document.querySelector('.backlink')) wireBack(); else document.addEventListener('DOMContentLoaded', wireBack);
   const logoutLink = document.getElementById('logout-link');
   if (logoutLink) {
     logoutLink.addEventListener('click', function (e) {
