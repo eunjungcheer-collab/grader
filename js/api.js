@@ -246,6 +246,9 @@ function fmtAnswer(a) {
 // 화면에 글자를 넣을 때 <, & 같은 문자가 깨지지 않게 바꿔준다 (모든 화면이 쓰는 공용 함수라 여기 둔다)
 
 // ── 문제은행 문항의 정답을 시험지 정답표에서 찾는 공용 도구 (조합 화면·문제은행 목록에서 같이 쓴다) ──
+// 시험지 이름 비교용: 이름 끝에 자동으로 붙는 「중1-2,4,6단원」 꼬리와 공백·대소문자를 뺀다. 다시 등록할 때 단원을 바꾸면 꼬리만 달라져서 같은 시험지가 다른 이름으로 보이던 문제를 막는다
+function srcKey(t) { return String(t || '').replace(/\s+/g, ' ').trim().replace(/(?:\s+(?:\+\s*)?(?:[초중고]\d\s*-\s*)?\d+(?:\s*,\s*\d+)*\s*단원)+\s*$/, '').replace(/\s+/g, '').toLowerCase(); }
+function sameSrc(a, b) { const x = srcKey(a), y = srcKey(b); return !!x && x === y; }
 function ansAlnum(t) { return String(t || '').replace(/[^0-9A-Za-z가-힣]/g, ''); }
 function ansOk(a) { return /^[1-5]{1,5}(\/[1-5]{1,5})*$/.test(String(a || '')); }
 // 학교 이름 줄기(예: 「중평중」 → 「중평」): 「2학기 중간고사」의 「기 중」처럼 낱말 속 「중」은 건너뛴다

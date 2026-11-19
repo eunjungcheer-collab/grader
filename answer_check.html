@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200958">
+<link rel="stylesheet" href="css/style.css?v=202611201020">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200958"></script>
-<script src="js/api.js?v=202611200958"></script>
-<script src="js/common.js?v=202611200958"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200958"></script>
-<script src="js/vendor/pdf.min.js?v=202611200958"></script>
-<script src="js/printpdf.js?v=202611200958"></script>
-<script src="js/pdfui.js?v=202611200958"></script>
-<script src="js/pdfview.js?v=202611200958"></script>
-<script src="js/bankcore.js?v=202611200958"></script>
+<script src="js/config.js?v=202611201020"></script>
+<script src="js/api.js?v=202611201020"></script>
+<script src="js/common.js?v=202611201020"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611201020"></script>
+<script src="js/vendor/pdf.min.js?v=202611201020"></script>
+<script src="js/printpdf.js?v=202611201020"></script>
+<script src="js/pdfui.js?v=202611201020"></script>
+<script src="js/pdfview.js?v=202611201020"></script>
+<script src="js/bankcore.js?v=202611201020"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -212,12 +212,12 @@ async function attachAnswerPdf(exam, f) {
 // 이 시험지 이름으로 저장된 문제은행 문항을 모두 지우고, 같은 시험지 PDF를 문항 가져오기 화면에서 통째로 다시 올리게 한다 (시험지 자체·정답·QR·제출 기록은 그대로)
 async function redoBank(exam, why, msgEl, btnEl) {
   const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const own = (BANK || []).filter(q => nz(q.source) === nz(exam.title));
+  const own = (BANK || []).filter(q => sameSrc(q.source, exam.title));
   if (!confirm((why ? why + '\n\n' : '') + (own.length ? '문제은행에서 「' + exam.title + '」 문항 ' + own.length + '개를 지우고, ' : '') + '시험지 등록 화면으로 가서 원본 시험지 PDF(정답지 포함)를 통째로 다시 올려요.\n\n· 같은 시험지로 다시 등록돼요: QR·제출 기록은 그대로 쓰이고, PDF·정답·문항 그림만 새로 바뀌어요.\n· 지운 문항은 되돌릴 수 없어요. 다시 올릴 때 단원 분류와 정답을 확인해 주세요.\n\n진행할까요?')) return;
   if (btnEl) btnEl.disabled = true;
   try {
     // 화면에 남은 옛 목록이 아니라 서버의 최신 값으로 다시 받아서 기준으로 삼는다 (방금 고친 소단원이 빠지지 않게)
-    try { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (lq && lq.ok && Array.isArray(lq.questions)) { BANK = lq.questions; own.length = 0; BANK.filter(q => nz(q.source) === nz(exam.title)).forEach(q => own.push(q)); } } catch (e) {}
+    try { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (lq && lq.ok && Array.isArray(lq.questions)) { BANK = lq.questions; own.length = 0; BANK.filter(q => sameSrc(q.source, exam.title)).forEach(q => own.push(q)); } } catch (e) {}
     // 지우기 전에 지금 설정된 단원·소단원을 이 브라우저에 적어 둔다 → 다시 등록 화면에서 그대로 불러와 이상한 것만 고치면 된다
     try { const snap = { t: Date.now(), q: {} }; own.forEach(q => { if (Number(q.num) > 0 && (q.unit || q.sub)) snap.q[Number(q.num)] = { unit: q.unit || '', grade: q.grade || '', sub: q.sub || '' }; }); ((CUR && CUR.picks) || []).forEach((q, k) => { const sl = (CUR.slots || [])[k]; if (q && sl && sl.k > 1 && (q.unit || q.sub)) for (let t = sl.start; t < sl.start + sl.k; t++) snap.q[t] = { unit: q.unit || '', grade: q.grade || '', sub: q.sub || '' }; });      try { const old = JSON.parse(localStorage.getItem('ac_redo_' + exam.id) || 'null'); if (old && old.q) Object.keys(old.q).forEach(k => { const a = old.q[k], b = snap.q[k]; if (!b) snap.q[k] = a; else if (!b.sub && a.sub && a.unit === b.unit) b.sub = a.sub; }); } catch (e) {}      // 이전에 적어 둔 기록은 지우지 않고, 새 값이 비어 있는 곳만 채운다
       localStorage.setItem('ac_redo_' + exam.id, JSON.stringify(snap)); const sv = await callApi('saveRedoUnits', { password: getTeacherPassword(), id: exam.id, units: snap }); if (!sv.ok) console.warn('단원 기록 서버 저장 실패', sv.error); } catch (e) {}
@@ -240,7 +240,7 @@ async function fillMissing(exam, miss, msgEl, btnEl) {
     const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
     say('문항을 찾는 중...'); const sc = await BankCore.scanPdf(doc);
     if (!(sc.questions || []).length) throw new Error('이 PDF는 글자가 없는 스캔본이라 문항을 자를 수 없어요. 「통째로 다시 올리기」를 쓰세요.');
-    const mine = (BANK || []).filter(q => nz(q.source) === nz(exam.title) && Number(q.num) > 0);
+    const mine = (BANK || []).filter(q => sameSrc(q.source, exam.title) && Number(q.num) > 0);
     const ref = mine[0] || {}, near = n => { let b = null, bd = 1e9; mine.forEach(q => { const d = Math.abs(Number(q.num) - n); if (d < bd && q.unit) { bd = d; b = q; } }); return b || ref; };
     const keys = new Set((BANK || []).map(q => dupKey(q.textPreview)).filter(k => k.length >= 25));
     // 예전에 적어 둔 번호별 단원·소단원(이 컴퓨터 → 없으면 서버)이 있으면 그걸 먼저 쓴다
@@ -285,8 +285,8 @@ async function unitsUi(exam) {
   const seen = {}, rows = [], lab = {}, byNum = {}, covered = {}, viaDup = {};
   const slotsC = (CUR && CUR.slots) || [], picksC = (CUR && CUR.picks) || [];
   picksC.forEach((q, k) => { const sl = slotsC[k]; if (q && sl) { byNum[sl.start] = q; lab[q.id] = sl.label; for (let t = sl.start + 1; t < sl.start + sl.k; t++) covered[t] = sl.start; } });
-  (BANK || []).filter(q => nz(q.source) === nz(exam.title) && Number(q.num) > 0).forEach(q => { if (!byNum[Number(q.num)] && !covered[Number(q.num)]) byNum[Number(q.num)] = q; });
-  const sameNum = {}; (BANK || []).filter(q => nz(q.source) === nz(exam.title) && Number(q.num) > 0).forEach(q => { (sameNum[q.num] = sameNum[q.num] || []).push(q); });
+  (BANK || []).filter(q => sameSrc(q.source, exam.title) && Number(q.num) > 0).forEach(q => { if (!byNum[Number(q.num)] && !covered[Number(q.num)]) byNum[Number(q.num)] = q; });
+  const sameNum = {}; (BANK || []).filter(q => sameSrc(q.source, exam.title) && Number(q.num) > 0).forEach(q => { (sameNum[q.num] = sameNum[q.num] || []).push(q); });
   const dupNums = Object.keys(sameNum).filter(k => sameNum[k].length > 1);
   const lines = [];
   for (let i = 1; i <= exam.answers.length; i++) {
@@ -379,7 +379,7 @@ const SCAN = {};   // 시험지 id -> {n: 보기 있는 주관식 문항 수, nu
 // 시험지 이름과 같은 이름(출처)으로 저장된 문제은행 문항을 1~n번 번호로 찾는다 (등록 화면이 쓰는 방식). 번호가 1~n까지 하나씩 다 있을 때만 쓴다
 function titlePicks(exam) {
   const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(), n = exam.answers.length, byNum = {};
-  BANK.filter(q => Number(q.num) > 0 && nz(q.source) === nz(exam.title)).forEach(q => { const k = Number(q.num); if (!byNum[k] || String(q.createdAt || '') > String(byNum[k].createdAt || '')) byNum[k] = q; });
+  BANK.filter(q => Number(q.num) > 0 && sameSrc(q.source, exam.title)).forEach(q => { const k = Number(q.num); if (!byNum[k] || String(q.createdAt || '') > String(byNum[k].createdAt || '')) byNum[k] = q; });
   const out = []; for (let i = 1; i <= n; i++) { if (!byNum[i]) return null; out.push(byNum[i]); }
   return out;
 }
@@ -406,7 +406,7 @@ function fuzzyBank(t) {
 }
 function linkScan(exam) {
   const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(), n = (exam.answers || []).length, have = {}, sj = (exam.answers || []).map(a => String(a).trim() === '-');
-  (BANK || []).filter(q => Number(q.num) > 0 && nz(q.source) === nz(exam.title)).forEach(q => {
+  (BANK || []).filter(q => Number(q.num) > 0 && sameSrc(q.source, exam.title)).forEach(q => {
     const k = Number(q.num); have[k] = 1;
     const m = /\[\s*(\d{1,2})\s*[~～∼\-]\s*(\d{1,2})\s*\]/.exec(String(q.textPreview || ''));
     if (m && Number(m[1]) === k) for (let t = k + 1; t <= Number(m[2]) && t <= n; t++) have[t] = 1;
@@ -607,7 +607,7 @@ async function scanSubjAll() {
 async function deleteThisExam(exam) {
   const msg = $('ac-delmsg'), btn = $('ac-delexam'), nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
   if (!confirm('「' + exam.title + '」 시험지를 삭제할까요?\n\n· 시험지·정답·QR이 지워져요 (학생이 이 QR로는 더 못 풀어요).\n· 제출 기록은 그대로 남아요.\n· 지운 시험지는 휴지통에서 복구할 수 있어요.')) return;
-  let own = []; try { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (lq && lq.ok) { BANK = lq.questions; own = BANK.filter(q => nz(q.source) === nz(exam.title)); } } catch (e) {}
+  let own = []; try { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (lq && lq.ok) { BANK = lq.questions; own = BANK.filter(q => sameSrc(q.source, exam.title)); } } catch (e) {}
   const delBank = own.length && confirm('문제은행에 이 시험지 이름으로 저장된 문항이 ' + own.length + '개 있어요.\n문제은행 문항도 같이 지울까요?\n\n[확인] 같이 지움   [취소] 문제은행은 그대로 둠');
   btn.disabled = true; msg.textContent = '삭제 중...';
   try {

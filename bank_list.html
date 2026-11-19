@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200958">
+<link rel="stylesheet" href="css/style.css?v=202611201020">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -85,11 +85,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611200958"></script>
-<script src="js/api.js?v=202611200958"></script>
-<script src="js/common.js?v=202611200958"></script>
-<script src="js/bankcore.js?v=202611200958"></script>
-<script src="js/pdfui.js?v=202611200958"></script>
+<script src="js/config.js?v=202611201020"></script>
+<script src="js/api.js?v=202611201020"></script>
+<script src="js/common.js?v=202611201020"></script>
+<script src="js/bankcore.js?v=202611201020"></script>
+<script src="js/pdfui.js?v=202611201020"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -859,17 +859,17 @@ $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuest
     const msg = document.getElementById('fixans-msg');
     try {
       const le = await callApi('listExams', { password: getTeacherPassword() }); if (!le.ok) throw new Error(le.error || '시험지 목록을 못 불러왔어요');
-      const exams = le.exams || [], byTitle = {}; exams.forEach(e => { byTitle[nz(e.title)] = e; });
+      const exams = le.exams || [], byTitle = {}; exams.forEach(e => { byTitle[srcKey(e.title)] = e; });
       // 필요한 시험지: 이름이 같은 시험지 + 학교 이름이 같은 시험지(글자로 찾기용)
       const need = new Set(); const stems = new Set(cand.map(stemOf).filter(Boolean));
-      cand.forEach(q => { const e = byTitle[nz(q.source)]; if (e) need.add(e.id); });
+      cand.forEach(q => { const e = byTitle[srcKey(q.source)]; if (e) need.add(e.id); });
       exams.forEach(e => { for (const st of stems) if (String(e.title || '').indexOf(st) >= 0) { need.add(e.id); break; } });
       const ids = Array.from(need), detail = {}; let done = 0, qi = 0;
       await Promise.all([0, 1, 2, 3].map(async () => { while (qi < ids.length) { const id = ids[qi++]; try { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: id }); if (d && d.ok) detail[id] = d; } catch (e) {} done++; msg.textContent = done + '/' + ids.length + '개 시험지 확인'; } }));
       const exList = exams.filter(e => detail[e.id]);
       const fixes = [], bySrc = {};
       cand.forEach(q => {
-        let a = null; const e = byTitle[nz(q.source)], d = e && detail[e.id];
+        let a = null; const e = byTitle[srcKey(q.source)], d = e && detail[e.id];
         if (d && d.answers && okAns(d.answers[Number(q.num) - 1])) a = d.answers[Number(q.num) - 1];
         if (!a) {
           const st = stemOf(q), yr = ansYear(q), cands = st ? exList.filter(e => String(e.title || '').indexOf(st) >= 0) : [], hits = [];
