@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192045">
+<link rel="stylesheet" href="css/style.css?v=202611192100">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611192045"></script>
-<script src="js/api.js?v=202611192045"></script>
-<script src="js/common.js?v=202611192045"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192045"></script>
-<script src="js/vendor/pdf.min.js?v=202611192045"></script>
-<script src="js/printpdf.js?v=202611192045"></script>
-<script src="js/pdfui.js?v=202611192045"></script>
-<script src="js/pdfview.js?v=202611192045"></script>
-<script src="js/bankcore.js?v=202611192045"></script>
+<script src="js/config.js?v=202611192100"></script>
+<script src="js/api.js?v=202611192100"></script>
+<script src="js/common.js?v=202611192100"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192100"></script>
+<script src="js/vendor/pdf.min.js?v=202611192100"></script>
+<script src="js/printpdf.js?v=202611192100"></script>
+<script src="js/pdfui.js?v=202611192100"></script>
+<script src="js/pdfview.js?v=202611192100"></script>
+<script src="js/bankcore.js?v=202611192100"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -196,6 +196,41 @@ async function attachAnswerPdf(exam, f) {
   const res = await callApi('replaceExamPdf', { password: getTeacherPassword(), id: exam.id, pdfBase64: arrayBufferToBase64(await main.save()), filename: exam.title });
   if (!res.ok) throw new Error(res.error || '서버 오류');
   exam.pdfUrl = res.pdfUrl; return before + '쪽 → ' + main.getPageCount() + '쪽';
+}
+// 단원·소단원 확인/수정: 이 시험지의 문제은행 문항마다 단원·소단원을 보여 주고, 비어 있거나 이상하면 표시한다. 고르면 바로 저장 (문제은행 목록과 같은 방식)
+async function unitsUi(exam) {
+  const host = $('ac-units'); if (!host) return;
+  const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const seen = {}, rows = [];
+  const add = q => { if (q && q.id && !seen[q.id]) { seen[q.id] = 1; rows.push(q); } };
+  ((CUR && CUR.picks) || []).forEach(add);
+  (BANK || []).filter(q => nz(q.source) === nz(exam.title)).forEach(add);
+  rows.sort((a, b) => (Number(a.num) || 999) - (Number(b.num) || 999));
+  if (!rows.length) { host.innerHTML = '<details style="margin:8px 0;"><summary class="hint" style="cursor:pointer;">🧭 단원·소단원 — 이 시험지에 연결된 문제은행 문항을 찾지 못했어요</summary></details>'; return; }
+  await ensureToc();
+  const NU = (BankCore && BankCore.NO_UNIT) || '(단원 미지정)';
+  const bad = q => !String(q.unit || '').trim() || q.unit === NU || (() => { const e = tocEntryFor(q.grade, q.unit); return !!(e && (e.subs || []).length && !String(q.sub || '').trim()); })();
+  const nBad = rows.filter(bad).length;
+  host.innerHTML = '<details' + (nBad ? ' open' : '') + ' style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">🧭 단원·소단원 확인/수정 (' + rows.length + '문항' + (nBad ? ', <span style="color:#B91C1C">비었거나 확인 필요 ' + nBad + '개</span>' : ', 모두 설정됨') + ')</summary><div class="card" style="padding:8px 12px;">' + rows.map(q =>
+    '<div class="ac-urow" data-id="' + escapeHtml(String(q.id)) + '" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 4px;border-bottom:1px solid #eee;' + (bad(q) ? 'background:#FEF3C7;' : '') + '"><b style="min-width:34px;">' + escapeHtml(String(q.num || '?')) + '번</b>'
+    + '<select class="u" style="max-width:260px;">' + unitSelectOptions(q.grade, q.unit, q.grade) + '</select><span class="sub-wrap"><select class="subsel" style="max-width:260px;"></select></span><span class="hint flash"></span></div>').join('') + '</div></details>';
+  host.querySelectorAll('.ac-urow').forEach(el => {
+    const q = rows.find(x => String(x.id) === el.getAttribute('data-id')), us = el.querySelector('.u'), ss = el.querySelector('.subsel'), fl = el.querySelector('.flash');
+    refreshSubSelect(ss, tocEntryFor(q.grade, q.unit), q.sub || '');
+    const persist = async (unit, sub) => {
+      fl.textContent = '저장 중...';
+      const auto = ((q.auto || 0) & ~(q.unit === unit ? 0 : 2)) & (sub ? 3 : 2);
+      const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: q.id, unit: unit, sub: sub, auto: auto });
+      if (r.ok) { q.unit = unit; q.sub = sub; q.auto = auto; fl.textContent = '✓ 저장'; el.style.background = bad(q) ? '#FEF3C7' : ''; } else { fl.textContent = '⚠️ ' + (r.error || '저장 못함'); }
+    };
+    ss.addEventListener('change', () => persist(q.unit, ss.value));
+    us.addEventListener('change', () => {
+      const o = us.selectedOptions[0], unit = us.value.trim();
+      if (o && o.dataset.g && q.grade !== o.dataset.g) q.grade = o.dataset.g;
+      const ent = tocEntryFor(q.grade, unit), keep = ent && (ent.subs || []).some(sb => sb.name === q.sub) ? q.sub : '';
+      refreshSubSelect(ss, ent, keep); persist(unit, keep);
+    });
+  });
 }
 function ansFileUi(exam) {
   ansFileObj = null;
@@ -373,10 +408,10 @@ function renderNoImages(exam, why) {
   const box = $('ac-detail');
   box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2><p>' + reviewBtn(exam.id) + ' <span class="hint">시험지 등록 때 쓰는 좌우 화면(PDF + 정답 입력)이 열려요.</span></p><div id="ac-local"></div><div id="ac-ansfile"></div>'
     + '<div class="split"><div class="pane-left"><div class="vhead"><b>시험지 PDF</b><input type="number" id="ac-go" min="1" placeholder="쪽"><button type="button" class="btn ghost" id="ac-gob">이동</button><button type="button" class="btn ghost" id="ac-last">마지막 쪽</button><button type="button" class="btn ghost" id="ac-zo">−</button><button type="button" class="btn ghost" id="ac-zi">＋</button></div><div class="vscroll" id="ac-pdf"><p class="muted" style="padding:12px;">시험지 PDF를 불러오는 중...</p></div></div>'
-    + '<div><div class="banner" style="text-align:left;margin-top:0;">이 시험지는 문제 그림을 문제은행에서 찾지 못해 보기 표시를 자동으로 확인할 수 없어요. 왼쪽 PDF를 보면서 오른쪽 <b>현재 정답표</b>를 확인하세요. 노란 칸은 <b>주관식(-)으로 저장된 번호</b>예요. 틀린 정답이나 잘못 저장된 번호만 고쳐 적고, 진짜 서술형은 비워 두세요.<br><span class="hint">' + escapeHtml(why) + '</span></div><div id="ac-qs"></div><div id="ac-save-bar"></div></div></div>';
+    + '<div><div class="banner" style="text-align:left;margin-top:0;">이 시험지는 문제 그림을 문제은행에서 찾지 못해 보기 표시를 자동으로 확인할 수 없어요. 왼쪽 PDF를 보면서 오른쪽 <b>현재 정답표</b>를 확인하세요. 노란 칸은 <b>주관식(-)으로 저장된 번호</b>예요. 틀린 정답이나 잘못 저장된 번호만 고쳐 적고, 진짜 서술형은 비워 두세요.<br><span class="hint">' + escapeHtml(why) + '</span></div><div id="ac-units"></div><div id="ac-qs"></div><div id="ac-save-bar"></div></div></div>';
   $('ac-back').onclick = goBack;
   drawGrid(exam);
-  loadPdfPane(exam); offerLocal(exam); ansFileUi(exam);
+  loadPdfPane(exam); offerLocal(exam); ansFileUi(exam); unitsUi(exam);
 }
 // 시험지 PDF를 왼쪽에 띄운다 (시험지 등록 화면과 같은 뷰어). 구글 드라이브에서 받아 오므로 PDF가 없는 시험지(교재 QR 등)는 안내만 한다
 async function loadPdfPane(exam) {
@@ -408,12 +443,12 @@ function renderExam(exam, found, sync) {
   box.innerHTML = '<p><a href="#" id="ac-back">← 목록으로</a></p><h2>' + escapeHtml(exam.title) + '</h2><p>' + reviewBtn(exam.id) + '</p><div class="split"><div class="pane-left"><div class="vhead"><b>시험지 PDF</b><input type="number" id="ac-go" min="1" placeholder="쪽"><button type="button" class="btn ghost" id="ac-gob">이동</button><button type="button" class="btn ghost" id="ac-last">마지막 쪽</button><button type="button" class="btn ghost" id="ac-zo">−</button><button type="button" class="btn ghost" id="ac-zi">＋</button></div><div class="vscroll" id="ac-pdf"><p class="muted" style="padding:12px;">시험지 PDF를 불러오는 중...</p></div></div><div><div id="ac-sync"></div><div id="ac-local"></div><div id="ac-ansfile"></div>'
     + (found.length ? '' : '<div class="banner" style="text-align:left;">이 시험지는 주관식으로 저장된 문항이 없어요.</div>')
     + (found.length ? '<div class="banner' + (mcN ? '' : '') + '" style="text-align:left;">주관식으로 저장된 문항 <b>' + found.length + '개</b> 중 <b style="color:#B45309">보기 ①~⑤가 있는 문항 ' + mcN + '개</b>가 있어요. ' + (mcN ? '노란 칸은 <b>객관식인데 주관식으로 저장된 것</b>일 가능성이 커요. 해설(정답) 그림을 보고 번호를 적어 주세요. 진짜 서술형이면 비워 두세요.' : '객관식처럼 보이는 문항은 없어요. 그래도 아래에서 직접 확인할 수 있어요.') + '</div>' : '')
-    + '<div style="margin:8px 0;"><label class="bank-include-label"><input type="checkbox" id="ac-onlysus"' + (mcN ? ' checked' : '') + '> 보기가 있는 문항만 보기</label></div><div style="margin:8px 0;"><button type="button" class="btn outline" id="ac-crop" style="padding:7px 14px;">✂️ 잘린 문항 확인 (이 시험지 전체)</button> <span class="hint" id="ac-crop-msg"></span></div><div id="ac-crop-out"></div><details open style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">📋 현재 정답표 (전체) — 여기서 바로 확인하고 고칠 수 있어요</summary><div class="card" style="line-height:2.3;"><div style="display:flex;flex-wrap:wrap;gap:6px 12px;">' + gridHtml(exam, true) + '</div></div></details><div id="ac-qs"></div><div id="ac-save-bar"></div></div></div>';
+    + '<div style="margin:8px 0;"><label class="bank-include-label"><input type="checkbox" id="ac-onlysus"' + (mcN ? ' checked' : '') + '> 보기가 있는 문항만 보기</label></div><div style="margin:8px 0;"><button type="button" class="btn outline" id="ac-crop" style="padding:7px 14px;">✂️ 잘린 문항 확인 (이 시험지 전체)</button> <span class="hint" id="ac-crop-msg"></span></div><div id="ac-crop-out"></div><details open style="margin:8px 0;"><summary style="cursor:pointer;font-weight:800;font-size:16px;">📋 현재 정답표 (전체) — 여기서 바로 확인하고 고칠 수 있어요</summary><div class="card" style="line-height:2.3;"><div style="display:flex;flex-wrap:wrap;gap:6px 12px;">' + gridHtml(exam, true) + '</div></div></details><div id="ac-units"></div><div id="ac-qs"></div><div id="ac-save-bar"></div></div></div>';
   $('ac-detail').oninput = e => { const t = e.target; if (!t || !t.classList || !(t.classList.contains('ai') || t.classList.contains('aa'))) return; const n = t.getAttribute('data-n'); document.querySelectorAll('#ac-detail input[data-n="' + n + '"]').forEach(o => { if (o !== t && (o.classList.contains('ai') || o.classList.contains('aa'))) o.value = t.value; }); };      // 같은 번호 칸(정답표·문제 카드)은 같은 값으로 맞춘다
   $('ac-back').onclick = goBack;
   $('ac-crop').onclick = () => cropCheck(exam);
   const draw = () => drawCards(exam, found, $('ac-onlysus') ? $('ac-onlysus').checked : false);
-  if ($('ac-onlysus')) $('ac-onlysus').addEventListener('change', draw); draw(); offerLocal(exam); syncBanner(exam, sync); ansFileUi(exam); loadPdfPane(exam);
+  if ($('ac-onlysus')) $('ac-onlysus').addEventListener('change', draw); draw(); offerLocal(exam); syncBanner(exam, sync); ansFileUi(exam); loadPdfPane(exam); unitsUi(exam);
 }
 // 시험지 정답과 문제은행 문항 정답이 어긋난 곳: 시험지 PDF의 「서술형」 꼬리표·문제은행 출제는 문제은행 정답을 쓴다
 function syncBanner(exam, sync) {
