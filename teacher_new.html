@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200055">
+<link rel="stylesheet" href="css/style.css?v=202611200105">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611200055"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200055"></script>
-<script src="js/printpdf.js?v=202611200055"></script>
-<script src="js/vendor/pdf.min.js?v=202611200055"></script>
-<script src="js/config.js?v=202611200055"></script>
-<script src="js/api.js?v=202611200055"></script>
-<script src="js/common.js?v=202611200055"></script>
-<script src="js/ocr.js?v=202611200055"></script>
-<script src="js/bankcore.js?v=202611200055"></script>
-<script src="js/pdfui.js?v=202611200055"></script>
-<script src="js/pdfview.js?v=202611200055"></script>
+<script src="js/vendor/qrcode.min.js?v=202611200105"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200105"></script>
+<script src="js/printpdf.js?v=202611200105"></script>
+<script src="js/vendor/pdf.min.js?v=202611200105"></script>
+<script src="js/config.js?v=202611200105"></script>
+<script src="js/api.js?v=202611200105"></script>
+<script src="js/common.js?v=202611200105"></script>
+<script src="js/ocr.js?v=202611200105"></script>
+<script src="js/bankcore.js?v=202611200105"></script>
+<script src="js/pdfui.js?v=202611200105"></script>
+<script src="js/pdfview.js?v=202611200105"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1606,9 +1606,9 @@ async function saveToBank(cls, source, onProgress, ranges) {
   const BATCH = 5, PARALLEL = 4;
   const chunks = [];
   for (let s2 = 0; s2 < picks.length; s2 += BATCH) chunks.push(picks.slice(s2, s2 + BATCH));
-  let next = 0, done = 0, failure = null;
+  let next = 0, done = 0, failure = null; const failedNums = [];
   const worker = async () => {
-    while (!failure) {
+    while (true) {
       const k = next++;
       if (k >= chunks.length) return;
       const tChunk0 = performance.now();
@@ -1630,18 +1630,24 @@ async function saveToBank(cls, source, onProgress, ranges) {
         BS.rend += Math.round(performance.now() - tChunk0);
         BS.kb += Math.round(payload.reduce((a, o) => a + (o.imageBase64 || '').length + (o.explBase64 || '').length, 0) * 0.75 / 1024);
         const tReq = performance.now();
-        const res = await callApi('saveQuestions', { password: getTeacherPassword(), questions: payload });
+        // 서버가 잠깐 바쁘거나 연결이 끊겨 한 묶음이 실패해도 문항이 통째로 사라지지 않게, 최대 4번까지 다시 보낸다 (서버는 같은 id를 두 번 쌓지 않는다)
+        let res = null, lastErr = null;
+        for (let at = 0; at < 4; at++) {
+          try { res = await callApi('saveQuestions', { password: getTeacherPassword(), questions: payload }); if (res && res.ok) break; lastErr = new Error((res && res.error) || '저장 실패'); }
+          catch (e) { lastErr = e; res = null; }
+          if (at < 3) await new Promise(r => setTimeout(r, 1500 * (at + 1)));
+        }
+        if (!res || !res.ok) throw lastErr || new Error('저장 실패');
         { const dt = Math.round(performance.now() - tReq); BS.req += dt; BS.chunks++; if (dt > (BS.max || 0)) BS.max = dt; if (dt > 30000) BS.n30 = (BS.n30 || 0) + 1; }
         if (res && res.ms) { BS.srv = true; BS.fast = (BS.fast || 0) + (res.ms.fast || 0); BS.slow = (BS.slow || 0) + (res.ms.slow || 0); if (res.ms.code) { BS.code = res.ms.code; BS.msg = res.ms.msg || BS.msg || ''; } BS.up += res.ms.up || 0; BS.lock += res.ms.lock || 0; BS.sheet += res.ms.sheet || 0; }
-        if (!res.ok) { failure = new Error(res.error || '저장 실패'); return; }
         chunks[k].forEach(p => { p.imageBase64 = p.explBase64 = ''; });          // 보낸 그림은 메모리에서 비운다
         done += chunks[k].length;
         if (onProgress) onProgress(done);
-      } catch (e) { failure = e; return; }
+      } catch (e) { failure = failure || e; chunks[k].forEach(p => failedNums.push(p.num)); }      // 이 묶음만 실패로 적고 나머지는 계속 저장한다
     }
   };
   await Promise.all(Array.from({ length: Math.min(PARALLEL, chunks.length) }, worker));
-  if (failure) throw failure;
+  if (failure) { failedNums.sort((a, b) => a - b); const err = new Error(failure.message + ' — 저장되지 않은 번호: ' + failedNums.join(', ') + '번'); err.failedNums = failedNums; throw err; }
   return picks.length;
 }
 
