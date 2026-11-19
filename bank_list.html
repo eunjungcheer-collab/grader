@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200612">
+<link rel="stylesheet" href="css/style.css?v=202611200640">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -29,8 +29,10 @@
     <button type="button" class="btn ghost" id="select-all-filtered" style="padding:8px 12px;">검색·필터된 전체 선택</button>
     <span class="hint" id="select-count" style="margin:0;">0개 선택</span>
     <button type="button" class="btn outline" id="bulk-classify-btn" style="padding:8px 14px;" disabled>📚 선택한 문항 분류 바꾸기</button>
+    <button type="button" class="btn outline" id="dup-btn" style="padding:8px 14px;">🧹 중복 문항 정리</button>
     <button type="button" class="btn danger" id="bulk-delete-btn" style="padding:8px 14px;" disabled>선택 삭제</button>
   </div>
+  <div id="dup-box" class="card" style="display:none; padding:12px 14px;"></div>
   <div id="bulk-classify" class="card" style="display:none; padding:12px 14px;">
     <b id="bc-title">선택한 문항의 분류</b>
     <p class="hint" style="margin:2px 0 8px;">바꾸고 싶은 칸만 채우세요. 비워둔 칸은 그대로 둬요.</p>
@@ -81,11 +83,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611200612"></script>
-<script src="js/api.js?v=202611200612"></script>
-<script src="js/common.js?v=202611200612"></script>
-<script src="js/bankcore.js?v=202611200612"></script>
-<script src="js/pdfui.js?v=202611200612"></script>
+<script src="js/config.js?v=202611200640"></script>
+<script src="js/api.js?v=202611200640"></script>
+<script src="js/common.js?v=202611200640"></script>
+<script src="js/bankcore.js?v=202611200640"></script>
+<script src="js/pdfui.js?v=202611200640"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -781,6 +783,59 @@ if (new URLSearchParams(location.search).get('auto')) $('only-auto').checked = t
 $('only-auto').addEventListener('change', () => { page = 1; render(); });
 load();
 $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuestionCache(); $('total-text').textContent = '불러오는 중...'; load(); });
+
+// ── 중복 문항 정리: 같은 문제가 시험지 이름만 다르게 두 번 들어가 있을 때(예전 등록 + 새 등록), 단원이 비어 있는 쪽을 지운다 ──
+// 같은 문제 = 문제 글자 앞부분이 같거나(40자), 번호·연도·학교 이름이 같고 글자 앞부분(12자)이 같은 것. 단원이 정해진 문항이 하나도 없는 묶음은 건드리지 않는다
+(function () {
+  const alnum = t => String(t || '').replace(/[^0-9A-Za-z가-힣]/g, '');
+  const noUnit = q => !q.unit || /미지정/.test(String(q.unit));
+  const stem = q => { const m = String(q.school || q.source || '').match(/([가-힣]{2,5}?)중/); return m ? m[1] : ''; };
+  const score = q => (noUnit(q) ? 0 : 4) + (q.sub ? 2 : 0) + (String(q.answer || '').trim() && q.answer !== '-' ? 1 : 0);
+  function findDups() {
+    const pool = all.filter(q => alnum(q.textPreview).length >= 12);
+    const parent = {}; const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }; pool.forEach(q => { parent[q.id] = q.id; });
+    const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
+    const byKey = {}, byLoose = {};
+    pool.forEach(q => {
+      const k40 = alnum(q.textPreview).slice(0, 40);
+      if (k40.length >= 25) { if (byKey[k40]) union(q.id, byKey[k40]); else byKey[k40] = q.id; }
+      const n = Number(q.num) || 0, y = String(q.year || '').match(/20\d\d/);
+      if (n > 0 && y && stem(q)) { const lk = [stem(q), y[0], n, alnum(q.textPreview).slice(0, 12)].join('|'); if (byLoose[lk]) union(q.id, byLoose[lk]); else byLoose[lk] = q.id; }
+    });
+    const groups = {}; pool.forEach(q => { (groups[find(q.id)] = groups[find(q.id)] || []).push(q); });
+    const out = [];
+    Object.keys(groups).forEach(g => {
+      const m = groups[g]; if (m.length < 2) return;
+      const best = Math.max.apply(null, m.map(score)); if (best < 4) return;      // 단원이 정해진 문항이 없으면 건드리지 않는다
+      const keepers = m.filter(q => score(q) === best);
+      const keep = keepers.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
+      const del = m.filter(q => q !== keep && noUnit(q));      // 단원이 비어 있는 쪽만 지운다 (둘 다 단원이 있으면 지우지 않는다)
+      if (del.length) out.push({ keep: keep, del: del });
+    });
+    return out;
+  }
+  document.getElementById('dup-btn').addEventListener('click', () => {
+    const box = document.getElementById('dup-box'), res = findDups(), n = res.reduce((a, g) => a + g.del.length, 0);
+    box.style.display = 'block';
+    if (!n) { box.innerHTML = '<b>🧹 지울 중복 문항이 없어요.</b> <span class="hint">(같은 문제가 두 번 있어도, 둘 다 단원이 정해져 있거나 둘 다 비어 있으면 자동으로 지우지 않아요.)</span> <button type="button" class="btn ghost" id="dup-close">닫기</button>'; document.getElementById('dup-close').onclick = () => { box.style.display = 'none'; }; return; }
+    const names = {}; res.forEach(g => g.del.forEach(q => { names[q.source || '(이름 없음)'] = (names[q.source || '(이름 없음)'] || 0) + 1; }));
+    box.innerHTML = '<b>🧹 같은 문제가 두 번 들어 있는 것 ' + res.length + '묶음 → 단원이 비어 있는 쪽 ' + n + '문항을 지울 수 있어요.</b>'
+      + '<p class="hint" style="margin:6px 0;">지울 문항의 시험지 이름: ' + Object.keys(names).map(k => escapeHtml(k) + ' (' + names[k] + '개)').join(' · ') + '</p>'
+      + '<div style="max-height:220px;overflow:auto;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;padding:6px 10px;">' + res.slice(0, 40).map(g => '남김: ' + escapeHtml(g.keep.source || '') + ' ' + (g.keep.num || '') + '번 (' + escapeHtml(String(g.keep.unit || '')) + ') ← 지움: ' + g.del.map(q => escapeHtml(q.source || '') + ' ' + (q.num || '') + '번').join(', ')).join('<br>') + (res.length > 40 ? '<br>… 외 ' + (res.length - 40) + '묶음' : '') + '</div>'
+      + '<p style="margin:8px 0 0;"><button type="button" class="btn danger" id="dup-go">' + n + '문항 지우기</button> <button type="button" class="btn ghost" id="dup-close">닫기</button> <span id="dup-msg" class="hint"></span></p>';
+    document.getElementById('dup-close').onclick = () => { box.style.display = 'none'; };
+    document.getElementById('dup-go').onclick = async () => {
+      if (!confirm('단원이 비어 있는 중복 문항 ' + n + '개를 지울까요?\n(단원이 정해진 쪽은 그대로 남아요. 지운 문항은 휴지통에서 복구할 수 있어요.)')) return;
+      const btn = document.getElementById('dup-go'), msg = document.getElementById('dup-msg'); btn.disabled = true;
+      const ids = []; res.forEach(g => g.del.forEach(q => ids.push(q.id)));
+      try {
+        for (let i = 0; i < ids.length; i += 40) { msg.textContent = '지우는 중... ' + Math.min(i + 40, ids.length) + '/' + ids.length; const r = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: ids.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '지우지 못했어요'); }
+        const gone = new Set(ids); all = all.filter(x => !gone.has(x.id)); ids.forEach(id => selected.delete(id)); render();
+        box.innerHTML = '<b>✅ 중복 문항 ' + ids.length + '개를 지웠어요.</b> <button type="button" class="btn ghost" id="dup-close">닫기</button>'; document.getElementById('dup-close').onclick = () => { box.style.display = 'none'; };
+      } catch (e) { msg.textContent = '⚠️ ' + (e.message || e) + ' (일부만 지워졌을 수 있어요. 새로고침해서 다시 확인하세요)'; btn.disabled = false; }
+    };
+  });
+})();
 </script>
 </body>
 </html>
