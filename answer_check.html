@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192100">
+<link rel="stylesheet" href="css/style.css?v=202611192110">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611192100"></script>
-<script src="js/api.js?v=202611192100"></script>
-<script src="js/common.js?v=202611192100"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192100"></script>
-<script src="js/vendor/pdf.min.js?v=202611192100"></script>
-<script src="js/printpdf.js?v=202611192100"></script>
-<script src="js/pdfui.js?v=202611192100"></script>
-<script src="js/pdfview.js?v=202611192100"></script>
-<script src="js/bankcore.js?v=202611192100"></script>
+<script src="js/config.js?v=202611192110"></script>
+<script src="js/api.js?v=202611192110"></script>
+<script src="js/common.js?v=202611192110"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192110"></script>
+<script src="js/vendor/pdf.min.js?v=202611192110"></script>
+<script src="js/printpdf.js?v=202611192110"></script>
+<script src="js/pdfui.js?v=202611192110"></script>
+<script src="js/pdfview.js?v=202611192110"></script>
+<script src="js/bankcore.js?v=202611192110"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -334,11 +334,10 @@ async function inspect(id) {
   try {
     _imgCache.clear();
     const r = await scanExam(id, say);
-    if (r.none) { box.innerHTML = back + '<div class="banner">이 시험지는 주관식으로 저장된 문항이 없고, 문제은행 정답과도 어긋나는 곳이 없어요.</div><p>' + reviewBtn(r.exam.id) + '</p>'; $('ac-back').onclick = goBack; return; }
     if (r.noimg) return renderNoImages(r.exam, r.noimg);
     const exam = r.exam, found = r.found;
-    CUR = { picks: r.picks, slots: r.slots };
-    renderExam(exam, found, r.sync);
+    CUR = { picks: r.picks || [], slots: r.slots || [] };
+    renderExam(exam, found || [], r.sync);
   } catch (e) { fail(e.message || String(e)); }
 }
 // 잘린 그림 의심: ① 객관식(정답 1~5)인데 ①~⑤가 5개 읽히지 않음 ② 그림 맨 위·아래 끝에 글자 획이 닿음. 확정이 아니라 의심이므로 그림을 보여 준다
