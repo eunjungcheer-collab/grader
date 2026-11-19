@@ -1625,8 +1625,8 @@
       } else page.drawCircle({ x: cx, y: cy, size: r, color: RED });
       page.drawText(t, { x: cx - tw / 2, y: cy - fs * 0.34, size: fs, font: font, color: rgb(1, 1, 1) });
       if (subj && subjTag) {
-        // 서술형(주관식)은 OMR 번호처럼 보이지 않게, 배지 밑에 작은 「서술형」 꼬리표를 따로 붙인다 (한글이라 그림으로 만든 것을 붙인다. 글자로 쓰면 「???」로 깨진다)
-        page.drawImage(subjTag.img, { x: cx - subjTag.w / 2, y: cy - r - subjTag.h - 2, width: subjTag.w, height: subjTag.h });
+        // 서술형(주관식)은 OMR 번호처럼 보이지 않게, 배지 위에 작은 「서술형」 꼬리표를 따로 붙인다 (한글이라 그림으로 만든 것을 붙인다. 글자로 쓰면 「???」로 깨진다)
+        page.drawImage(subjTag.img, { x: Math.max(2, cx - subjTag.w / 2), y: cy + r + 1, width: subjTag.w, height: subjTag.h });      // 번호 바로 위에 붙인다 (밑에 붙이면 문제 글자를 가린다)
       }
     }
     // 왼쪽 여백에 붙이는 번호 (번호 위치를 모를 때)

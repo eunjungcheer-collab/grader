@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200728">
+<link rel="stylesheet" href="css/style.css?v=202611200748">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611200728"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200728"></script>
-<script src="js/config.js?v=202611200728"></script>
-<script src="js/api.js?v=202611200728"></script>
-<script src="js/common.js?v=202611200728"></script>
-<script src="js/bankcore.js?v=202611200728"></script>
-<script src="js/vendor/pdf.min.js?v=202611200728"></script>
-<script src="js/printpdf.js?v=202611200728"></script>
-<script src="js/pdfui.js?v=202611200728"></script>
+<script src="js/vendor/qrcode.min.js?v=202611200748"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200748"></script>
+<script src="js/config.js?v=202611200748"></script>
+<script src="js/api.js?v=202611200748"></script>
+<script src="js/common.js?v=202611200748"></script>
+<script src="js/bankcore.js?v=202611200748"></script>
+<script src="js/vendor/pdf.min.js?v=202611200748"></script>
+<script src="js/printpdf.js?v=202611200748"></script>
+<script src="js/pdfui.js?v=202611200748"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -877,8 +877,26 @@ async function finalize(printAfter) {
     }
     // 서술형(-)으로 저장돼 있지만 보기 ①~⑤가 있는 객관식으로 보이는 문항이 있으면, 만들기 전에 알려 준다 (정답을 못 읽어 서술형으로 들어간 경우가 많아서, 그대로 두면 자동 채점에서 빠진다)
     try {
-      const sus = [];
-      for (let k = 0; k < imgs.length; k++) { if (String(imgs[k].answer) !== '-') continue; let mk = null; try { mk = await BankCore.detectOptionMarkersB64(imgs[k].base64); } catch (e) {} if (mk && mk.length === 5) sus.push(imgs[k].num); }
+      let sus = [];
+      const susK = [];
+      for (let k = 0; k < imgs.length; k++) { if (String(imgs[k].answer) !== '-') continue; let mk = null; try { mk = await BankCore.detectOptionMarkersB64(imgs[k].base64); } catch (e) {} if (mk && mk.length === 5) { sus.push(imgs[k].num); susK.push(k); } }
+      // 정답 점검에서 시험지의 정답은 고쳤는데 문제은행 문항에는 「-」로 남아 있는 경우: 그 문항의 원래 시험지(출처 이름이 같은 시험지)의 정답표에서 정답을 가져와 문제은행에도 고쳐 적는다
+      if (susK.length) {
+        try {
+          updateSpinner('원래 시험지의 정답을 찾는 중...');
+          const nzs = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+          const le = await callApi('listExams', { password: getTeacherPassword() });
+          const exams = (le && le.ok && le.exams) || [], detail = {}, fixed = [], fixedK = new Set();
+          for (const k of susK) {
+            const q = picks[k], n = Number(q && q.num); if (!q || !(n > 0)) continue;
+            const ex = exams.find(e => nzs(e.title) === nzs(q.source)); if (!ex) continue;
+            if (!(ex.id in detail)) { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: ex.id }); detail[ex.id] = d && d.ok ? d.answers : null; }
+            const a = detail[ex.id] && detail[ex.id][n - 1];
+            if (a && /^[1-5]{1,5}(\/[1-5]{1,5})*$/.test(String(a))) { fixed.push({ id: q.id, answer: String(a) }); fixedK.add(k); q.answer = String(a); imgs[k].answer = String(a); }
+          }
+          if (fixed.length) { try { await callApi('updateQuestions', { password: getTeacherPassword(), updates: fixed }); } catch (e) {} sus = sus.filter((x, i) => !fixedK.has(susK[i])); }
+        } catch (e) { console.warn('원래 시험지 정답 찾기 실패', e); }
+      }
       if (sus.length && !confirm('⚠️ 서술형으로 저장돼 있지만 보기 ①~⑤가 있는 객관식으로 보이는 문항이 ' + sus.length + '개 있어요.\n(시험지 번호: ' + sus.slice(0, 30).join(', ') + (sus.length > 30 ? ' …' : '') + ')\n\n이대로 만들면 이 문항들은 자동 채점에서 빠져요.\n문제은행에서 정답을 입력한 뒤에 만드는 것을 추천해요.\n\n그래도 이대로 만들까요? (취소 = 멈추기)')) { hideSpinner(); return; }
     } catch (e) {}
     updateSpinner('시험지 PDF 만드는 중...');
