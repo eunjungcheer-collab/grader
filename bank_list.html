@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200528">
+<link rel="stylesheet" href="css/style.css?v=202611200546">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -81,11 +81,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611200528"></script>
-<script src="js/api.js?v=202611200528"></script>
-<script src="js/common.js?v=202611200528"></script>
-<script src="js/bankcore.js?v=202611200528"></script>
-<script src="js/pdfui.js?v=202611200528"></script>
+<script src="js/config.js?v=202611200546"></script>
+<script src="js/api.js?v=202611200546"></script>
+<script src="js/common.js?v=202611200546"></script>
+<script src="js/bankcore.js?v=202611200546"></script>
+<script src="js/pdfui.js?v=202611200546"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -186,11 +186,12 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && pen
 
 const gradeOf = x => x.grade || '__none__';
 function filtered() {
-  const q = $('q').value.trim().toLowerCase();
+  const toks = $('q').value.trim().toLowerCase().split(/\s+/).filter(Boolean).map(t => t.replace(/\s+/g, ''));
+  const fields = x => [x.unit, x.sub, x.grade, x.school, x.year, x.source, x.kind, x.textPreview].map(v => String(v || '').toLowerCase().replace(/\s+/g, ''));      // 칸마다 따로 비교 (칸이 이어져 엉뚱하게 맞지 않게), 시험지 이름·소단원·연도도 검색
   const onlyNo = $('only-noans').checked, onlyNoSub = $('only-nosub').checked, onlyNoUnit = $('only-nounit').checked, onlyAuto = $('only-auto').checked;
   return all.filter(x => (!kindFilter || x.kind === kindFilter) && (!bookFilter || (isBookQ(x) && bookNameOf(x) === bookFilter)) && (!gradeFilter || gradeOf(x) === gradeFilter) && (!unitFilter || unitKey(x) === unitFilter) && (!diffFilter || dKey(x) === diffFilter) &&
     (!onlyNo || !String(x.answer).trim()) && (!onlyNoSub || !x.sub) && (!onlyNoUnit || !x.unit || x.unit === '(단원 미지정)') && (!onlyAuto || x.auto) &&
-    (!q || [x.unit, x.grade, x.school, x.kind, x.textPreview].some(v => String(v || '').toLowerCase().includes(q))));
+    (!toks.length || toks.every(t => fields(x).some(v => v.includes(t)))));
 }
 
 function render() {
