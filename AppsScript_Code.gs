@@ -141,6 +141,8 @@ function handle_(e) {
       case 'deleteQuestions': result = actionDeleteQuestions_(params); break;
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
       case 'replaceExamPdf': result = actionReplaceExamPdf_(params); break;
+      case 'saveRedoUnits': result = actionSaveRedoUnits_(params); break;
+      case 'getRedoUnits': result = actionGetRedoUnits_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
       case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
       case 'editSubmission': result = actionEditSubmission_(params); break;
@@ -263,6 +265,20 @@ function actionNudgeMissing_(p) {
   return { ok: true, sent: sent, targets: targets };
 }
 // 같은 시험지를 다시 올려 등록할 때 (replaceId): 새 시험 번호를 만들지 않고 기존 시험지 줄을 그대로 쓴다. QR·제출 기록·단원 연결은 그대로, PDF·정답·문항 글만 새로 바뀐다. 예전 PDF는 휴지통으로 간다
+// 시험지를 다시 올리기 전에 문항별 단원·소단원을 적어 두고(다른 컴퓨터에서도 불러올 수 있게 서버에 보관), 다시 등록 화면에서 불러온다
+function actionSaveRedoUnits_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const id = String(p.id || ''); if (!id) return { ok: false, error: '시험 번호가 없어요.' };
+  let txt = JSON.stringify(p.units || {});
+  if (txt.length > 8500) return { ok: false, error: '기록이 너무 커요.' };
+  PropertiesService.getScriptProperties().setProperty('redo_' + id, txt);
+  return { ok: true };
+}
+function actionGetRedoUnits_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const v = PropertiesService.getScriptProperties().getProperty('redo_' + String(p.id || ''));
+  return { ok: true, units: v ? safeJson_(v, null) : null };
+}
 function replaceExamFromRegistration_(p) {
   if (!p.pdfBase64) return { ok: false, error: '새 PDF가 없어요.' };
   const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
