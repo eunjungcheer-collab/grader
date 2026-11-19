@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200826">
+<link rel="stylesheet" href="css/style.css?v=202611200850">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -29,9 +29,11 @@
     <button type="button" class="btn ghost" id="select-all-filtered" style="padding:8px 12px;">검색·필터된 전체 선택</button>
     <span class="hint" id="select-count" style="margin:0;">0개 선택</span>
     <button type="button" class="btn outline" id="bulk-classify-btn" style="padding:8px 14px;" disabled>📚 선택한 문항 분류 바꾸기</button>
+    <button type="button" class="btn outline" id="fixans-btn" style="padding:8px 14px;">🔧 서술형으로 잘못 저장된 객관식 고치기</button>
     <button type="button" class="btn outline" id="dup-btn" style="padding:8px 14px;">🧹 중복 문항 정리</button>
     <button type="button" class="btn danger" id="bulk-delete-btn" style="padding:8px 14px;" disabled>선택 삭제</button>
   </div>
+  <div id="fixans-box" class="card" style="display:none; padding:12px 14px;"></div>
   <div id="dup-box" class="card" style="display:none; padding:12px 14px;"></div>
   <div id="bulk-classify" class="card" style="display:none; padding:12px 14px;">
     <b id="bc-title">선택한 문항의 분류</b>
@@ -83,11 +85,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611200826"></script>
-<script src="js/api.js?v=202611200826"></script>
-<script src="js/common.js?v=202611200826"></script>
-<script src="js/bankcore.js?v=202611200826"></script>
-<script src="js/pdfui.js?v=202611200826"></script>
+<script src="js/config.js?v=202611200850"></script>
+<script src="js/api.js?v=202611200850"></script>
+<script src="js/common.js?v=202611200850"></script>
+<script src="js/bankcore.js?v=202611200850"></script>
+<script src="js/pdfui.js?v=202611200850"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -840,6 +842,53 @@ $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuest
         box.innerHTML = '<b>✅ 중복 문항 ' + ids.length + '개를 지웠어요.</b> <button type="button" class="btn ghost" id="dup-close">닫기</button>'; document.getElementById('dup-close').onclick = () => { box.style.display = 'none'; };
       } catch (e) { msg.textContent = '⚠️ ' + (e.message || e) + ' (일부만 지워졌을 수 있어요. 새로고침해서 다시 확인하세요)'; btn.disabled = false; }
     };
+  });
+})();
+
+// ── 서술형(-)으로 잘못 저장된 객관식 고치기: 문제은행 정답이 「-」인 문항을, 그 문항이 나온 시험지의 정답표(① ~ ⑤)에서 찾아 맞춘다 ──
+// 시험지 이름이 같은 문항은 번호로, 이름이 달라도 문제 글자가 같고 정답이 하나로 정해지면 글자로 찾는다. 정답표에도 서술형(-)이면 그대로 둔다
+(function () {
+  const an = t => String(t || '').replace(/[^0-9A-Za-z가-힣]/g, ''), nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const okAns = a => /^[1-5]{1,5}(\/[1-5]{1,5})*$/.test(String(a || ''));
+  const stemOf = q => { const m = String(q.school || q.source || '').match(/([가-힣]{2,5}?)중/); return m ? m[1] : ''; };
+  document.getElementById('fixans-btn').addEventListener('click', async () => {
+    const box = document.getElementById('fixans-box'); box.style.display = 'block';
+    const cand = all.filter(q => String(q.answer).trim() === '-' && Number(q.num) > 0);
+    if (!cand.length) { box.innerHTML = '<b>정답이 「-」인 문항이 없어요.</b> <button type="button" class="btn ghost" id="fixans-close">닫기</button>'; document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; }; return; }
+    box.innerHTML = '<b>🔧 시험지 정답표에서 찾는 중...</b> <span id="fixans-msg" class="hint"></span>';
+    const msg = document.getElementById('fixans-msg');
+    try {
+      const le = await callApi('listExams', { password: getTeacherPassword() }); if (!le.ok) throw new Error(le.error || '시험지 목록을 못 불러왔어요');
+      const exams = le.exams || [], byTitle = {}; exams.forEach(e => { byTitle[nz(e.title)] = e; });
+      // 필요한 시험지: 이름이 같은 시험지 + 학교 이름이 같은 시험지(글자로 찾기용)
+      const need = new Set(); const stems = new Set(cand.map(stemOf).filter(Boolean));
+      cand.forEach(q => { const e = byTitle[nz(q.source)]; if (e) need.add(e.id); });
+      exams.forEach(e => { for (const st of stems) if (String(e.title || '').indexOf(st) >= 0) { need.add(e.id); break; } });
+      const ids = Array.from(need), detail = {}; let done = 0, qi = 0;
+      await Promise.all([0, 1, 2, 3].map(async () => { while (qi < ids.length) { const id = ids[qi++]; try { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: id }); if (d && d.ok) detail[id] = d; } catch (e) {} done++; msg.textContent = done + '/' + ids.length + '개 시험지 확인'; } }));
+      const idx = {};      // 글자 앞 20자 → [정답...]
+      Object.keys(detail).forEach(id => { const d = detail[id]; (d.questionTexts || []).forEach((t, i) => { const k = an(t).slice(0, 20); if (k.length >= 15 && d.answers && okAns(d.answers[i])) (idx[k] = idx[k] || []).push(d.answers[i]); }); });
+      const fixes = [], bySrc = {};
+      cand.forEach(q => {
+        let a = null; const e = byTitle[nz(q.source)], d = e && detail[e.id];
+        if (d && d.answers && okAns(d.answers[Number(q.num) - 1])) a = d.answers[Number(q.num) - 1];
+        if (!a) { const hits = idx[an(q.textPreview).slice(0, 20)]; if (hits && hits.length && hits.every(h => h === hits[0])) a = hits[0]; }
+        if (a) { fixes.push({ id: q.id, answer: a, q: q }); bySrc[q.source || '(이름 없음)'] = (bySrc[q.source || '(이름 없음)'] || 0) + 1; }
+      });
+      if (!fixes.length) { box.innerHTML = '<b>고칠 문항이 없어요.</b> <span class="hint">정답이 「-」인 문항 ' + cand.length + '개를 시험지 정답표에서 찾아봤지만, 객관식 정답(①~⑤)으로 확인되는 문항이 없었어요.</span> <button type="button" class="btn ghost" id="fixans-close">닫기</button>'; document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; }; return; }
+      box.innerHTML = '<b>🔧 서술형(-)으로 저장돼 있지만 시험지 정답표에는 객관식 정답이 있는 문항 ' + fixes.length + '개를 찾았어요</b> <span class="hint">(정답이 「-」인 문항 ' + cand.length + '개 중)</span>'
+        + '<div style="max-height:200px;overflow:auto;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;padding:6px 10px;margin:6px 0;">' + Object.keys(bySrc).map(k => escapeHtml(k) + ': ' + bySrc[k] + '개').join('<br>') + '</div>'
+        + '<p style="margin:6px 0 0;"><button type="button" class="btn primary" id="fixans-go">' + fixes.length + '개 정답 고치기</button> <button type="button" class="btn ghost" id="fixans-close">닫기</button> <span id="fixans-msg2" class="hint"></span></p>';
+      document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; };
+      document.getElementById('fixans-go').onclick = async () => {
+        const go = document.getElementById('fixans-go'), m2 = document.getElementById('fixans-msg2'); go.disabled = true;
+        try {
+          for (let i = 0; i < fixes.length; i += 40) { m2.textContent = '고치는 중... ' + Math.min(i + 40, fixes.length) + '/' + fixes.length; const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: fixes.slice(i, i + 40).map(f => ({ id: f.id, answer: f.answer })) }); if (!r.ok) throw new Error(r.error || '고치지 못했어요'); }
+          fixes.forEach(f => { f.q.answer = f.answer; }); render();
+          box.innerHTML = '<b>✅ ' + fixes.length + '개 문항의 정답을 고쳤어요.</b> <button type="button" class="btn ghost" id="fixans-close">닫기</button>'; document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; };
+        } catch (e) { m2.textContent = '⚠️ ' + (e.message || e); go.disabled = false; }
+      };
+    } catch (e) { box.innerHTML = '<b>⚠️ ' + escapeHtml(e.message || String(e)) + '</b> <button type="button" class="btn ghost" id="fixans-close">닫기</button>'; document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; }; }
   });
 })();
 </script>
