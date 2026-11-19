@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611201020">
+<link rel="stylesheet" href="css/style.css?v=202611201040">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611201020"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611201020"></script>
-<script src="js/config.js?v=202611201020"></script>
-<script src="js/api.js?v=202611201020"></script>
-<script src="js/common.js?v=202611201020"></script>
-<script src="js/bankcore.js?v=202611201020"></script>
-<script src="js/vendor/pdf.min.js?v=202611201020"></script>
-<script src="js/printpdf.js?v=202611201020"></script>
-<script src="js/pdfui.js?v=202611201020"></script>
+<script src="js/vendor/qrcode.min.js?v=202611201040"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611201040"></script>
+<script src="js/config.js?v=202611201040"></script>
+<script src="js/api.js?v=202611201040"></script>
+<script src="js/common.js?v=202611201040"></script>
+<script src="js/bankcore.js?v=202611201040"></script>
+<script src="js/vendor/pdf.min.js?v=202611201040"></script>
+<script src="js/printpdf.js?v=202611201040"></script>
+<script src="js/pdfui.js?v=202611201040"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -642,6 +642,7 @@ function renderReview() {
     <div class="card">
       <h2 style="margin-top:0;">검토: "${escapeHtml(reviewTitle)}" · 총 ${reviewPicks.length}문항${nSub ? ' (주관식 ' + nSub + ')' : ''}</h2>
       ${groupNote ? '<p class="hint" style="margin:0 0 8px;">🔗 ' + groupNote + '</p>' : ''}
+      <div id="unit-audit"></div>
       <p class="hint">빼고 싶은 문항은 "빼기"를 누르세요. 더 넣고 싶으면 아래에서 검색해서 추가하세요.</p>
       <div id="review-list"></div>
       <div style="margin-top:12px;">
@@ -675,7 +676,20 @@ function renderReview() {
   $('teacher-print-btn').addEventListener('click', () => makeTeacher(true));
   $('add-search').addEventListener('input', renderAddResults);
 }
+// 선택한 단원 밖의 문항 알림: 단원을 5,6,7만 골랐는데 다른 단원(4단원 등)이나 단원이 비어 있는 문항이 섞였으면 보여 주고, 한 번에 뺄 수 있게 한다
+function renderUnitAudit() {
+  const box = $('unit-audit'); if (!box) return;
+  const sel = reviewRecipe && reviewRecipe.units; if (!sel || !sel.length) { box.innerHTML = ''; return; }
+  const selNums = new Set(sel.map(k => { const m = String(k).match(/(\d{1,2})\s*단원/); return m ? +m[1] : 0; }).filter(Boolean)); if (!selNums.size) { box.innerHTML = ''; return; }
+  const noU = q => !q.unit || /미지정/.test(String(q.unit));
+  const outside = reviewPicks.filter(q => noU(q) || !selNums.has(unitNoOf(q)));
+  if (!outside.length) { box.innerHTML = ''; return; }
+  const cnt = {}; outside.forEach(q => { const k = noU(q) ? '단원 미지정' : String(q.unit).replace(/\s+/g, ' ').slice(0, 18); cnt[k] = (cnt[k] || 0) + 1; });
+  box.innerHTML = '<div class="banner" style="text-align:left;margin:0 0 10px;"><b>⚠️ 선택한 단원(' + Array.from(selNums).sort((a, b) => a - b).join(', ') + '단원) 밖의 문항이 ' + outside.length + '개 섞여 있어요</b><div class="hint" style="margin:4px 0 6px;">' + Object.keys(cnt).map(k => escapeHtml(k) + ' ' + cnt[k] + '개').join(' · ') + '</div><button type="button" class="btn danger" id="audit-rm" style="padding:6px 14px;">이 ' + outside.length + '개 빼기</button> <span class="hint">(빼면 시험지 제목의 단원 표시도 다시 맞춰져요)</span></div>';
+  $('audit-rm').onclick = () => { const gone = new Set(outside.map(q => q.id)); reviewPicks = reviewPicks.filter(q => !gone.has(q.id)); reviewTitle = titleWithUnits(reviewTitle, reviewPicks); renderReview(); };
+}
 function renderReviewList() {
+  try { renderUnitAudit(); } catch (e) {}
   $('review-list').innerHTML = reviewPicks.map((q, i) => `
     <div class="review-row" data-i="${i}">
       <div class="review-row-top">
