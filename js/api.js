@@ -244,6 +244,20 @@ function fmtAnswer(a) {
 }
 
 // 화면에 글자를 넣을 때 <, & 같은 문자가 깨지지 않게 바꿔준다 (모든 화면이 쓰는 공용 함수라 여기 둔다)
+
+// ── 문제은행 문항의 정답을 시험지 정답표에서 찾는 공용 도구 (조합 화면·문제은행 목록에서 같이 쓴다) ──
+function ansAlnum(t) { return String(t || '').replace(/[^0-9A-Za-z가-힣]/g, ''); }
+function ansOk(a) { return /^[1-5]{1,5}(\/[1-5]{1,5})*$/.test(String(a || '')); }
+// 학교 이름 줄기(예: 「중평중」 → 「중평」): 「2학기 중간고사」의 「기 중」처럼 낱말 속 「중」은 건너뛴다
+function ansStem(q) {
+  const t = String(q.school || '') + ' ' + String(q.source || ''), re = /([가-힣]{2,4}?)중(?![가-힣])/g; let m;
+  while ((m = re.exec(t))) { if (!/^(과학|기출|중등|학기|시험|정답|문제|단원|학년|내신|고사)/.test(m[1]) && !/(학기|고사|정답지|문제지|학년|단원)$/.test(m[1])) return m[1]; }
+  return '';
+}
+function ansYear(q) { const m = (String(q.year || '') + ' ' + String(q.source || '')).match(/20\d\d/); return m ? m[0] : ''; }
+// 문제 글자가 같은지: 앞의 번호·기호를 떼고 앞 15자가 서로의 글자 안에 들어 있으면 같은 문항으로 본다
+function ansTextKey(t) { return ansAlnum(t).replace(/^\d{1,3}/, '').slice(0, 15); }
+function ansTextHit(bankText, examText) { const k = ansTextKey(bankText); if (k.length < 12) return false; const e = ansAlnum(examText); return e.indexOf(k) >= 0; }
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];

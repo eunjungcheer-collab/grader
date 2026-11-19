@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200850">
+<link rel="stylesheet" href="css/style.css?v=202611200912">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -85,11 +85,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611200850"></script>
-<script src="js/api.js?v=202611200850"></script>
-<script src="js/common.js?v=202611200850"></script>
-<script src="js/bankcore.js?v=202611200850"></script>
-<script src="js/pdfui.js?v=202611200850"></script>
+<script src="js/config.js?v=202611200912"></script>
+<script src="js/api.js?v=202611200912"></script>
+<script src="js/common.js?v=202611200912"></script>
+<script src="js/bankcore.js?v=202611200912"></script>
+<script src="js/pdfui.js?v=202611200912"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -850,7 +850,7 @@ $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuest
 (function () {
   const an = t => String(t || '').replace(/[^0-9A-Za-z가-힣]/g, ''), nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const okAns = a => /^[1-5]{1,5}(\/[1-5]{1,5})*$/.test(String(a || ''));
-  const stemOf = q => { const m = String(q.school || q.source || '').match(/([가-힣]{2,5}?)중/); return m ? m[1] : ''; };
+  const stemOf = q => ansStem(q);
   document.getElementById('fixans-btn').addEventListener('click', async () => {
     const box = document.getElementById('fixans-box'); box.style.display = 'block';
     const cand = all.filter(q => String(q.answer).trim() === '-' && Number(q.num) > 0);
@@ -866,13 +866,17 @@ $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuest
       exams.forEach(e => { for (const st of stems) if (String(e.title || '').indexOf(st) >= 0) { need.add(e.id); break; } });
       const ids = Array.from(need), detail = {}; let done = 0, qi = 0;
       await Promise.all([0, 1, 2, 3].map(async () => { while (qi < ids.length) { const id = ids[qi++]; try { const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: id }); if (d && d.ok) detail[id] = d; } catch (e) {} done++; msg.textContent = done + '/' + ids.length + '개 시험지 확인'; } }));
-      const idx = {};      // 글자 앞 20자 → [정답...]
-      Object.keys(detail).forEach(id => { const d = detail[id]; (d.questionTexts || []).forEach((t, i) => { const k = an(t).slice(0, 20); if (k.length >= 15 && d.answers && okAns(d.answers[i])) (idx[k] = idx[k] || []).push(d.answers[i]); }); });
+      const exList = exams.filter(e => detail[e.id]);
       const fixes = [], bySrc = {};
       cand.forEach(q => {
         let a = null; const e = byTitle[nz(q.source)], d = e && detail[e.id];
         if (d && d.answers && okAns(d.answers[Number(q.num) - 1])) a = d.answers[Number(q.num) - 1];
-        if (!a) { const hits = idx[an(q.textPreview).slice(0, 20)]; if (hits && hits.length && hits.every(h => h === hits[0])) a = hits[0]; }
+        if (!a) {
+          const st = stemOf(q), yr = ansYear(q), cands = st ? exList.filter(e => String(e.title || '').indexOf(st) >= 0) : [], hits = [];
+          cands.forEach(e => { const d2 = detail[e.id]; (d2.questionTexts || []).forEach((t, i) => { if (ansTextHit(q.textPreview, t)) hits.push(d2.answers && d2.answers[i]); }); });
+          if (hits.length && hits.every(h => okAns(h) && h === hits[0])) a = hits[0];
+          else if (!hits.length) { const same = cands.filter(e => !yr || String(e.title || '').indexOf(yr) >= 0); if (same.length === 1) { const v = same[0] && detail[same[0].id].answers && detail[same[0].id].answers[Number(q.num) - 1]; if (okAns(v)) a = v; } }      // 글자로 못 찾으면 같은 학교·같은 연도 시험지가 하나뿐일 때 같은 번호 정답
+        }
         if (a) { fixes.push({ id: q.id, answer: a, q: q }); bySrc[q.source || '(이름 없음)'] = (bySrc[q.source || '(이름 없음)'] || 0) + 1; }
       });
       if (!fixes.length) { box.innerHTML = '<b>고칠 문항이 없어요.</b> <span class="hint">정답이 「-」인 문항 ' + cand.length + '개를 시험지 정답표에서 찾아봤지만, 객관식 정답(①~⑤)으로 확인되는 문항이 없었어요.</span> <button type="button" class="btn ghost" id="fixans-close">닫기</button>'; document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; }; return; }
