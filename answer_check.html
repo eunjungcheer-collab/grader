@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191830">
+<link rel="stylesheet" href="css/style.css?v=202611191850">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191830"></script>
-<script src="js/api.js?v=202611191830"></script>
-<script src="js/common.js?v=202611191830"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191830"></script>
-<script src="js/vendor/pdf.min.js?v=202611191830"></script>
-<script src="js/printpdf.js?v=202611191830"></script>
-<script src="js/pdfui.js?v=202611191830"></script>
-<script src="js/pdfview.js?v=202611191830"></script>
-<script src="js/bankcore.js?v=202611191830"></script>
+<script src="js/config.js?v=202611191850"></script>
+<script src="js/api.js?v=202611191850"></script>
+<script src="js/common.js?v=202611191850"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191850"></script>
+<script src="js/vendor/pdf.min.js?v=202611191850"></script>
+<script src="js/printpdf.js?v=202611191850"></script>
+<script src="js/pdfui.js?v=202611191850"></script>
+<script src="js/pdfview.js?v=202611191850"></script>
+<script src="js/bankcore.js?v=202611191850"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -170,31 +170,29 @@ async function offerLocal(exam) {
 }
 // 정답지 PDF(글자로 된 표)를 올려 정답을 읽어서 칸에 채운다. 저장은 하지 않는다 (확인 후 「저장」)
 let ansFileObj = null;
-// 정답지 PDF를 시험지 PDF 맨 뒤에 붙여서 서버에 저장된 PDF를 바꾼다 (문제지가 홀수 쪽으로 끝나면 빈 쪽을 넣어 정답지가 홀수 쪽에서 시작)
+// 수정한 시험지 표시 (이 브라우저에 기억): 저장하거나 PDF를 바꾸면 목록에 ✅가 붙는다
+function doneSet() { try { return JSON.parse(localStorage.getItem('ac_done') || '{}') || {}; } catch (e) { return {}; } }
+function markDone(id) { try { const d = doneSet(); d[String(id)] = new Date().toISOString().slice(0, 10); localStorage.setItem('ac_done', JSON.stringify(d)); } catch (e) {} }
+// 정답지를 고르면 「저장」 버튼 하나로 정답 저장 + 정답지를 시험지 PDF 맨 뒤에 붙이기까지 한다 (문제지가 홀수 쪽으로 끝나면 빈 쪽을 넣어 정답지가 홀수 쪽에서 시작)
 function offerReplace(exam, f) {
-  const m = $('ac-ansmsg'); if (!m) return;
+  const m = $('ac-ansmsg'); if (!m) return; ansFileObj = f;
   const fid = (String(exam.pdfUrl || '').match(/[?&]id=([^&]+)/) || [])[1];
-  if (!fid) { m.innerHTML += ' <span class="hint">(이 시험지에는 올려 둔 PDF가 없어서 PDF에 붙일 수는 없어요.)</span>'; return; }
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn outline'; b.style.cssText = 'margin-left:8px;padding:6px 12px;'; b.textContent = '📎 이 정답지를 시험지 PDF 맨 뒤에 붙여서 PDF 교체';
-  m.appendChild(document.createElement('br')); m.appendChild(b);
-  b.addEventListener('click', async () => {
-    if (!confirm('저장된 시험지 PDF 맨 뒤에 정답지(' + f.name + ')를 붙여서 PDF를 바꿀까요?\n\n· 이미 정답지가 붙어 있는 시험지라면 두 번 붙으니 누르지 마세요.\n· 학생이 이 PDF를 받으면 맨 뒤에 정답이 보여요(정답지 포함 시험지와 같아요).\n· 시험 번호·QR·정답·제출 기록은 그대로예요. 예전 PDF는 드라이브 휴지통으로 가요.')) return;
-    b.disabled = true; const old = b.textContent; b.textContent = '붙이는 중...';
-    try {
-      const blob = await driveDirectBlob(fid); if (!blob) throw new Error('현재 PDF를 받지 못했어요.');
-      const main = await PDFLib.PDFDocument.load(new Uint8Array(await blob.arrayBuffer()), { ignoreEncryption: true });
-      const extra = await PDFLib.PDFDocument.load(new Uint8Array(await f.arrayBuffer()), { ignoreEncryption: true });
-      const before = main.getPageCount();
-      await BankCore.mergePdfs(PDFLib, main, extra);
-      const bytes = await main.save();
-      const res = await callApi('replaceExamPdf', { password: getTeacherPassword(), id: exam.id, pdfBase64: arrayBufferToBase64(bytes), filename: exam.title });
-      if (!res.ok) throw new Error(res.error || '서버 오류');
-      exam.pdfUrl = res.pdfUrl; b.textContent = '✅ 교체했어요 (' + before + '쪽 → ' + main.getPageCount() + '쪽)';
-      loadPdfPane(exam);
-    } catch (e) { b.disabled = false; b.textContent = old; alert('PDF를 바꾸지 못했어요: ' + (e.message || e) + '\n(서버(Apps Script)가 새 버전으로 배포됐는지 확인해 주세요. 기존 PDF는 그대로예요.)'); }
-  });
+  if (!fid) { ansFileObj = null; m.innerHTML += ' <span class="hint">(이 시험지에는 올려 둔 PDF가 없어서 PDF에 붙일 수는 없어요.)</span>'; return; }
+  m.insertAdjacentHTML('beforeend', '<br><label><input type="checkbox" id="ac-attach" checked> 저장할 때 이 정답지를 시험지 PDF 맨 뒤에도 붙이기 <span class="hint">(이미 정답지가 붙어 있는 시험지면 체크를 끄세요)</span></label>');
+}
+async function attachAnswerPdf(exam, f) {
+  const fid = (String(exam.pdfUrl || '').match(/[?&]id=([^&]+)/) || [])[1];
+  const blob = await driveDirectBlob(fid); if (!blob) throw new Error('현재 PDF를 받지 못했어요.');
+  const main = await PDFLib.PDFDocument.load(new Uint8Array(await blob.arrayBuffer()), { ignoreEncryption: true });
+  const extra = await PDFLib.PDFDocument.load(new Uint8Array(await f.arrayBuffer()), { ignoreEncryption: true });
+  const before = main.getPageCount();
+  await BankCore.mergePdfs(PDFLib, main, extra);
+  const res = await callApi('replaceExamPdf', { password: getTeacherPassword(), id: exam.id, pdfBase64: arrayBufferToBase64(await main.save()), filename: exam.title });
+  if (!res.ok) throw new Error(res.error || '서버 오류');
+  exam.pdfUrl = res.pdfUrl; return before + '쪽 → ' + main.getPageCount() + '쪽';
 }
 function ansFileUi(exam) {
+  ansFileObj = null;
   const host = $('ac-ansfile'); if (!host) return;
   host.innerHTML = '<div class="card" style="padding:10px 14px;"><b>📎 정답지 PDF로 칸 채우기</b> <input type="file" id="ac-ansin" accept="application/pdf" style="margin-left:8px;"><div class="hint" id="ac-ansmsg">시험지와 따로 있는 정답지 PDF(글자로 된 정답표)를 고르면 정답을 읽어 칸에 채워요. 스캔(사진) 정답지는 읽지 못해요. 채우기만 하고 저장하지는 않아요.</div></div>';
   $('ac-ansin').addEventListener('change', async ev => {
@@ -219,11 +217,11 @@ function reviewUrl(id) { return 'teacher_new.html?review=' + encodeURIComponent(
 function reviewBtn(id) { return '<a class="btn primary" href="' + reviewUrl(id) + '" style="padding:8px 14px;text-decoration:none;">✏️ PDF 보며 정답 고치기 (등록 화면으로 열기)</a>'; }
 function renderList() {
   const flt = $('ac-flt').value, showAll = $('ac-all').checked && !flt, kw = $('ac-q').value.trim().toLowerCase();
-  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.score > 0 || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || (flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
+  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.score > 0 || doneSet()[String(x.ex.id)] || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || (flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
   rows.sort((a, b) => (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
   const susp = EXAMS.filter(ex => risk(ex).score >= 2).length;
   $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>, 이 중 <b style="color:#B91C1C">정답을 거의 못 읽은 시험지 ' + EXAMS.filter(ex => risk(ex).unread).length + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
-  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"><div class="t">' + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button><a class="btn outline" href="' + reviewUrl(x.ex.id) + '" style="padding:7px 12px;text-decoration:none;">✏️ PDF 보며 정답 고치기</a></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
+  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"><div class="t">' + (doneSet()[String(x.ex.id)] ? '<span title="' + doneSet()[String(x.ex.id)] + ' 수정함" style="color:#15803D;">✅ </span>' : '') + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button><a class="btn outline" href="' + reviewUrl(x.ex.id) + '" style="padding:7px 12px;text-decoration:none;">✏️ PDF 보며 정답 고치기</a></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
   $('ac-list').querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => inspect(b.getAttribute('data-id'))));
 }
 
@@ -456,13 +454,16 @@ async function save(exam, found) {
     const v = i.value.trim().replace(/\s/g, ''), n = Number(i.getAttribute('data-n')), from = i.classList.contains('aa') ? i.getAttribute('data-orig') : '-';
     if (!v || v === from) return; ch.push({ n: n, from: from, to: v });
   });
-  if (!ch.length) { msg.textContent = '바꾼 정답이 없어요.'; return; }
+  const attach = !!(ansFileObj && $('ac-attach') && $('ac-attach').checked);
+  if (!ch.length && !attach) { msg.textContent = '바꾼 정답이 없어요.'; return; }
   const bad = ch.filter(x => !(/^[1-5]+(\/[1-5]+)*$/.test(x.to) || (x.to === '-' && x.from !== '-')));
   if (bad.length) { msg.textContent = '⚠️ ' + bad.map(x => x.n).join(', ') + '번 정답은 1~5 숫자로 적어 주세요 (예: 3, 35, 3/5). 주관식으로 되돌리려면 - 만 적어요.'; return; }
   const show = v => v === '-' ? '주관식' : v;
-  if (!confirm('정답 ' + ch.length + '개를 바꿔요:\n' + ch.map(x => x.n + '번  ' + show(x.from) + ' → ' + show(x.to)).join('\n') + '\n\n이미 제출한 학생 기록은 다시 채점돼요. 저장할까요?')) return;
+  if (!confirm((ch.length ? '정답 ' + ch.length + '개를 바꿔요:\n' + ch.map(x => x.n + '번  ' + show(x.from) + ' → ' + show(x.to)).join('\n') + '\n\n이미 제출한 학생 기록은 다시 채점돼요.' : '정답은 그대로 두고') + (attach ? '\n\n정답지(' + ansFileObj.name + ')를 저장된 시험지 PDF 맨 뒤에 붙여 PDF도 바꿔요. 학생이 받는 PDF 맨 뒤에 정답이 보이고, 예전 PDF는 드라이브 휴지통으로 가요.' : '') + '\n\n저장할까요?')) return;
   const btn = $('ac-save'); btn.disabled = true; msg.textContent = '최신 정답표를 확인하는 중...';
+  let r = { regraded: 0 }, bankNote = '';
   try {
+    if (ch.length) {
     // 저장 직전에 서버의 정답표를 다시 받아, 내가 본 정답과 같을 때만 바꾼다 (다른 기기에서 고친 내용을 덮어쓰지 않도록). 바꾸지 않은 번호는 서버 값을 그대로 둔다
     const fresh = await callApi('getExamDetail', { password: getTeacherPassword(), id: exam.id });
     if (!fresh.ok || !fresh.answers || fresh.answers.length !== exam.answers.length) { msg.textContent = '⚠️ 시험지를 다시 확인하지 못했어요. 새로고침 후 다시 해 주세요.'; btn.disabled = false; return; }
@@ -470,17 +471,20 @@ async function save(exam, found) {
     if (stale.length) { msg.textContent = '⚠️ ' + stale.map(x => x.n).join(', ') + '번은 그 사이에 정답이 이미 바뀌었어요. 새로고침 후 다시 해 주세요. (아무것도 저장하지 않았어요)'; btn.disabled = false; return; }
     const finalAns = fresh.answers.slice(); ch.forEach(x => { finalAns[x.n - 1] = x.to; });
     msg.textContent = '저장하고 다시 채점하는 중...';
-    const r = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: exam.id, answers: finalAns });
+    r = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: exam.id, answers: finalAns });
     if (!r.ok) { msg.textContent = '⚠️ ' + (r.error || '저장하지 못했어요'); btn.disabled = false; return; }
     // 문제은행의 같은 문항도 고쳐 둔다 (다음에 이 문항으로 시험지를 만들 때 또 틀리지 않도록). 묶음 문항(여러 번호가 한 그림)과 주관식으로 되돌린 문항은 건드리지 않는다
     const ups = [], toMap = {}; ch.forEach(x => { toMap[x.n] = x.to; });
     (found || []).forEach(f => { if (f.q && f.slot.k === 1 && toMap[f.slot.start] && toMap[f.slot.start] !== '-') ups.push({ id: f.q.id, answer: toMap[f.slot.start] }); });
-    let bankNote = '';
     if (ups.length) { try { const b = await callApi('updateQuestions', { password: getTeacherPassword(), updates: ups }); bankNote = b.ok ? ' · 문제은행 ' + ups.length + '문항도 고쳤어요' : ' · 문제은행은 고치지 못했어요'; if (b.ok) { BANK = null; } } catch (e) { bankNote = ' · 문제은행은 고치지 못했어요'; } }
-    msg.textContent = '✅ 저장했어요 (다시 채점한 기록 ' + (r.regraded || 0) + '건)' + bankNote;
+    }
+    let pdfNote = '';
+    if (attach) { msg.textContent = '정답지를 시험지 PDF 뒤에 붙이는 중...'; try { pdfNote = ' · PDF에 정답지를 붙였어요(' + await attachAnswerPdf(exam, ansFileObj) + ')'; } catch (e) { pdfNote = ' · ⚠️ PDF는 바꾸지 못했어요(' + (e.message || e) + ') — 기존 PDF는 그대로예요'; } }
+    markDone(exam.id);
+    msg.textContent = '✅ 저장했어요' + (ch.length ? ' (다시 채점한 기록 ' + (r.regraded || 0) + '건)' : '') + bankNote + pdfNote;
     delete SCAN[String(exam.id)];
     const ex = EXAMS.find(x => String(x.id) === String(exam.id)); if (ex) { ex.subjectiveCount = Math.max(0, (ex.subjectiveCount || 0) - ch.filter(x => x.from === '-').length + ch.filter(x => x.to === '-').length); }
-    setTimeout(() => { goBack(); renderList(); }, 1200);
+    setTimeout(() => { goBack(); renderList(); }, pdfNote.indexOf('⚠️') >= 0 ? 6000 : 1200);
   } catch (e) { msg.textContent = '⚠️ ' + (e.message || e); btn.disabled = false; }
 }
 
