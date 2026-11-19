@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191950">
+<link rel="stylesheet" href="css/style.css?v=202611192005">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191950"></script>
-<script src="js/api.js?v=202611191950"></script>
-<script src="js/common.js?v=202611191950"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191950"></script>
-<script src="js/vendor/pdf.min.js?v=202611191950"></script>
-<script src="js/printpdf.js?v=202611191950"></script>
-<script src="js/pdfui.js?v=202611191950"></script>
-<script src="js/pdfview.js?v=202611191950"></script>
-<script src="js/bankcore.js?v=202611191950"></script>
+<script src="js/config.js?v=202611192005"></script>
+<script src="js/api.js?v=202611192005"></script>
+<script src="js/common.js?v=202611192005"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192005"></script>
+<script src="js/vendor/pdf.min.js?v=202611192005"></script>
+<script src="js/printpdf.js?v=202611192005"></script>
+<script src="js/pdfui.js?v=202611192005"></script>
+<script src="js/pdfview.js?v=202611192005"></script>
+<script src="js/bankcore.js?v=202611192005"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -344,6 +344,20 @@ async function cropCheck(exam) {
       if (reasons.length) sus.push({ num: sl.label, reasons: reasons, b64: im.base64 });
     }
     msg.textContent = sus.length ? '의심 ' + sus.length + '문항' : '잘린 것으로 보이는 문항이 없어요';
+    if (sus.length) {
+      const own = CUR.picks.filter(q => String(q.source || '').trim() === String(exam.title || '').trim());
+      out.insertAdjacentHTML('beforebegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B45309;"><b>그림이 잘린 문항이 있어요.</b> 이 시험지에서 만든 문제은행 문항 ' + own.length + '개를 지우고, 같은 시험지 PDF를 문항 가져오기에서 다시 올려 새로 자를 수 있어요.<br><button type="button" class="btn primary" id="ac-redo" style="margin-top:8px;padding:10px 16px;"' + (own.length ? '' : ' disabled') + '>🔁 이 시험지 문제은행 문항 지우고 다시 올리러 가기</button> <span class="hint" id="ac-redo-msg">' + (own.length ? '시험지 자체(정답·QR·제출 기록)는 그대로예요.' : '이 시험지 이름으로 저장된 문제은행 문항을 찾지 못했어요.') + '</span></div>');
+      const rb = $('ac-redo');
+      if (rb) rb.addEventListener('click', async () => {
+        if (!confirm('문제은행에서 「' + exam.title + '」 문항 ' + own.length + '개를 지워요.\n\n· 시험지 자체(정답·QR·제출 기록)는 그대로예요.\n· 지운 문항은 되돌릴 수 없어요. 이 문항을 쓴 다른 시험은 PDF가 이미 만들어져 있어 영향이 없지만, 문제은행에서 새로 조합할 때는 다시 올린 문항을 써요.\n· 지우고 나면 문항 가져오기 화면으로 가요. 원본 시험지 PDF(정답지 포함)를 다시 올려 주세요.\n\n진행할까요?')) return;
+        rb.disabled = true; const rm = $('ac-redo-msg');
+        try {
+          const ids = own.map(q => q.id);
+          for (let i = 0; i < ids.length; i += 40) { rm.textContent = '지우는 중... ' + Math.min(i + 40, ids.length) + '/' + ids.length; const r = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: ids.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '지우지 못했어요'); }
+          location.href = 'bank_upload.html';
+        } catch (e) { rm.textContent = '⚠️ ' + (e.message || e) + ' (일부만 지워졌을 수 있어요)'; rb.disabled = false; }
+      });
+    }
     out.innerHTML = sus.map(x => '<div class="ac-q sus"><div class="hd"><b style="font-size:17px;">' + escapeHtml(String(x.num)) + '번</b><span class="ac-lv mid">잘림 의심</span><span class="hint">' + x.reasons.map(escapeHtml).join(' · ') + '</span></div>' + (x.b64 ? '<img alt="" src="data:image/png;base64,' + x.b64 + '">' : '') + '</div>').join('') + (sus.length ? '<p class="hint">그림을 보고 정말 잘렸으면 문제은행에서 그 문항을 다시 올리거나 다시 잘라 주세요. 이 화면은 정답만 고쳐요.</p>' : '');
   } catch (e) { msg.textContent = '⚠️ ' + (e.message || e); }
   btn.disabled = false;
