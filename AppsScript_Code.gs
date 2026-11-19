@@ -704,7 +704,7 @@ function actionEditSubmission_(p) {
     sheet.getRange(hit + 2, 4, 1, 2).setValues([[g.score, g.objective]]);
     sheet.getRange(hit + 2, 7).setValue(score100);
     return { ok: true, score: g.score, total: g.objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: g.skipped.filter(function (n) { return oorAll.indexOf(n) < 0; }), outOfRange: oorAll, results: g.results, studentAnswers: studentAnswers, submittedAt: p.submittedAt, edited: true };
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
 }
 
 
@@ -830,8 +830,8 @@ function actionSaveQuestions_(p) {
     lock.waitLock(30000);
     msLock = Date.now() - L0;
     const S0 = Date.now();
-    try { sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 20).setValues(rows); }
-    finally { lock.releaseLock(); }
+    try { sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 20).setValues(rows); SpreadsheetApp.flush(); }      // flush: 잠금을 놓기 전에 시트에 실제로 써 둬야, 동시에 온 다음 요청이 같은 행에 덮어써서 5문항이 통째로 사라지는 일이 없다
+    finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
     msSheet = Date.now() - S0;
   }
   // 걸린 시간(밀리초)을 같이 돌려준다: 드라이브에 그림 올리기 / 시트 쓰기 차례 기다리기 / 시트 쓰기 — 어디서 느린지 화면의 ⏱ 표에서 볼 수 있게
@@ -1003,6 +1003,7 @@ function actionUpdateQuestions_(p) {
     }
     return { ok: true, updated: n };
   } finally {
+    try { SpreadsheetApp.flush(); } catch (e) {}
     lock.releaseLock();
   }
 }
@@ -1131,7 +1132,7 @@ function actionStartNewTerm_(p) {
     if (last > 1) { removed = last - 1; sh.deleteRows(2, removed); }
     // 오답 복습 기록(맞힘/틀림)도 같이 비운다 — 지난 학기 시험의 기록이라 새 학기에는 쓸모가 없고, 쌓이면 느려진다 (백업에는 남아 있어요)
     ['Cleared', 'ReviewFail'].forEach(function (nm) { try { const rs = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nm); if (rs && rs.getLastRow() > 1) rs.deleteRows(2, rs.getLastRow() - 1); } catch (e) {} });
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   bustCache_();
   return { ok: true, removed: removed, backup: backup };
 }
@@ -1213,7 +1214,7 @@ function actionSetExamSources_(p) {
   const exams = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_EXAMS), found = findExamRow_(exams, p.id);
   if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
-  try { exams.getRange(found.rowIndex, 8).setValue(JSON.stringify(ids)); if (texts.length) exams.getRange(found.rowIndex, 10).setValue(JSON.stringify(texts)); } finally { lock.releaseLock(); }
+  try { exams.getRange(found.rowIndex, 8).setValue(JSON.stringify(ids)); if (texts.length) exams.getRange(found.rowIndex, 10).setValue(JSON.stringify(texts)); } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   return { ok: true, n: ids.length };
 }
 function actionUpdateExamTitle_(p) {
@@ -1236,7 +1237,7 @@ function actionUpdateExamTitle_(p) {
       for (let i = 0; i < col.length; i++) if (String(col[i][0]) === oldT) { col[i][0] = nt; n++; changed = true; }
       if (changed) qs.getRange(2, 4, last - 1, 1).setValues(col);
     }
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   return { ok: true, title: nt, renamedQuestions: n };
 }
 // 이미 있던 단원 시험을 다른 교재 파일(교재 QR 합본)에서 다시 쓸 때, 그 교재 번호를 시험에 덧붙여 둔다. 그래야 새 합본의 「여러 단원 한꺼번에 채점」 QR에서도 이 단원이 보인다. 원래 교재 QR은 그대로 동작한다.
@@ -1256,7 +1257,7 @@ function actionLinkBook_(p) {
       bs.push(book); rc.books = bs;
       exams.getRange(found.rowIndex, 9).setValue(JSON.stringify(rc)); n++;
     });
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   if (n) bustCache_();
   return { ok: true, linked: n };
 }
@@ -1293,7 +1294,7 @@ function actionRenameBook_(p) {
       }
       if (nq) qs.getRange(2, 4, ql - 1, 1).setValues(src);
     }
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   if (ne || nq) bustCache_();
   return { ok: true, exams: ne, questions: nq };
 }
@@ -1360,7 +1361,7 @@ function actionUpdateExamAnswers_(p) {
       sheet.getRange(2, 4, out.length, 4).setValues(out);
     }
     return { ok: true, regraded: regraded };
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
 }
 
 function actionUpdateSubmissionScore_(p) {
@@ -1410,6 +1411,7 @@ function actionDeleteQuestions_(p) {
     }
     return { ok: true, deleted: rowsToDelete.length };
   } finally {
+    try { SpreadsheetApp.flush(); } catch (e) {}
     lock.releaseLock();
   }
 }
@@ -1450,6 +1452,7 @@ function actionDeleteExams_(p) {
     }
     return { ok: true, deleted: rows.length, removedScores: removedScores };
   } finally {
+    try { SpreadsheetApp.flush(); } catch (e) {}
     lock.releaseLock();
   }
 }
@@ -1889,7 +1892,7 @@ function checkDeadlines_() {
     } else if (newly.length) {
       PropertiesService.getScriptProperties().setProperty('LAST_MISS_MAIL', JSON.stringify({ at: nowIso, ok: false, err: '「기한이 지났는데 안 낸 학생이 있으면 메일 받기」가 꺼져 있어요.', n: newly.length }));
     }
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
 }
 
 // 마감 요약: 같은 시험·같은 기한의 예약이 모두 정리(제출/기한 지남)되면 선생님께 한 번만 알려 준다 (최근 24시간 안에 마감된 것만)
@@ -2138,7 +2141,7 @@ function actionStuRegister_(p) {
     const salt = Utilities.getUuid();
     stuSheet_().appendRow([name, salt, stuHash_(salt, pin, name), new Date().toISOString(), '', '[]', 'pending']);
     acctPost_({ action: 'signup', name: name, hash: acctHash_(name, pin) });      // 대시보드·면접앱에서도 같은 계정으로 로그인되게
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   try { pushToTeacher_('🙋 가입 신청이 왔어요', name + ' 학생이 가입을 신청했어요' + (stuAllowed_(name) ? '' : '\n⚠️ 반/알림장 명단에 없는 이름이에요') + '\n앱의 「학생용 앱」에서 승인해 주세요'); } catch (e) {}
   return { ok: true, display: name, pending: true };
 }
@@ -2477,7 +2480,7 @@ function actionMergeNames_(p) {
     });
     bustCache_();
     return { ok: true, changed: n, to: to, from: from };
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
 }
 // ── 데이터 관리: 백업·드라이브 사용 현황, 오래된 백업 정리 ──
 function backupFiles_() {
@@ -2962,7 +2965,7 @@ function actionRestoreTrash_(p) {
       it.rows.forEach(function (r) { doneRows.push(r); });
     });
     doneRows.sort(function (a, b) { return b - a; }).forEach(function (r) { try { tr.sh.deleteRow(r); } catch (e) {} });
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   return { ok: true, restored: out };
 }
 
@@ -3036,7 +3039,7 @@ function actionAddHomework_(p) {
     if (row) { isNew = false; if (changed) { sh.getRange(row, 6, 1, 4).setValues([[hw, text, '', '']]); sh.getRange(row, 10, 1, 3).setValues([[dueIso, remIso, '']]); } else { sh.getRange(row, 7).setValue(text); if (dueIso) sh.getRange(row, 10, 1, 2).setValues([[dueIso, remIso]]); } }
     else sh.appendRow([Utilities.getUuid().slice(0, 12), name, new Date().toISOString(), today, bl, hw, text, '', '', dueIso, remIso, '']);
     hwPurgeOld_(sh);
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   let pushed = false;
   if (isNew || changed) { try { pushed = pushToStudent_(name, '📚 오늘 숙제가 올라왔어요', (bl ? bl + ' · ' : '') + hw.replace(/\s+/g, ' ').slice(0, 90)); } catch (e) {} }
   return { ok: true, isNew: isNew, pushed: pushed, registered: !!stuFind_(name) };
@@ -3068,7 +3071,7 @@ function actionPurgeHomework_(p) {
     sh.getRange(2, 1, last - 1, HW_HEADERS.length).clearContent();
     if (keep.length) { sh.getRange(2, 1, keep.length, HW_HEADERS.length).setValues(keep); if (last - 1 > keep.length) sh.deleteRows(keep.length + 2, last - 1 - keep.length); }
     return { ok: true, removed: removed };
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
 }
 // 선생님용: 최근 숙제와 학생별 확인 여부
 function actionListHomework_(p) {
@@ -3119,7 +3122,7 @@ function actionRelinkOldQr_(p) {
         exams.getRange(k._c.i + 1, 9).setValue(JSON.stringify(k._c.rc)); linked++;
       });
     }
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   if (linked) bustCache_();
   return { ok: true, linked: linked, candidates: cands.map(function (k) { return { oldId: k.oldId, newId: k.newId, label: k.label, oldTitle: k.oldTitle, newTitle: k.newTitle, deletedAt: k.deletedAt }; }), noneCount: noneN };
 }
@@ -3145,7 +3148,7 @@ function actionUnlinkOldQr_(p) {
     if (!rowIndex) return { ok: false, error: '존재하지 않는 시험이에요.' };
     const rc = safeJson_(data[rowIndex - 1][8], null);
     if (rc && rc.aliases && rc.aliases.length) { n = rc.aliases.length; delete rc.aliases; exams.getRange(rowIndex, 9).setValue(JSON.stringify(rc)); }
-  } finally { lock.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   if (n) bustCache_();
   return { ok: true, removed: n };
 }

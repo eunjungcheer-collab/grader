@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200245">
+<link rel="stylesheet" href="css/style.css?v=202611200300">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611200245"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200245"></script>
-<script src="js/printpdf.js?v=202611200245"></script>
-<script src="js/vendor/pdf.min.js?v=202611200245"></script>
-<script src="js/config.js?v=202611200245"></script>
-<script src="js/api.js?v=202611200245"></script>
-<script src="js/common.js?v=202611200245"></script>
-<script src="js/ocr.js?v=202611200245"></script>
-<script src="js/bankcore.js?v=202611200245"></script>
-<script src="js/pdfui.js?v=202611200245"></script>
-<script src="js/pdfview.js?v=202611200245"></script>
+<script src="js/vendor/qrcode.min.js?v=202611200300"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200300"></script>
+<script src="js/printpdf.js?v=202611200300"></script>
+<script src="js/vendor/pdf.min.js?v=202611200300"></script>
+<script src="js/config.js?v=202611200300"></script>
+<script src="js/api.js?v=202611200300"></script>
+<script src="js/common.js?v=202611200300"></script>
+<script src="js/ocr.js?v=202611200300"></script>
+<script src="js/bankcore.js?v=202611200300"></script>
+<script src="js/pdfui.js?v=202611200300"></script>
+<script src="js/pdfview.js?v=202611200300"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1655,13 +1655,31 @@ async function saveToBank(cls, source, onProgress, ranges) {
         if (!res || !res.ok) throw lastErr || new Error('저장 실패');
         { const dt = Math.round(performance.now() - tReq); BS.req += dt; BS.chunks++; if (dt > (BS.max || 0)) BS.max = dt; if (dt > 30000) BS.n30 = (BS.n30 || 0) + 1; }
         if (res && res.ms) { BS.srv = true; BS.fast = (BS.fast || 0) + (res.ms.fast || 0); BS.slow = (BS.slow || 0) + (res.ms.slow || 0); if (res.ms.code) { BS.code = res.ms.code; BS.msg = res.ms.msg || BS.msg || ''; } BS.up += res.ms.up || 0; BS.lock += res.ms.lock || 0; BS.sheet += res.ms.sheet || 0; }
-        chunks[k].forEach(p => { p.imageBase64 = p.explBase64 = ''; });          // 보낸 그림은 메모리에서 비운다
         done += chunks[k].length;
         if (onProgress) onProgress(done);
       } catch (e) { failure = failure || e; chunks[k].forEach(p => failedNums.push(p.num)); }      // 이 묶음만 실패로 적고 나머지는 계속 저장한다
     }
   };
   await Promise.all(Array.from({ length: Math.min(PARALLEL, chunks.length) }, worker));
+  // 저장 확인: 서버가 ok라고 해도 일부 행이 시트에 안 남는 일이 없도록, 최신 목록을 다시 받아 빠진 문항만 한 번 더 보낸다
+  if (!failure) {
+    try {
+      for (let round = 0; round < 3; round++) {
+        const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 });
+        if (!lq || !lq.ok) break;
+        const have = new Set(lq.questions.map(q => String(q.id))), lost = picks.filter(p => !have.has(String(p.id)));
+        if (!lost.length) break;
+        if (onProgress) onProgress(done);
+        for (let i = 0; i < lost.length; i += 5) {
+          const payload = lost.slice(i, i + 5).map(p => { const o = Object.assign({}, p); delete o._q; return o; });
+          const r2 = await callApi('saveQuestions', { password: getTeacherPassword(), questions: payload });
+          if (!r2 || !r2.ok) throw new Error((r2 && r2.error) || '다시 저장 실패');
+        }
+        window.__bankResent = (window.__bankResent || 0) + lost.length;
+      }
+    } catch (e) { failure = failure || e; picks.forEach(p => {}); }
+  }
+  picks.forEach(p => { p.imageBase64 = p.explBase64 = ''; });
   if (failure) { failedNums.sort((a, b) => a - b); const err = new Error(failure.message + ' — 저장되지 않은 번호: ' + failedNums.join(', ') + '번'); err.failedNums = failedNums; throw err; }
   return picks.length;
 }
@@ -1869,7 +1887,10 @@ $('new-exam-form').addEventListener('submit', async function (e) {
       password: getTeacherPassword(), id: examId, title: title, answers: answers,
       pdfBase64: pdfBase64, filename: title, questionTexts: questionTexts, replaceId: replacing,
     });
-    if (replacing && res.ok) REPLACE_ID = '';
+    if (replacing && res.ok) {      // 정답 점검에서 다시 올린 시험지는 정답 점검 목록에서 「수정함」+「확인함」으로 표시한다
+      try { const d = new Date().toISOString().slice(0, 10), a = JSON.parse(localStorage.getItem('ac_done') || '{}') || {}, k = JSON.parse(localStorage.getItem('ac_ok') || '{}') || {}; a[String(replacing)] = d; k[String(replacing)] = d; localStorage.setItem('ac_done', JSON.stringify(a)); localStorage.setItem('ac_ok', JSON.stringify(k)); } catch (e) {}
+      REPLACE_ID = '';
+    }
     mark('exam1');
     if (res.ok) {      // 강사용 PDF도 같이 만들어 이 브라우저에 보관 → 등록 완료 화면에서 학생용을 받을 때 함께 받아진다
       try { updateSpinner('강사용 시험지 정리하는 중...'); const tr = await teacherP; if (tr) await teacherPdfSave(examId, title + ' 강사용.pdf', tr.bytes); }
