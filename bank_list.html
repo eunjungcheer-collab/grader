@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611201040">
+<link rel="stylesheet" href="css/style.css?v=202611201058">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -52,7 +52,7 @@
       <span class="hint" id="bc-msg" style="margin:0;"></span>
     </div>
   </div>
-  <div class="quick-filters"><span class="muted chip-label">빠른 필터</span><label><input type="checkbox" id="only-noans"> 정답 비어있음</label><label><input type="checkbox" id="only-nounit"> 단원 미지정</label><label><input type="checkbox" id="only-nosub"> 소단원 비어있음</label><label><input type="checkbox" id="only-auto"> 🤖 자동 분류(확인 전)</label></div>
+  <div class="quick-filters"><span class="muted chip-label">빠른 필터</span><label><input type="checkbox" id="only-noans"> 정답 비어있음</label><label><input type="checkbox" id="only-nounit"> 단원 미지정</label><label title="학교 시험지는 보통 60문항을 넘지 않아요. 문항 번호가 큰 문제는 조합해서 만든 시험지를 다시 올려서 생긴 중복일 수 있어요"><input type="checkbox" id="only-bignum"> 번호 60 초과</label><label><input type="checkbox" id="only-nosub"> 소단원 비어있음</label><label><input type="checkbox" id="only-auto"> 🤖 자동 분류(확인 전)</label></div>
   <details class="tools-box"><summary>🛠 정리 · 자동 채우기 도구 <span class="hint" style="margin:0;">(필요할 때만 펼치세요)</span></summary>
     <div class="tools-body">
   <div style="margin:8px 0;"><button type="button" class="btn outline" id="dedupe" style="padding:8px 14px;">🧹 중복 문항 정리 (같은 PDF를 여러 번 올린 경우)</button> <span class="hint" id="dedupe-msg"></span></div>
@@ -85,11 +85,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611201040"></script>
-<script src="js/api.js?v=202611201040"></script>
-<script src="js/common.js?v=202611201040"></script>
-<script src="js/bankcore.js?v=202611201040"></script>
-<script src="js/pdfui.js?v=202611201040"></script>
+<script src="js/config.js?v=202611201058"></script>
+<script src="js/api.js?v=202611201058"></script>
+<script src="js/common.js?v=202611201058"></script>
+<script src="js/bankcore.js?v=202611201058"></script>
+<script src="js/pdfui.js?v=202611201058"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -192,9 +192,9 @@ const gradeOf = x => x.grade || '__none__';
 function filtered() {
   const toks = $('q').value.trim().toLowerCase().split(/\s+/).filter(Boolean).map(t => t.replace(/\s+/g, ''));
   const fields = x => [x.unit, x.sub, x.grade, x.school, x.year, x.source, x.kind, x.textPreview].map(v => String(v || '').toLowerCase().replace(/\s+/g, ''));      // 칸마다 따로 비교 (칸이 이어져 엉뚱하게 맞지 않게), 시험지 이름·소단원·연도도 검색
-  const onlyNo = $('only-noans').checked, onlyNoSub = $('only-nosub').checked, onlyNoUnit = $('only-nounit').checked, onlyAuto = $('only-auto').checked;
+  const onlyNo = $('only-noans').checked, onlyNoSub = $('only-nosub').checked, onlyNoUnit = $('only-nounit').checked, onlyAuto = $('only-auto').checked, onlyBig = $('only-bignum').checked;
   return all.filter(x => (!kindFilter || x.kind === kindFilter) && (!bookFilter || (isBookQ(x) && bookNameOf(x) === bookFilter)) && (!gradeFilter || gradeOf(x) === gradeFilter) && (!unitFilter || unitKey(x) === unitFilter) && (!diffFilter || dKey(x) === diffFilter) &&
-    (!onlyNo || !String(x.answer).trim()) && (!onlyNoSub || !x.sub) && (!onlyNoUnit || !x.unit || x.unit === '(단원 미지정)') && (!onlyAuto || x.auto) &&
+    (!onlyNo || !String(x.answer).trim()) && (!onlyNoSub || !x.sub) && (!onlyNoUnit || !x.unit || x.unit === '(단원 미지정)') && (!onlyAuto || x.auto) && (!onlyBig || Number(x.num) > 60) &&
     (!toks.length || toks.every(t => fields(x).some(v => v.includes(t)))));
 }
 
@@ -780,6 +780,7 @@ $('q').addEventListener('input', () => { page = 1; render(); });
 $('only-noans').addEventListener('change', () => { page = 1; render(); });
 $('only-nosub').addEventListener('change', () => { page = 1; render(); });
 $('only-nounit').addEventListener('change', () => { page = 1; render(); });
+$('only-bignum').addEventListener('change', () => { page = 1; render(); });
 if (new URLSearchParams(location.search).get('unassigned')) $('only-nounit').checked = true;
 if (new URLSearchParams(location.search).get('auto')) $('only-auto').checked = true;
 $('only-auto').addEventListener('change', () => { page = 1; render(); });
