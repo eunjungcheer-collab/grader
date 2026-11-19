@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200312">
+<link rel="stylesheet" href="css/style.css?v=202611200340">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200312"></script>
-<script src="js/api.js?v=202611200312"></script>
-<script src="js/common.js?v=202611200312"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200312"></script>
-<script src="js/vendor/pdf.min.js?v=202611200312"></script>
-<script src="js/printpdf.js?v=202611200312"></script>
-<script src="js/pdfui.js?v=202611200312"></script>
-<script src="js/pdfview.js?v=202611200312"></script>
-<script src="js/bankcore.js?v=202611200312"></script>
+<script src="js/config.js?v=202611200340"></script>
+<script src="js/api.js?v=202611200340"></script>
+<script src="js/common.js?v=202611200340"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200340"></script>
+<script src="js/vendor/pdf.min.js?v=202611200340"></script>
+<script src="js/printpdf.js?v=202611200340"></script>
+<script src="js/pdfui.js?v=202611200340"></script>
+<script src="js/pdfview.js?v=202611200340"></script>
+<script src="js/bankcore.js?v=202611200340"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -128,7 +128,7 @@ let EXAMS = [], BANK = null;
 // 1단계: 서버가 이미 알고 있는 숫자(문항 수·주관식 수)만으로 의심 정도를 매긴다
 // 「검사해 보니 이상 없음」으로 확인한 시험지는 (문항 수·주관식 수가 그대로인 동안) 의심에서 뺀다. 이 브라우저에 기억
 function okSet() { try { return JSON.parse(localStorage.getItem('ac_ok') || '{}') || {}; } catch (e) { return {}; } }
-function markOk(ex, on) { try { const d = okSet(); if (on) d[String(ex.id)] = new Date().toISOString().slice(0, 10); else delete d[String(ex.id)]; localStorage.setItem('ac_ok', JSON.stringify(d)); } catch (e) {} }
+function markOk(ex, on) { try { callApi('markExam', { password: getTeacherPassword(), id: String(ex.id), ok: on ? new Date().toISOString().slice(0, 10) : '' }).catch(() => {}); } catch (e) {} try { const d = okSet(); if (on) d[String(ex.id)] = new Date().toISOString().slice(0, 10); else delete d[String(ex.id)]; localStorage.setItem('ac_ok', JSON.stringify(d)); } catch (e) {} }
 function risk(ex) {
   const n = ex.answerCount || 0, s = ex.subjectiveCount || 0;
   if (okSet()[String(ex.id)]) return { lv: 'ok', label: '✔ 확인함 · 이상 없음', score: 0, checked: true };
@@ -179,7 +179,7 @@ async function offerLocal(exam) {
 let ansFileObj = null;
 // 수정한 시험지 표시 (이 브라우저에 기억): 저장하거나 PDF를 바꾸면 목록에 ✅가 붙는다
 function doneSet() { try { return JSON.parse(localStorage.getItem('ac_done') || '{}') || {}; } catch (e) { return {}; } }
-function markDone(id) { try { const d = doneSet(); d[String(id)] = new Date().toISOString().slice(0, 10); localStorage.setItem('ac_done', JSON.stringify(d)); } catch (e) {} }
+function markDone(id) { try { callApi('markExam', { password: getTeacherPassword(), id: String(id), done: new Date().toISOString().slice(0, 10) }).catch(() => {}); } catch (e) {} try { const d = doneSet(); d[String(id)] = new Date().toISOString().slice(0, 10); localStorage.setItem('ac_done', JSON.stringify(d)); } catch (e) {} }
 // 정답지를 고르면 「저장」 버튼 하나로 정답 저장 + 정답지를 시험지 PDF 맨 뒤에 붙이기까지 한다 (문제지가 홀수 쪽으로 끝나면 빈 쪽을 넣어 정답지가 홀수 쪽에서 시작)
 function offerReplace(exam, f) {
   const m = $('ac-ansmsg'); if (!m) return; ansFileObj = f;
@@ -727,6 +727,12 @@ async function save(exam, found) {
     const r = await callApi('listExams', { password: getTeacherPassword() });
     if (!r.ok) { $('ac-sum').textContent = r.error || '불러오지 못했어요'; return; }
     EXAMS = r.exams || []; renderList();
+    // 다른 컴퓨터에서 한 「확인함」「수정함」 표시를 서버에서 받아 합친다 (이 컴퓨터에만 있던 표시는 서버로 올린다)
+    (async () => { try { const mk = await callApi('getExamMarks', { password: getTeacherPassword() }); if (!mk || !mk.ok) return; const o = okSet(), d = doneSet(), sv = mk.marks || {};
+      Object.keys(sv).forEach(id => { if (sv[id].ok) o[id] = sv[id].ok; else delete o[id]; if (sv[id].done) d[id] = sv[id].done; });
+      Object.keys(o).forEach(id => { if (!sv[id] || !sv[id].ok) { if (!sv[id]) callApi('markExam', { password: getTeacherPassword(), id: id, ok: o[id] }).catch(() => {}); else delete o[id]; } });
+      Object.keys(d).forEach(id => { if (!sv[id] || !sv[id].done) callApi('markExam', { password: getTeacherPassword(), id: id, done: d[id] }).catch(() => {}); });
+      localStorage.setItem('ac_ok', JSON.stringify(o)); localStorage.setItem('ac_done', JSON.stringify(d)); renderList(); } catch (e) {} })();
     // 문제은행을 한 번 불러와 모든 시험지의 「빠진 번호」를 미리 계산한다 (일부만 연결된 시험지가 목록 위로 올라온다)
     (async () => { try { if (!BANK) { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (lq.ok) BANK = lq.questions; } if (BANK) { EXAMS.forEach(ex => { const n = Math.max(0, (ex.answerCount || 0) - (ex.subjectiveCount || 0)); linkScan({ id: ex.id, title: ex.title, answers: new Array(n).fill('3') }); }); renderList(); } } catch (e) {} })();
     $('ac-all').addEventListener('change', renderList); $('ac-flt').addEventListener('change', renderList); $('ac-scansj').addEventListener('click', scanSubjAll); $('ac-scanall').addEventListener('click', scanAll); $('ac-q').addEventListener('input', renderList);

@@ -143,6 +143,8 @@ function handle_(e) {
       case 'replaceExamPdf': result = actionReplaceExamPdf_(params); break;
       case 'saveRedoUnits': result = actionSaveRedoUnits_(params); break;
       case 'getRedoUnits': result = actionGetRedoUnits_(params); break;
+      case 'markExam': result = actionMarkExam_(params); break;
+      case 'getExamMarks': result = actionGetExamMarks_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
       case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
       case 'editSubmission': result = actionEditSubmission_(params); break;
@@ -275,6 +277,23 @@ function actionSaveRedoUnits_(p) {
   if (txt.length > 8500) return { ok: false, error: '기록이 너무 커요.' };
   PropertiesService.getScriptProperties().setProperty('redo_' + id, txt);
   return { ok: true };
+}
+// 정답 점검의 「확인함」「수정함」 표시를 서버에 보관해서 다른 컴퓨터에서도 보이게 한다 (시험지마다 작은 속성 하나: "확인한 날|수정한 날")
+function actionMarkExam_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const id = String(p.id || ''); if (!id) return { ok: false, error: '시험 번호가 없어요.' };
+  const sp = PropertiesService.getScriptProperties(), key = 'acm_' + id, cur = String(sp.getProperty(key) || '|').split('|');
+  let okD = cur[0] || '', doneD = cur[1] || '';
+  if (p.ok !== undefined) okD = String(p.ok || '').slice(0, 10);
+  if (p.done !== undefined) doneD = String(p.done || '').slice(0, 10);
+  if (!okD && !doneD) sp.deleteProperty(key); else sp.setProperty(key, okD + '|' + doneD);
+  return { ok: true };
+}
+function actionGetExamMarks_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const all = PropertiesService.getScriptProperties().getProperties(), marks = {};
+  Object.keys(all).forEach(function (k) { if (k.indexOf('acm_') !== 0) return; const v = String(all[k]).split('|'); marks[k.slice(4)] = { ok: v[0] || '', done: v[1] || '' }; });
+  return { ok: true, marks: marks };
 }
 function actionGetRedoUnits_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200312">
+<link rel="stylesheet" href="css/style.css?v=202611200340">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611200312"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200312"></script>
-<script src="js/printpdf.js?v=202611200312"></script>
-<script src="js/vendor/pdf.min.js?v=202611200312"></script>
-<script src="js/config.js?v=202611200312"></script>
-<script src="js/api.js?v=202611200312"></script>
-<script src="js/common.js?v=202611200312"></script>
-<script src="js/ocr.js?v=202611200312"></script>
-<script src="js/bankcore.js?v=202611200312"></script>
-<script src="js/pdfui.js?v=202611200312"></script>
-<script src="js/pdfview.js?v=202611200312"></script>
+<script src="js/vendor/qrcode.min.js?v=202611200340"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200340"></script>
+<script src="js/printpdf.js?v=202611200340"></script>
+<script src="js/vendor/pdf.min.js?v=202611200340"></script>
+<script src="js/config.js?v=202611200340"></script>
+<script src="js/api.js?v=202611200340"></script>
+<script src="js/common.js?v=202611200340"></script>
+<script src="js/ocr.js?v=202611200340"></script>
+<script src="js/bankcore.js?v=202611200340"></script>
+<script src="js/pdfui.js?v=202611200340"></script>
+<script src="js/pdfview.js?v=202611200340"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1888,7 +1888,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
       pdfBase64: pdfBase64, filename: title, questionTexts: questionTexts, replaceId: replacing,
     });
     if (replacing && res.ok) {      // 정답 점검에서 다시 올린 시험지는 정답 점검 목록에서 「수정함」+「확인함」으로 표시한다
-      try { const d = new Date().toISOString().slice(0, 10), a = JSON.parse(localStorage.getItem('ac_done') || '{}') || {}, k = JSON.parse(localStorage.getItem('ac_ok') || '{}') || {}; a[String(replacing)] = d; k[String(replacing)] = d; localStorage.setItem('ac_done', JSON.stringify(a)); localStorage.setItem('ac_ok', JSON.stringify(k)); } catch (e) {}
+      try { const d = new Date().toISOString().slice(0, 10), a = JSON.parse(localStorage.getItem('ac_done') || '{}') || {}, k = JSON.parse(localStorage.getItem('ac_ok') || '{}') || {}; a[String(replacing)] = d; k[String(replacing)] = d; localStorage.setItem('ac_done', JSON.stringify(a)); localStorage.setItem('ac_ok', JSON.stringify(k)); callApi('markExam', { password: getTeacherPassword(), id: String(replacing), ok: d, done: d }).catch(() => {}); } catch (e) {}
       REPLACE_ID = '';
     }
     mark('exam1');
