@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611191905">
+<link rel="stylesheet" href="css/style.css?v=202611191915">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611191905"></script>
-<script src="js/api.js?v=202611191905"></script>
-<script src="js/common.js?v=202611191905"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611191905"></script>
-<script src="js/vendor/pdf.min.js?v=202611191905"></script>
-<script src="js/printpdf.js?v=202611191905"></script>
-<script src="js/pdfui.js?v=202611191905"></script>
-<script src="js/pdfview.js?v=202611191905"></script>
-<script src="js/bankcore.js?v=202611191905"></script>
+<script src="js/config.js?v=202611191915"></script>
+<script src="js/api.js?v=202611191915"></script>
+<script src="js/common.js?v=202611191915"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611191915"></script>
+<script src="js/vendor/pdf.min.js?v=202611191915"></script>
+<script src="js/printpdf.js?v=202611191915"></script>
+<script src="js/pdfui.js?v=202611191915"></script>
+<script src="js/pdfview.js?v=202611191915"></script>
+<script src="js/bankcore.js?v=202611191915"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -127,9 +127,14 @@ const $ = id => document.getElementById(id);
 let EXAMS = [], BANK = null;
 
 // 1단계: 서버가 이미 알고 있는 숫자(문항 수·주관식 수)만으로 의심 정도를 매긴다
+// 「검사해 보니 이상 없음」으로 확인한 시험지는 (문항 수·주관식 수가 그대로인 동안) 의심에서 뺀다. 이 브라우저에 기억
+function okSet() { try { return JSON.parse(localStorage.getItem('ac_ok') || '{}') || {}; } catch (e) { return {}; } }
+function markOk(ex, on) { try { const d = okSet(); if (on) d[String(ex.id)] = (ex.answerCount || 0) + ':' + (ex.subjectiveCount || 0); else delete d[String(ex.id)]; localStorage.setItem('ac_ok', JSON.stringify(d)); } catch (e) {} }
 function risk(ex) {
   const n = ex.answerCount || 0, s = ex.subjectiveCount || 0;
   if (!s || !n) return { lv: 'ok', label: '주관식 없음', score: 0 };
+  if (okSet()[String(ex.id)] === n + ':' + s) return { lv: 'ok', label: '✔ 확인함 · 이상 없음', score: 0 };
+  if (/서술형|서답형|논술형/.test(String(ex.title || '')) && s / n < 0.4) return { lv: 'lo', label: '서술형 포함 시험지', score: 1 };
   const r = s / n, pct = Math.round(r * 100);
   if (r >= 0.4) return { lv: 'hi', label: '정답 못 읽음 (주관식 ' + pct + '%)', score: 5 + r, unread: true };
   if (s >= 8 && r >= 0.08 || r >= 0.25) return { lv: 'hi', label: '의심 큼', score: 3 + r };
@@ -194,7 +199,9 @@ async function attachAnswerPdf(exam, f) {
 function ansFileUi(exam) {
   ansFileObj = null;
   const host = $('ac-ansfile'); if (!host) return;
-  host.innerHTML = '<div class="card" style="padding:10px 14px;"><b>📎 정답지 PDF로 칸 채우기</b> <input type="file" id="ac-ansin" accept="application/pdf" style="margin-left:8px;"><div class="hint" id="ac-ansmsg">시험지와 따로 있는 정답지 PDF(글자로 된 정답표)를 고르면 정답을 읽어 칸에 채워요. 스캔(사진) 정답지는 읽지 못해요. 채우기만 하고 저장하지는 않아요.</div></div>';
+  host.innerHTML = '<div class="card" style="padding:10px 14px;"><label style="display:block;margin-bottom:8px;font-weight:700;"><input type="checkbox" id="ac-okbox"> ✔ 확인했어요 (이 시험지는 이상 없음으로 표시)</label><b>📎 정답지 PDF로 칸 채우기</b> <input type="file" id="ac-ansin" accept="application/pdf" style="margin-left:8px;"><div class="hint" id="ac-ansmsg">시험지와 따로 있는 정답지 PDF(글자로 된 정답표)를 고르면 정답을 읽어 칸에 채워요. 스캔(사진) 정답지는 읽지 못해요. 채우기만 하고 저장하지는 않아요.</div></div>';
+  { const ex0 = EXAMS.find(x => String(x.id) === String(exam.id)) || exam, ob = $('ac-okbox'); ob.checked = okSet()[String(ex0.id)] === (ex0.answerCount || 0) + ':' + (ex0.subjectiveCount || 0);
+    ob.addEventListener('change', () => { markOk(ex0, ob.checked); renderList(); }); }
   $('ac-ansin').addEventListener('change', async ev => {
     const f = ev.target.files && ev.target.files[0], m = $('ac-ansmsg'); if (!f) return;
     m.textContent = '정답지를 읽는 중...';
