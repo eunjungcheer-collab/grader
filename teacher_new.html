@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192340">
+<link rel="stylesheet" href="css/style.css?v=202611192350">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611192340"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192340"></script>
-<script src="js/printpdf.js?v=202611192340"></script>
-<script src="js/vendor/pdf.min.js?v=202611192340"></script>
-<script src="js/config.js?v=202611192340"></script>
-<script src="js/api.js?v=202611192340"></script>
-<script src="js/common.js?v=202611192340"></script>
-<script src="js/ocr.js?v=202611192340"></script>
-<script src="js/bankcore.js?v=202611192340"></script>
-<script src="js/pdfui.js?v=202611192340"></script>
-<script src="js/pdfview.js?v=202611192340"></script>
+<script src="js/vendor/qrcode.min.js?v=202611192350"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192350"></script>
+<script src="js/printpdf.js?v=202611192350"></script>
+<script src="js/vendor/pdf.min.js?v=202611192350"></script>
+<script src="js/config.js?v=202611192350"></script>
+<script src="js/api.js?v=202611192350"></script>
+<script src="js/common.js?v=202611192350"></script>
+<script src="js/ocr.js?v=202611192350"></script>
+<script src="js/bankcore.js?v=202611192350"></script>
+<script src="js/pdfui.js?v=202611192350"></script>
+<script src="js/pdfview.js?v=202611192350"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1896,6 +1896,7 @@ if (REPLACE_ID) (async () => {      // 다시 등록 안내: 새 시험지가 �
     else { REPLACE_TITLE = d.title; b.innerHTML = '🔁 <b>「' + escapeHtml(d.title) + '」</b>를 다시 등록하는 중이에요. 같은 시험지 PDF(정답지 포함)를 올려 주세요. <b>QR·제출 기록은 그대로 쓰이고</b> PDF·정답·문항 그림만 새로 바뀌어요. (시험 이름은 기존 이름을 유지해요)'; }
     h.insertAdjacentElement('afterend', b); } catch (e) {}
 })();
+{ const qp = new URLSearchParams(location.search); if (!IS_CHILD && (qp.get('review') || qp.get('replace'))) window.APP_BACK_TO = 'answer_check.html'; }      // 정답 점검에서 열었으면 「← 뒤로」는 정답 점검 목록으로
 { const rv = new URLSearchParams(location.search).get('review'); if (rv && !IS_CHILD) setTimeout(() => openSavedReview(rv === '1' ? null : rv.split(',').filter(Boolean)), 50); }
 </script>
 </body>

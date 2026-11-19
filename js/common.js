@@ -1,4 +1,4 @@
-window.APP_BUILD = '202611192340';
+window.APP_BUILD = '202611192350';
 // ── 새 버전 자동 적용: 켤 때마다 build.txt(캐시 없이)와 비교해 다르면 저장본을 비우고 한 번 새로고침 ──
 (function () {
   try {
@@ -43,6 +43,7 @@ function renderHeader(opts) {
   const goBackNav = function (e) {
     e.preventDefault();
     if (!document.dispatchEvent(new Event('app:back', { cancelable: true }))) return;
+    if (window.APP_BACK_TO) { location.href = window.APP_BACK_TO; return; }
     let sameSite = false; try { sameSite = !!document.referrer && new URL(document.referrer).origin === location.origin; } catch (err) {}
     if (window.history.length > 1 && sameSite) history.back(); else location.href = 'index.html';
   };

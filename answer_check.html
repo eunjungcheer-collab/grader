@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192340">
+<link rel="stylesheet" href="css/style.css?v=202611192350">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -31,7 +31,7 @@
   <div class="card" style="padding:12px 14px;">
     <div id="ac-sum" class="muted">불러오는 중...</div>
     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      <select id="ac-flt" style="flex:0 1 190px;"><option value="">의심되는 것 모두</option><option value="unread">정답 못 읽은 시험지만</option><option value="mid">의심 이상만</option></select>
+      <select id="ac-flt" style="flex:0 1 190px;"><option value="">의심되는 것 모두</option><option value="unread">정답 못 읽은 시험지만</option><option value="link">문제은행에 빠진 번호가 있는 것만</option><option value="mid">의심 이상만</option></select>
       <label class="bank-include-label" style="margin:0;"><input type="checkbox" id="ac-all"> 주관식이 없는 시험지도 보기</label>
        <button type="button" class="btn primary" id="ac-scanall" style="padding:8px 14px;">🔍 전체 검사 (후보·문제은행 정답 불일치 찾기)</button><input type="search" id="ac-q" placeholder="이름 검색" style="flex:1 1 150px;min-width:120px;">
     </div>
@@ -40,20 +40,19 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611192340"></script>
-<script src="js/api.js?v=202611192340"></script>
-<script src="js/common.js?v=202611192340"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192340"></script>
-<script src="js/vendor/pdf.min.js?v=202611192340"></script>
-<script src="js/printpdf.js?v=202611192340"></script>
-<script src="js/pdfui.js?v=202611192340"></script>
-<script src="js/pdfview.js?v=202611192340"></script>
-<script src="js/bankcore.js?v=202611192340"></script>
+<script src="js/config.js?v=202611192350"></script>
+<script src="js/api.js?v=202611192350"></script>
+<script src="js/common.js?v=202611192350"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192350"></script>
+<script src="js/vendor/pdf.min.js?v=202611192350"></script>
+<script src="js/printpdf.js?v=202611192350"></script>
+<script src="js/pdfui.js?v=202611192350"></script>
+<script src="js/pdfview.js?v=202611192350"></script>
+<script src="js/bankcore.js?v=202611192350"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
 // 뒤로 버튼: 시험지를 열어 둔 상태면 목록으로 먼저 돌아간다
-document.addEventListener('app:back', e => { const d = document.getElementById('ac-detail'); if (d && d.style.display === 'block') { e.preventDefault(); goBack(); } });
 
 function rangeInfo(q, picks) {
   const m = String(q.textPreview || '').match(/^\s*[\[(【]\s*(\d{1,2})\s*[~∼～\-–]\s*(\d{1,2})\s*(?:번)?\s*[\])】]/);
@@ -143,7 +142,8 @@ function risk(ex) {
 }
 function scanBadge(x) {
   const sc = SCAN[String(x.ex.id)];
-  if (x.r.checked) return '<span class="ac-lv ok">✔ 확인함 · 이상 없음</span>';      // 내가 확인 체크한 시험지는 검사 결과와 상관없이 이 표시를 먼저 보인다
+  if (x.r.checked) return '<span class="ac-lv ok">✔ 확인함 · 이상 없음</span>';
+  { const lk = LINK[String(x.ex.id)]; if (lk && lk.have > 0 && lk.miss.length) return '<span class="ac-lv hi" title="문제은행에 없는 번호: ' + lk.miss.join(', ') + '번">🔗 문제은행에 빠진 번호 ' + lk.miss.length + '개 (' + lk.miss.slice(0, 5).join(', ') + (lk.miss.length > 5 ? ' …' : '') + '번)</span>'; }      // 내가 확인 체크한 시험지는 검사 결과와 상관없이 이 표시를 먼저 보인다
   if (!sc) return '<span class="ac-lv ' + x.r.lv + '">' + x.r.label + '</span>';
   if (sc.unknown) return '<span class="ac-lv mid" title="' + escapeHtml(sc.unknown) + '">🔎 확인 불가 (직접 확인)</span>';
   if (sc.sync && sc.sync.b) return '<span class="ac-lv hi" title="시험지 정답은 있는데 문제은행 문항 정답이 -라서, 시험지 PDF를 만들 때 「서술형」 꼬리표가 붙을 수 있어요">📄 문제은행 정답 ‘-’ ' + sc.sync.b + '문항</span>';
@@ -277,10 +277,11 @@ function ansFileUi(exam) {
 }
 function reviewUrl(id) { return 'teacher_new.html?review=' + encodeURIComponent(String(id)); }
 function reviewBtn(id) { return '<a class="btn primary" href="' + reviewUrl(id) + '" style="padding:8px 14px;text-decoration:none;">✏️ PDF 보며 정답 고치기 (등록 화면으로 열기)</a>'; }
+function linkMissing(ex) { const lk = LINK[String(ex.id)]; return !!(lk && lk.have > 0 && lk.miss.length); }
 function renderList() {
   const flt = $('ac-flt').value, showAll = $('ac-all').checked && !flt, kw = $('ac-q').value.trim().toLowerCase();
-  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.checked || x.r.score > 0 || doneSet()[String(x.ex.id)] || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || x.r.checked || (flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
-  rows.sort((a, b) => ((a.r.checked ? 1 : 0) - (b.r.checked ? 1 : 0)) || (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
+  const rows = EXAMS.map(ex => ({ ex: ex, r: risk(ex) })).filter(x => (showAll || x.r.checked || x.r.score > 0 || linkMissing(x.ex) || doneSet()[String(x.ex.id)] || ((SCAN[String(x.ex.id)] || {}).sync || {}).b) && (!flt || x.r.checked || (flt === 'link' ? linkMissing(x.ex) : flt === 'unread' ? x.r.unread : x.r.score >= 2)) && (!kw || String(x.ex.title).toLowerCase().includes(kw)));
+  rows.sort((a, b) => ((a.r.checked ? 1 : 0) - (b.r.checked ? 1 : 0)) || ((linkMissing(b.ex) ? 1 : 0) - (linkMissing(a.ex) ? 1 : 0)) || (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
   const susp = EXAMS.filter(ex => risk(ex).score >= 2).length;
   $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>, 이 중 <b style="color:#B91C1C">정답을 거의 못 읽은 시험지 ' + EXAMS.filter(ex => risk(ex).unread).length + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
   $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"' + (x.r.checked ? ' style="background:#F0FDF4;"' : '') + '><label title="확인했으면 체크 (목록 아래쪽에 체크된 채로 남아요)" style="display:inline-flex;align-items:center;cursor:pointer;"><input type="checkbox" class="ac-rowok" data-id="' + escapeHtml(String(x.ex.id)) + '"' + (x.r.checked ? ' checked' : '') + ' style="width:24px;height:24px;accent-color:#15803D;"></label><div class="t">' + (doneSet()[String(x.ex.id)] ? '<span title="' + doneSet()[String(x.ex.id)] + ' 저장함" style="font-size:12px;font-weight:700;color:#1D4ED8;background:#DBEAFE;border-radius:6px;padding:1px 6px;margin-right:6px;">✏️ 수정함</span>' : '') + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
@@ -297,12 +298,25 @@ function titlePicks(exam) {
   const out = []; for (let i = 1; i <= n; i++) { if (!byNum[i]) return null; out.push(byNum[i]); }
   return out;
 }
+// 문제은행 연결 확인: 시험지 이름과 같은 출처로 저장된 문항이 1번부터 끝 번호까지 있는지 (묶음 문항 [20~21]은 뒤 번호도 있는 것으로 본다). 일부만 있으면 「빠진 번호」로 걸러낸다
+const LINK = {};
+function linkScan(exam) {
+  const nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(), n = (exam.answers || []).length, have = {}, sj = (exam.answers || []).map(a => String(a).trim() === '-');
+  (BANK || []).filter(q => Number(q.num) > 0 && nz(q.source) === nz(exam.title)).forEach(q => {
+    const k = Number(q.num); have[k] = 1;
+    const m = /\[\s*(\d{1,2})\s*[~～∼\-]\s*(\d{1,2})\s*\]/.exec(String(q.textPreview || ''));
+    if (m && Number(m[1]) === k) for (let t = k + 1; t <= Number(m[2]) && t <= n; t++) have[t] = 1;
+  });
+  const miss = []; let cnt = 0; for (let i = 1; i <= n; i++) { if (sj[i - 1]) continue; if (have[i]) cnt++; else miss.push(i); }
+  LINK[String(exam.id || '')] = { n: n, have: cnt, miss: miss };
+}
 async function scanExam(id, say) {
   say = say || function () {};
   const exam = await callApi('getExamDetail', { password: getTeacherPassword(), id: id });
   if (!exam.ok) throw new Error(exam.error || '시험지를 불러오지 못했어요');
   if (!BANK) { const lq = await callApi('listQuestions', { password: getTeacherPassword() }); if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요'); BANK = lq.questions; }
   const byId = {}; BANK.forEach(q => { byId[q.id] = q; });
+  { const ex0 = exam; ex0.id = ex0.id || id; linkScan(ex0); LINK[String(id)] = LINK[String(ex0.id)]; }
   const unk = m => { SCAN[String(id)] = { n: 0, weak: 0, nums: [], unknown: m }; return { exam: exam, found: null, noimg: m }; };
   let picks, slots, how = 'ids';
   try { picks = resolveBankPicks(exam, BANK, byId); slots = buildSlots(picks); }
@@ -347,7 +361,7 @@ async function scanAll() {
   btn.disabled = false; btn.textContent = '🔍 전체 다시 검사';
 }
 async function inspect(id) {
-  const box = $('ac-detail'); box.style.display = 'block'; $('ac-list').style.display = 'none';
+  const box = $('ac-detail'); box.style.display = 'block'; $('ac-list').style.display = 'none'; pushDetailState();
   const say = m => { box.innerHTML = '<div class="card"><p class="muted">' + escapeHtml(m) + '</p></div>'; };
   const back = '<p><a href="#" id="ac-back">← 목록으로</a></p>';
   const fail = m => { box.innerHTML = back + '<div class="banner error">' + escapeHtml(m) + '</div>'; $('ac-back').onclick = goBack; };
@@ -421,7 +435,11 @@ async function cropCheck(exam) {
 }
 // 상단 「← 뒤로」: 시험지 상세를 열어 둔 상태면 먼저 목록으로 돌아간다 (홈이나 이전 화면으로 바로 나가지 않는다)
 document.addEventListener('app:back', function (e) { const d = $('ac-detail'); if (d && d.style.display !== 'none') { e.preventDefault(); goBack(); } });
-function goBack(ev) { if (ev) ev.preventDefault(); $('ac-detail').style.display = 'none'; $('ac-list').style.display = 'block'; }
+// 시험지 상세를 열 때 브라우저 기록에 한 칸을 쌓아 둔다 → 폰·브라우저의 뒤로가기나 「← 뒤로」를 눌러도 홈이 아니라 시험지 목록으로 돌아온다
+function hideDetail() { $('ac-detail').style.display = 'none'; $('ac-list').style.display = 'block'; }
+function pushDetailState() { try { if (!(history.state && history.state.acDetail)) history.pushState({ acDetail: 1 }, '', location.href); } catch (e) {} }
+window.addEventListener('popstate', () => { const d = $('ac-detail'); if (d && d.style.display !== 'none') hideDetail(); });
+function goBack(ev) { if (ev) ev.preventDefault(); if (history.state && history.state.acDetail) { try { history.back(); return; } catch (e) {} } hideDetail(); }
 
 // 문제은행에서 그림을 못 찾는 시험지(PDF로만 올린 것 등): 번호별로 정답만 고치게 한다
 function renderNoImages(exam, why) {
@@ -582,6 +600,8 @@ async function save(exam, found) {
     const r = await callApi('listExams', { password: getTeacherPassword() });
     if (!r.ok) { $('ac-sum').textContent = r.error || '불러오지 못했어요'; return; }
     EXAMS = r.exams || []; renderList();
+    // 문제은행을 한 번 불러와 모든 시험지의 「빠진 번호」를 미리 계산한다 (일부만 연결된 시험지가 목록 위로 올라온다)
+    (async () => { try { if (!BANK) { const lq = await callApi('listQuestions', { password: getTeacherPassword() }); if (lq.ok) BANK = lq.questions; } if (BANK) { EXAMS.forEach(ex => { const n = Math.max(0, (ex.answerCount || 0) - (ex.subjectiveCount || 0)); linkScan({ id: ex.id, title: ex.title, answers: new Array(n).fill('3') }); }); renderList(); } } catch (e) {} })();
     $('ac-all').addEventListener('change', renderList); $('ac-flt').addEventListener('change', renderList); $('ac-scanall').addEventListener('click', scanAll); $('ac-q').addEventListener('input', renderList);
     const u = new URLSearchParams(location.search).get('id'); if (u) inspect(u);
   } catch (e) { $('ac-sum').textContent = '서버에 연결할 수 없어요.'; }
