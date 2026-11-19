@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200438">
+<link rel="stylesheet" href="css/style.css?v=202611200452">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200438"></script>
-<script src="js/api.js?v=202611200438"></script>
-<script src="js/common.js?v=202611200438"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200438"></script>
-<script src="js/vendor/pdf.min.js?v=202611200438"></script>
-<script src="js/printpdf.js?v=202611200438"></script>
-<script src="js/pdfui.js?v=202611200438"></script>
-<script src="js/pdfview.js?v=202611200438"></script>
-<script src="js/bankcore.js?v=202611200438"></script>
+<script src="js/config.js?v=202611200452"></script>
+<script src="js/api.js?v=202611200452"></script>
+<script src="js/common.js?v=202611200452"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200452"></script>
+<script src="js/vendor/pdf.min.js?v=202611200452"></script>
+<script src="js/printpdf.js?v=202611200452"></script>
+<script src="js/pdfui.js?v=202611200452"></script>
+<script src="js/pdfview.js?v=202611200452"></script>
+<script src="js/bankcore.js?v=202611200452"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -548,7 +548,21 @@ function renderNoImages(exam, why) {
 const SJ = (() => { try { return JSON.parse(localStorage.getItem('ac_sjscan') || '{}') || {}; } catch (e) { return {}; } })();
 function sjSave() { try { localStorage.setItem('ac_sjscan', JSON.stringify(SJ)); } catch (e) {} }
 function sjMissing(ex) { const r = SJ[String(ex.id)]; return !!(r && r.n > 0); }
+// 빠른 사전 검사: 글자가 읽히는 PDF인데 「[서술형1]」·「[깨진글자1]」 같은 머리글 모양이 한 군데도 없으면 서술형이 없는 시험지이니 무거운 전체 분석을 건너뛴다 (스캔본·머리글이 있는 시험지는 그대로 전체 분석)
+async function subjQuickNone(doc) {
+  try {
+    let chars = 0;
+    for (let i = 1; i <= doc.numPages; i++) {
+      const tc = await (await doc.getPage(i)).getTextContent();
+      const its = tc.items.map(x => String(x.str || '').trim()).filter(Boolean);
+      chars += its.join('').length;
+      if (its.some(t => /^[\[［〔【][^\]］〕】]{0,8}\d{1,2}[\]］〕】]/.test(t) && !/^[\[［〔【]\s*(?:문제|보기)/.test(t))) return false;
+    }
+    return chars >= doc.numPages * 150;
+  } catch (e) { return false; }
+}
 async function subjExtra(len, doc) {
+  if (await subjQuickNone(doc)) return [];
   const sc = await BankCore.scanPdf(doc);
   const extra = Array.from(new Set((sc.questions || []).map(q => q.num).filter(n => n > len))).sort((a, b) => a - b);
   if (!extra.length || extra.length > 12 || extra[0] !== len + 1 || extra[extra.length - 1] !== len + extra.length) return [];      // 번호가 이어지는 경우만 (len+1, len+2, …)
@@ -558,8 +572,7 @@ async function subjExtra(len, doc) {
 async function scanSubjAll() {
   const btn = $('ac-scansj'); if (!btn || btn.disabled) return; btn.disabled = true; setupPdfJs();
   const targets = EXAMS.filter(ex => !(SJ[String(ex.id)] && SJ[String(ex.id)].len === ex.answerCount)); let done = 0;
-  for (const ex of targets) {
-    btn.textContent = '서술형 검사 중... ' + (done + 1) + '/' + targets.length;
+  const one = async ex => {
     try {
       const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: ex.id });
       const fid = d.ok ? (String(d.pdfUrl || '').match(/[?&]id=([^&]+)/) || [])[1] : '';
@@ -568,8 +581,10 @@ async function scanSubjAll() {
         if (blob) { const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise; const extra = await subjExtra(d.answers.length, doc); SJ[String(ex.id)] = { n: extra.length, len: ex.answerCount, nums: extra }; sjSave(); }
       }
     } catch (e) {}
-    done++; renderList();
-  }
+    done++; btn.textContent = '서술형 검사 중... ' + done + '/' + targets.length; renderList();
+  };
+  btn.textContent = '서술형 검사 중... 0/' + targets.length;
+  let qi = 0; await Promise.all([0, 1, 2].map(async () => { while (qi < targets.length) { const ex = targets[qi++]; await one(ex); } }));      // 3개씩 동시에
   btn.disabled = false; btn.textContent = '📝 서술형 빠짐 검사 (' + EXAMS.filter(sjMissing).length + '개 발견)'; renderList();
 }
 async function offerSubjective(exam, doc) {
