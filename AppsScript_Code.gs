@@ -221,6 +221,8 @@ function handle_(e) {
       case 'listStudents': result = actionListStudents_(params); break;
       default: result = { ok: false, error: 'unknown action' };
     }
+    // 쓰기가 끝난 뒤에도 한 번 더 비운다: 시작할 때만 비우면, 쓰는 도중에 들어온 목록 요청이 옛 값을 새 버전 이름으로 10분 동안 저장해 둬서 방금 고친 값이 되돌아간 것처럼 보였다
+    if (!/^(list|get|stu(Status|Home|Weak|Wrong|Login|PushInfo)|weakReport|reviewReport|noticeRoster|bankUnitMap|stats|retryLog|teacherPushInfo|suggestName|homeBadges|login)/.test(String(action))) bustCache_();
     return json_(result);
   } catch (err) {
     return json_({ ok: false, error: String(err) });
