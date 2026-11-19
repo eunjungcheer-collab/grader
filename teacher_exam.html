@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 상세 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200712">
+<link rel="stylesheet" href="css/style.css?v=202611200728">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,15 +17,15 @@
   <div id="detail-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611200712"></script>
-<script src="js/config.js?v=202611200712"></script>
-<script src="js/api.js?v=202611200712"></script>
-<script src="js/common.js?v=202611200712"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200712"></script>
-<script src="js/bankcore.js?v=202611200712"></script>
-<script src="js/vendor/pdf.min.js?v=202611200712"></script>
-<script src="js/printpdf.js?v=202611200712"></script>
-<script src="js/pdfui.js?v=202611200712"></script>
+<script src="js/vendor/qrcode.min.js?v=202611200728"></script>
+<script src="js/config.js?v=202611200728"></script>
+<script src="js/api.js?v=202611200728"></script>
+<script src="js/common.js?v=202611200728"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200728"></script>
+<script src="js/bankcore.js?v=202611200728"></script>
+<script src="js/vendor/pdf.min.js?v=202611200728"></script>
+<script src="js/printpdf.js?v=202611200728"></script>
+<script src="js/pdfui.js?v=202611200728"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -216,7 +216,6 @@ async function makeTeacherFromBank(exam, say) {
         <div style="font-weight:700; margin:2px 0 8px; text-align:left;${res.pdfUrl ? '' : ' display:none;'}">⬇️ 받을 파일 고르기</div>
         <a class="btn primary" id="dl-student" href="${res.pdfUrl}" target="_blank" style="width:100%;${res.pdfUrl ? '' : ' display:none;'}">📄 학생용만 받기${res.explUrl ? ' (QR 찍힌 PDF)' : ' (해설 포함)'}</a>
         <button type="button" class="btn outline" id="print-student" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">🖨️ 학생용 인쇄</button>
-        <button type="button" class="btn primary" id="dl-merged" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📚 학생용 + 강사용 한 파일로 합쳐 받기</button>
         <button type="button" class="btn primary" id="dl-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📄📘 학생용 + 강사용 둘 다 받기</button>
         <button type="button" class="btn outline" id="print-both" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">🖨️ 학생용 + 강사용 둘 다 인쇄</button>
         <button type="button" class="btn outline" id="dl-teacher-only" style="width:100%; margin-top:8px;${res.pdfUrl ? '' : ' display:none;'}">📘 강사용만 받기 (정답 동그라미·문제 밑 정답·해설)</button>
@@ -349,24 +348,8 @@ async function makeTeacherFromBank(exam, say) {
       }
       bothBtn.addEventListener('click', () => run(true, bothBtn));
       tOnly.addEventListener('click', () => run(false, tOnly));
-      // 학생용 PDF 뒤에 강사용 PDF를 이어 붙여서 파일 하나로 받는다
-      const mergedBtn = document.getElementById('dl-merged');
-      if (mergedBtn) mergedBtn.addEventListener('click', async () => {
-        mergedBtn.disabled = true; const old = mergedBtn.textContent;
-        try {
-          noteEl.textContent = '학생용 PDF를 받는 중...';
-          const sb = stuId ? await driveDirectBlob(stuId) : null; if (!sb) throw new Error('학생용 PDF를 받지 못했어요.');
-          const t = await obtainTeacher(); if (!t) throw new Error('강사용 PDF를 만들 수 없는 시험지예요.');
-          noteEl.textContent = '두 PDF를 합치는 중...';
-          const out = await PDFLib.PDFDocument.create();
-          for (const blob of [sb, t.blob]) { const src = await PDFLib.PDFDocument.load(new Uint8Array(await blob.arrayBuffer())); const pgs = await out.copyPages(src, src.getPageIndices()); pgs.forEach(pg => out.addPage(pg)); }
-          const bytes = await out.save();
-          saveBlob(new Blob([bytes], { type: 'application/pdf' }), res.title.replace(/[\\/:*?"<>|]/g, '_') + ' 학생용+강사용.pdf');
-          noteEl.textContent = '✅ 학생용 + 강사용을 한 파일로 받았어요. (앞쪽이 학생용, 뒤쪽이 강사용)';
-        } catch (e) { noteEl.textContent = '⚠️ ' + (e.message || e); }
-        mergedBtn.disabled = false; mergedBtn.textContent = old;
-      });
-      { const dlq = new URLSearchParams(location.search).get('dl'); if (dlq === 'merged') setTimeout(() => { if (mergedBtn && !mergedBtn.disabled) mergedBtn.click(); }, 600); }
+      // 조합 화면의 「학생용 + 강사용 둘 다 받기」로 넘어온 경우: 화면이 열리면 바로 둘 다 받는다
+      { const dlq = new URLSearchParams(location.search).get('dl'); if (dlq === 'both') setTimeout(() => { if (bothBtn && !bothBtn.disabled && bothBtn.offsetParent !== null) bothBtn.click(); }, 600); }
       // 시험지 목록의 「🖨️ 학생용/강사용 인쇄」나 문제은행 출제의 「확정하고 인쇄」로 넘어온 경우: 화면이 열리면 바로 인쇄를 시작한다
       const autoPrint = new URLSearchParams(location.search).get('print');
       if (autoPrint) setTimeout(() => {
