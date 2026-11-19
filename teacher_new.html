@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192240">
+<link rel="stylesheet" href="css/style.css?v=202611192250">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611192240"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192240"></script>
-<script src="js/printpdf.js?v=202611192240"></script>
-<script src="js/vendor/pdf.min.js?v=202611192240"></script>
-<script src="js/config.js?v=202611192240"></script>
-<script src="js/api.js?v=202611192240"></script>
-<script src="js/common.js?v=202611192240"></script>
-<script src="js/ocr.js?v=202611192240"></script>
-<script src="js/bankcore.js?v=202611192240"></script>
-<script src="js/pdfui.js?v=202611192240"></script>
-<script src="js/pdfview.js?v=202611192240"></script>
+<script src="js/vendor/qrcode.min.js?v=202611192250"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192250"></script>
+<script src="js/printpdf.js?v=202611192250"></script>
+<script src="js/vendor/pdf.min.js?v=202611192250"></script>
+<script src="js/config.js?v=202611192250"></script>
+<script src="js/api.js?v=202611192250"></script>
+<script src="js/common.js?v=202611192250"></script>
+<script src="js/ocr.js?v=202611192250"></script>
+<script src="js/bankcore.js?v=202611192250"></script>
+<script src="js/pdfui.js?v=202611192250"></script>
+<script src="js/pdfview.js?v=202611192250"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1572,7 +1572,7 @@ async function saveToBank(cls, source, onProgress, ranges) {
   { const hm = BankCore.linkHeads(picks.map(p => ({ num: p.num, text: p.textPreview }))); picks.forEach(p => { if (hm[p.num]) p.head = hm[p.num]; }); }   // 연관 문제 표시
   // 같은 PDF를 또 올렸을 때 중복 저장하지 않는다 (이미 문제은행에 있는 글자와 같은 문항은 뺀다)
   const keys = await existingPreviewKeys();
-  const kept = picks.filter(p => !isDupPreview(p.textPreview, keys));
+  const kept = window.__noDedupe ? picks.slice() : picks.filter(p => !isDupPreview(p.textPreview, keys));
   lastBankSkipped = picks.length - kept.length;
   picks.length = 0; kept.forEach(p => picks.push(p));
   window.__bankIds = {}; picks.forEach(p => { window.__bankIds[p.num] = p.id; });
@@ -1748,6 +1748,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
   try {
     const replacing = (REPLACE_ID && queueTotal <= 1 && !window.__auto) ? REPLACE_ID : '';
     const examId = replacing || genExamId();
+    window.__noDedupe = !!replacing;      // 다시 등록이면 다른 시험지에 같은 문항이 있어도 건너뛰지 않고 이 시험지 문항으로 저장한다 (그래야 모든 번호가 연결된다)
     const redactions = pane ? pane.redactions : [];
     const hasAnswerPages = $('strip-answer').checked && scanned.answerPages.length;
 
@@ -1837,6 +1838,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
         bankWarning = '';
       }
     }
+    window.__noDedupe = false;
     mark('end'); rcClear(); hideSpinner();
     if (res.ok && queueTotal > 1) {
       if (bankWarning) { if (window.__auto) queueNotes.push(title + ': ' + bankWarning); else alert(bankWarning); }
