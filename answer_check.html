@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192210">
+<link rel="stylesheet" href="css/style.css?v=202611192220">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611192210"></script>
-<script src="js/api.js?v=202611192210"></script>
-<script src="js/common.js?v=202611192210"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192210"></script>
-<script src="js/vendor/pdf.min.js?v=202611192210"></script>
-<script src="js/printpdf.js?v=202611192210"></script>
-<script src="js/pdfui.js?v=202611192210"></script>
-<script src="js/pdfview.js?v=202611192210"></script>
-<script src="js/bankcore.js?v=202611192210"></script>
+<script src="js/config.js?v=202611192220"></script>
+<script src="js/api.js?v=202611192220"></script>
+<script src="js/common.js?v=202611192220"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192220"></script>
+<script src="js/vendor/pdf.min.js?v=202611192220"></script>
+<script src="js/printpdf.js?v=202611192220"></script>
+<script src="js/pdfui.js?v=202611192220"></script>
+<script src="js/pdfview.js?v=202611192220"></script>
+<script src="js/bankcore.js?v=202611192220"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -205,6 +205,8 @@ async function redoBank(exam, why, msgEl, btnEl) {
   if (!confirm((why ? why + '\n\n' : '') + (own.length ? '문제은행에서 「' + exam.title + '」 문항 ' + own.length + '개를 지우고, ' : '') + '시험지 등록 화면으로 가서 원본 시험지 PDF(정답지 포함)를 통째로 다시 올려요.\n\n· 같은 시험지로 다시 등록돼요: QR·제출 기록은 그대로 쓰이고, PDF·정답·문항 그림만 새로 바뀌어요.\n· 지운 문항은 되돌릴 수 없어요. 다시 올릴 때 단원 분류와 정답을 확인해 주세요.\n\n진행할까요?')) return;
   if (btnEl) btnEl.disabled = true;
   try {
+    // 지우기 전에 지금 설정된 단원·소단원을 이 브라우저에 적어 둔다 → 다시 등록 화면에서 그대로 불러와 이상한 것만 고치면 된다
+    try { const snap = { t: Date.now(), q: {} }; own.forEach(q => { if (Number(q.num) > 0 && (q.unit || q.sub)) snap.q[Number(q.num)] = { unit: q.unit || '', grade: q.grade || '', sub: q.sub || '' }; }); localStorage.setItem('ac_redo_' + exam.id, JSON.stringify(snap)); } catch (e) {}
     const ids = own.map(q => q.id);
     for (let i = 0; i < ids.length; i += 40) { if (msgEl) msgEl.textContent = '지우는 중... ' + Math.min(i + 40, ids.length) + '/' + ids.length; const r = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: ids.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '지우지 못했어요'); }
     location.href = 'teacher_new.html?replace=' + encodeURIComponent(String(exam.id));

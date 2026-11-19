@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192210">
+<link rel="stylesheet" href="css/style.css?v=202611192220">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611192210"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192210"></script>
-<script src="js/printpdf.js?v=202611192210"></script>
-<script src="js/vendor/pdf.min.js?v=202611192210"></script>
-<script src="js/config.js?v=202611192210"></script>
-<script src="js/api.js?v=202611192210"></script>
-<script src="js/common.js?v=202611192210"></script>
-<script src="js/ocr.js?v=202611192210"></script>
-<script src="js/bankcore.js?v=202611192210"></script>
-<script src="js/pdfui.js?v=202611192210"></script>
-<script src="js/pdfview.js?v=202611192210"></script>
+<script src="js/vendor/qrcode.min.js?v=202611192220"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192220"></script>
+<script src="js/printpdf.js?v=202611192220"></script>
+<script src="js/vendor/pdf.min.js?v=202611192220"></script>
+<script src="js/config.js?v=202611192220"></script>
+<script src="js/api.js?v=202611192220"></script>
+<script src="js/common.js?v=202611192220"></script>
+<script src="js/ocr.js?v=202611192220"></script>
+<script src="js/bankcore.js?v=202611192220"></script>
+<script src="js/pdfui.js?v=202611192220"></script>
+<script src="js/pdfview.js?v=202611192220"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1248,6 +1248,18 @@ async function renderQUnits() {
     '<span class="sub-wrap" style="display:none; flex-basis:100%; padding-left:40px;"><select class="qsub-sel" data-n="' + n + '" title="소단원 (비워 두면 대단원 전체)"></select></span></label>').join('');
   document.querySelectorAll('.qsub-sel').forEach(s => { const k = keepSub[s.dataset.n]; if (k) { s.dataset.cur = k.v; if (k.m) s.dataset.manual = k.m; } });
   scheduleSubs();
+  applyRedoSnapshot();
+}
+// 다시 등록(정답 점검에서 들어옴): 지우기 전에 적어 둔 기존 단원·소단원을 번호별 칸에 먼저 채운다. 기존에 없던 번호만 자동 추정에 맡긴다
+function applyRedoSnapshot() {
+  if (!REPLACE_ID || queueTotal > 1 || window.__auto) return;
+  let snap = null; try { snap = JSON.parse(localStorage.getItem('ac_redo_' + REPLACE_ID) || 'null'); } catch (e) {}
+  if (!snap || !snap.q) return;
+  const key = curFileName + '|' + REPLACE_ID; if (window.__redoApplied === key) return;
+  const sels = document.querySelectorAll('.qunit-sel'); if (!sels.length) return;
+  window.__redoApplied = key; let n = 0;
+  sels.forEach(sel => { const r = snap.q[sel.dataset.n]; if (!r || !r.unit) return; setUnitSelect(sel, r.unit, r.grade); sel.classList.remove('low'); const ss = document.querySelector('.qsub-sel[data-n="' + sel.dataset.n + '"]'); if (ss) { ss.dataset.cur = r.sub || ''; if (r.sub) ss.dataset.manual = '1'; } n++; });
+  if (n) { scheduleSubs(); const m = $('qunit-hint-msg'); if (m) m.innerHTML = '📌 기존에 설정해 둔 단원·소단원 <b>' + n + '문항</b>을 불러왔어요. 비어 있거나 이상한 문항만 고치세요.'; }
 }
 // ── 소단원: 문항의 단원이 정해지면 그 단원의 소단원 목록을 보여 주고, 문제 글자로 추정해서 채운다 (자신 없으면 비워 둠 = 대단원 전체) ──
 let _subTimer = null, _qTextCache = {};
