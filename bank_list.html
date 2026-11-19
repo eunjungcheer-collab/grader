@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200640">
+<link rel="stylesheet" href="css/style.css?v=202611200652">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -83,11 +83,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611200640"></script>
-<script src="js/api.js?v=202611200640"></script>
-<script src="js/common.js?v=202611200640"></script>
-<script src="js/bankcore.js?v=202611200640"></script>
-<script src="js/pdfui.js?v=202611200640"></script>
+<script src="js/config.js?v=202611200652"></script>
+<script src="js/api.js?v=202611200652"></script>
+<script src="js/common.js?v=202611200652"></script>
+<script src="js/bankcore.js?v=202611200652"></script>
+<script src="js/pdfui.js?v=202611200652"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -806,11 +806,13 @@ $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuest
     const out = [];
     Object.keys(groups).forEach(g => {
       const m = groups[g]; if (m.length < 2) return;
-      const best = Math.max.apply(null, m.map(score)); if (best < 4) return;      // 단원이 정해진 문항이 없으면 건드리지 않는다
-      const keepers = m.filter(q => score(q) === best);
-      const keep = keepers.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0];
-      const del = m.filter(q => q !== keep && noUnit(q));      // 단원이 비어 있는 쪽만 지운다 (둘 다 단원이 있으면 지우지 않는다)
-      if (del.length) out.push({ keep: keep, del: del });
+      const withUnit = m.filter(q => !noUnit(q)); if (!withUnit.length) return;      // 단원이 정해진 문항이 하나도 없으면 건드리지 않는다
+      const newest = (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+      const keep = m.slice().sort(newest)[0];      // 가장 최근에 등록한 문항을 남긴다 (정답·그림이 가장 새것)
+      let del, copy = null;
+      if (!noUnit(keep)) del = m.filter(q => q !== keep && noUnit(q));      // 남긴 문항에 단원이 있으면, 단원 없는 옛것만 지운다
+      else { const donor = withUnit.slice().sort(newest)[0]; copy = { from: donor, to: keep }; del = m.filter(q => q !== keep && (noUnit(q) || q === donor)); }      // 남긴 문항에 단원이 없으면, 옛 문항의 단원·소단원을 옮겨 적은 뒤 옛것을 지운다
+      if (del.length) out.push({ keep: keep, del: del, copy: copy });
     });
     return out;
   }
@@ -819,16 +821,20 @@ $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuest
     box.style.display = 'block';
     if (!n) { box.innerHTML = '<b>🧹 지울 중복 문항이 없어요.</b> <span class="hint">(같은 문제가 두 번 있어도, 둘 다 단원이 정해져 있거나 둘 다 비어 있으면 자동으로 지우지 않아요.)</span> <button type="button" class="btn ghost" id="dup-close">닫기</button>'; document.getElementById('dup-close').onclick = () => { box.style.display = 'none'; }; return; }
     const names = {}; res.forEach(g => g.del.forEach(q => { names[q.source || '(이름 없음)'] = (names[q.source || '(이름 없음)'] || 0) + 1; }));
-    box.innerHTML = '<b>🧹 같은 문제가 두 번 들어 있는 것 ' + res.length + '묶음 → 단원이 비어 있는 쪽 ' + n + '문항을 지울 수 있어요.</b>'
+    box.innerHTML = '<b>🧹 같은 문제가 두 번 들어 있는 것 ' + res.length + '묶음 → 옛 문항 ' + n + '개를 지울 수 있어요.</b> <span class="hint">(가장 최근에 등록한 문항을 남기고, 단원·소단원은 옛 문항 것을 옮겨 적어요)</span>'
       + '<p class="hint" style="margin:6px 0;">지울 문항의 시험지 이름: ' + Object.keys(names).map(k => escapeHtml(k) + ' (' + names[k] + '개)').join(' · ') + '</p>'
-      + '<div style="max-height:220px;overflow:auto;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;padding:6px 10px;">' + res.slice(0, 40).map(g => '남김: ' + escapeHtml(g.keep.source || '') + ' ' + (g.keep.num || '') + '번 (' + escapeHtml(String(g.keep.unit || '')) + ') ← 지움: ' + g.del.map(q => escapeHtml(q.source || '') + ' ' + (q.num || '') + '번').join(', ')).join('<br>') + (res.length > 40 ? '<br>… 외 ' + (res.length - 40) + '묶음' : '') + '</div>'
+      + '<div style="max-height:220px;overflow:auto;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;padding:6px 10px;">' + res.slice(0, 40).map(g => '남김(최근 등록): ' + escapeHtml(g.keep.source || '') + ' ' + (g.keep.num || '') + '번' + (g.copy ? ' (단원 ' + escapeHtml(String(g.copy.from.unit || '')) + ' 옮김)' : ' (' + escapeHtml(String(g.keep.unit || '')) + ')') + ' ← 지움: ' + g.del.map(q => escapeHtml(q.source || '') + ' ' + (q.num || '') + '번').join(', ')).join('<br>') + (res.length > 40 ? '<br>… 외 ' + (res.length - 40) + '묶음' : '') + '</div>'
       + '<p style="margin:8px 0 0;"><button type="button" class="btn danger" id="dup-go">' + n + '문항 지우기</button> <button type="button" class="btn ghost" id="dup-close">닫기</button> <span id="dup-msg" class="hint"></span></p>';
     document.getElementById('dup-close').onclick = () => { box.style.display = 'none'; };
     document.getElementById('dup-go').onclick = async () => {
-      if (!confirm('단원이 비어 있는 중복 문항 ' + n + '개를 지울까요?\n(단원이 정해진 쪽은 그대로 남아요. 지운 문항은 휴지통에서 복구할 수 있어요.)')) return;
+      if (!confirm('중복 문항 중 옛 것 ' + n + '개를 지울까요?\n(가장 최근에 등록한 문항이 남고, 단원·소단원은 옛 문항 것이 옮겨져요.)')) return;
       const btn = document.getElementById('dup-go'), msg = document.getElementById('dup-msg'); btn.disabled = true;
       const ids = []; res.forEach(g => g.del.forEach(q => ids.push(q.id)));
       try {
+        // 최근 등록한 문항에 단원이 없으면, 지우기 전에 옛 문항의 단원·소단원·학년을 먼저 옮겨 적는다
+        const moves = res.filter(g => g.copy).map(g => ({ id: g.copy.to.id, unit: g.copy.from.unit || '', sub: g.copy.from.sub || '', grade: g.copy.from.grade || '', auto: g.copy.from.auto || 0 }));
+        for (let i = 0; i < moves.length; i += 40) { msg.textContent = '단원 옮기는 중... ' + Math.min(i + 40, moves.length) + '/' + moves.length; const r0 = await callApi('updateQuestions', { password: getTeacherPassword(), updates: moves.slice(i, i + 40) }); if (!r0.ok) throw new Error('단원을 옮기지 못해서 지우지 않았어요: ' + (r0.error || '')); }
+        moves.forEach(mv => { const q = all.find(x => x.id === mv.id); if (q) { q.unit = mv.unit; q.sub = mv.sub; q.grade = mv.grade || q.grade; q.auto = mv.auto; } });
         for (let i = 0; i < ids.length; i += 40) { msg.textContent = '지우는 중... ' + Math.min(i + 40, ids.length) + '/' + ids.length; const r = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: ids.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '지우지 못했어요'); }
         const gone = new Set(ids); all = all.filter(x => !gone.has(x.id)); ids.forEach(id => selected.delete(id)); render();
         box.innerHTML = '<b>✅ 중복 문항 ' + ids.length + '개를 지웠어요.</b> <button type="button" class="btn ghost" id="dup-close">닫기</button>'; document.getElementById('dup-close').onclick = () => { box.style.display = 'none'; };
