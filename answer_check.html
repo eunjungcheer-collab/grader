@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200125">
+<link rel="stylesheet" href="css/style.css?v=202611200135">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200125"></script>
-<script src="js/api.js?v=202611200125"></script>
-<script src="js/common.js?v=202611200125"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200125"></script>
-<script src="js/vendor/pdf.min.js?v=202611200125"></script>
-<script src="js/printpdf.js?v=202611200125"></script>
-<script src="js/pdfui.js?v=202611200125"></script>
-<script src="js/pdfview.js?v=202611200125"></script>
-<script src="js/bankcore.js?v=202611200125"></script>
+<script src="js/config.js?v=202611200135"></script>
+<script src="js/api.js?v=202611200135"></script>
+<script src="js/common.js?v=202611200135"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200135"></script>
+<script src="js/vendor/pdf.min.js?v=202611200135"></script>
+<script src="js/printpdf.js?v=202611200135"></script>
+<script src="js/pdfui.js?v=202611200135"></script>
+<script src="js/pdfview.js?v=202611200135"></script>
+<script src="js/bankcore.js?v=202611200135"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -230,13 +230,18 @@ async function fillMissing(exam, miss, msgEl, btnEl) {
     const mine = (BANK || []).filter(q => nz(q.source) === nz(exam.title) && Number(q.num) > 0);
     const ref = mine[0] || {}, near = n => { let b = null, bd = 1e9; mine.forEach(q => { const d = Math.abs(Number(q.num) - n); if (d < bd && q.unit) { bd = d; b = q; } }); return b || ref; };
     const keys = new Set((BANK || []).map(q => dupKey(q.textPreview)).filter(k => k.length >= 25));
+    // 예전에 적어 둔 번호별 단원·소단원(이 컴퓨터 → 없으면 서버)이 있으면 그걸 먼저 쓴다
+    let snap = null; try { snap = JSON.parse(localStorage.getItem('ac_redo_' + exam.id) || 'null'); } catch (e) {}
+    if (!snap || !snap.q) { try { const sv = await callApi('getRedoUnits', { password: getTeacherPassword(), id: exam.id }); if (sv && sv.ok && sv.units && sv.units.q) snap = sv.units; } catch (e) {} }
+    let fromSnap = 0;
     const picks = [], notFound = [], skipped = [];
     for (const n of miss) {
       const q = sc.questions.find(x => x.num === n); if (!q) { notFound.push(n); continue; }
       const tp = await BankCore.textPreviewQ(doc, q, 240);
       if (dupKey(tp).length >= 25 && keys.has(dupKey(tp))) { skipped.push(n); continue; }
-      const nb = near(n), ex = sc.explanations && sc.explanations[n];
-      picks.push({ q: q, ex: ex, rec: { id: 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), unit: nb.unit || '(단원 미지정)', sub: '', auto: 2, grade: nb.grade || '', kind: nb.kind || '', school: nb.school || '', year: nb.year || '', answer: String(exam.answers[n - 1] == null ? '' : exam.answers[n - 1]), source: exam.title, textPreview: tp, num: n, difficulty: '', diffScore: null } });
+      const nb = near(n), ex = sc.explanations && sc.explanations[n], sr = snap && snap.q && snap.q[n];
+      if (sr && sr.unit) fromSnap++;
+      picks.push({ q: q, ex: ex, rec: { id: 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), unit: (sr && sr.unit) || nb.unit || '(단원 미지정)', sub: (sr && sr.unit && sr.sub) || '', auto: (sr && sr.unit) ? 0 : 2, grade: (sr && sr.unit && sr.grade) || nb.grade || '', kind: nb.kind || '', school: nb.school || '', year: nb.year || '', answer: String(exam.answers[n - 1] == null ? '' : exam.answers[n - 1]), source: exam.title, textPreview: tp, num: n, difficulty: '', diffScore: null } });
     }
     let saved = 0;
     for (let i = 0; i < picks.length; i += 5) {
@@ -256,7 +261,7 @@ async function fillMissing(exam, miss, msgEl, btnEl) {
     }
     BANK = null; delete SCAN[String(exam.id)];
     const rest = notFound.concat(skipped);
-    say('✅ ' + saved + '문항을 채웠어요' + (notFound.length ? ' · PDF에서 못 찾은 번호: ' + notFound.join(', ') + '번' : '') + (skipped.length ? ' · 이미 같은 문항이 있어 건너뜀: ' + skipped.join(', ') + '번' : '') + '. 단원은 이웃 문항을 따라 넣었으니 소단원을 확인해 주세요. 화면을 다시 불러와요...');
+    say('✅ ' + saved + '문항을 채웠어요' + (notFound.length ? ' · PDF에서 못 찾은 번호: ' + notFound.join(', ') + '번' : '') + (skipped.length ? ' · 이미 같은 문항이 있어 건너뜀: ' + skipped.join(', ') + '번' : '') + (fromSnap ? '. 예전에 적어 둔 단원·소단원 ' + fromSnap + '개를 불러왔고, 나머지는 이웃 문항을 따라 넣었으니 소단원을 확인해 주세요' : '. 예전에 적어 둔 단원 기록이 없어서 이웃 문항의 단원을 따라 넣었어요 (소단원은 비어 있으니 확인해 주세요)') + '. 화면을 다시 불러와요...');
     setTimeout(() => inspect(exam.id), 1800);
   } catch (e) { say('⚠️ ' + (e.message || e)); if (btnEl) btnEl.disabled = false; }
 }
