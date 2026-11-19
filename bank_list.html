@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>문제은행 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200912">
+<link rel="stylesheet" href="css/style.css?v=202611200930">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -85,11 +85,11 @@
   <div id="pager" class="sort-bar" style="justify-content:center;"></div>
 </template>
 
-<script src="js/config.js?v=202611200912"></script>
-<script src="js/api.js?v=202611200912"></script>
-<script src="js/common.js?v=202611200912"></script>
-<script src="js/bankcore.js?v=202611200912"></script>
-<script src="js/pdfui.js?v=202611200912"></script>
+<script src="js/config.js?v=202611200930"></script>
+<script src="js/api.js?v=202611200930"></script>
+<script src="js/common.js?v=202611200930"></script>
+<script src="js/bankcore.js?v=202611200930"></script>
+<script src="js/pdfui.js?v=202611200930"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true });
@@ -879,10 +879,33 @@ $('reload-bank').addEventListener('click', e => { e.preventDefault(); clearQuest
         }
         if (a) { fixes.push({ id: q.id, answer: a, q: q }); bySrc[q.source || '(이름 없음)'] = (bySrc[q.source || '(이름 없음)'] || 0) + 1; }
       });
-      if (!fixes.length) { box.innerHTML = '<b>고칠 문항이 없어요.</b> <span class="hint">정답이 「-」인 문항 ' + cand.length + '개를 시험지 정답표에서 찾아봤지만, 객관식 정답(①~⑤)으로 확인되는 문항이 없었어요.</span> <button type="button" class="btn ghost" id="fixans-close">닫기</button>'; document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; }; return; }
+      const fixedIds = new Set(fixes.map(f => f.id)), rest = cand.filter(q => !fixedIds.has(q.id)), restBy = {};
+      rest.forEach(q => { const k = q.source || '(이름 없음)'; (restBy[k] = restBy[k] || []).push(q); });
+      const manualHtml = () => {
+        const keys = Object.keys(restBy).sort((a, b) => restBy[b].length - restBy[a].length).slice(0, 12); if (!keys.length) return '';
+        const opts = exams.map(e => '<option value="' + escapeHtml(String(e.id)) + '">' + escapeHtml(String(e.title || '')) + '</option>').join('');
+        return '<div style="margin-top:10px;border-top:1px solid #E5E7EB;padding-top:8px;"><b>🧩 자동으로 못 찾은 문항 (직접 시험지를 골라 맞추기)</b><div class="hint" style="margin:2px 0 6px;">같은 이름으로 묶인 문항들의 시험지를 고르면, 그 시험지 정답표의 같은 번호 정답(①~⑤)으로 맞춰요. 정답표가 서술형(-)인 번호는 그대로 둬요.</div>'
+          + keys.map((k, i) => '<div style="margin:6px 0;font-size:13px;"><div>' + escapeHtml(k) + ' <span class="muted">(' + restBy[k].length + '개)</span></div><select class="mx-sel" data-k="' + i + '" style="max-width:100%;"><option value="">시험지 고르기</option>' + opts + '</select> <button type="button" class="btn outline mx-go" data-k="' + i + '" style="padding:4px 10px;">정답표로 맞추기</button> <span class="mx-msg hint" data-k="' + i + '"></span></div>').join('') + '</div>';
+      };
+      const bindManual = () => { box.querySelectorAll('.mx-go').forEach(btn => btn.addEventListener('click', async () => {
+        const i = Number(btn.getAttribute('data-k')), key = Object.keys(restBy).sort((a, b) => restBy[b].length - restBy[a].length)[i], sel = box.querySelector('.mx-sel[data-k="' + i + '"]'), mm = box.querySelector('.mx-msg[data-k="' + i + '"]');
+        if (!sel.value) { mm.textContent = '시험지를 먼저 고르세요.'; return; }
+        btn.disabled = true; mm.textContent = '정답표 불러오는 중...';
+        try {
+          const d = await callApi('getExamDetail', { password: getTeacherPassword(), id: sel.value }); if (!d || !d.ok) throw new Error('정답표를 불러오지 못했어요');
+          const ups = restBy[key].map(q => ({ q: q, a: d.answers && d.answers[Number(q.num) - 1] })).filter(x => okAns(x.a));
+          if (!ups.length) { mm.textContent = '이 시험지 정답표에는 맞출 객관식 정답이 없어요.'; btn.disabled = false; return; }
+          if (!confirm('「' + key + '」 문항 ' + ups.length + '개의 정답을 선택한 시험지 정답표로 맞출까요?\n(문항 번호와 정답표 번호가 같다고 보고 맞춰요)')) { mm.textContent = ''; btn.disabled = false; return; }
+          for (let j = 0; j < ups.length; j += 40) { const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: ups.slice(j, j + 40).map(x => ({ id: x.q.id, answer: x.a })) }); if (!r.ok) throw new Error(r.error || '고치지 못했어요'); }
+          ups.forEach(x => { x.q.answer = x.a; }); render(); mm.textContent = '✅ ' + ups.length + '개 맞췄어요.';
+        } catch (e) { mm.textContent = '⚠️ ' + (e.message || e); btn.disabled = false; }
+      })); };
+      if (!fixes.length) { box.innerHTML = '<b>자동으로 고칠 문항은 없어요.</b> <span class="hint">정답이 「-」인 문항 ' + cand.length + '개를 시험지 정답표에서 찾아봤지만 자동으로 짝지어지는 게 없었어요.</span> <button type="button" class="btn ghost" id="fixans-close">닫기</button>' + manualHtml(); document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; }; bindManual(); return; }
+      if (false) { box.innerHTML = '<b>고칠 문항이 없어요.</b> <span class="hint">정답이 「-」인 문항 ' + cand.length + '개를 시험지 정답표에서 찾아봤지만, 객관식 정답(①~⑤)으로 확인되는 문항이 없었어요.</span> <button type="button" class="btn ghost" id="fixans-close">닫기</button>'; document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; }; return; }
       box.innerHTML = '<b>🔧 서술형(-)으로 저장돼 있지만 시험지 정답표에는 객관식 정답이 있는 문항 ' + fixes.length + '개를 찾았어요</b> <span class="hint">(정답이 「-」인 문항 ' + cand.length + '개 중)</span>'
         + '<div style="max-height:200px;overflow:auto;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;padding:6px 10px;margin:6px 0;">' + Object.keys(bySrc).map(k => escapeHtml(k) + ': ' + bySrc[k] + '개').join('<br>') + '</div>'
-        + '<p style="margin:6px 0 0;"><button type="button" class="btn primary" id="fixans-go">' + fixes.length + '개 정답 고치기</button> <button type="button" class="btn ghost" id="fixans-close">닫기</button> <span id="fixans-msg2" class="hint"></span></p>';
+        + '<p style="margin:6px 0 0;"><button type="button" class="btn primary" id="fixans-go">' + fixes.length + '개 정답 고치기</button> <button type="button" class="btn ghost" id="fixans-close">닫기</button> <span id="fixans-msg2" class="hint"></span></p>' + manualHtml();
+      bindManual();
       document.getElementById('fixans-close').onclick = () => { box.style.display = 'none'; };
       document.getElementById('fixans-go').onclick = async () => {
         const go = document.getElementById('fixans-go'), m2 = document.getElementById('fixans-msg2'); go.disabled = true;
