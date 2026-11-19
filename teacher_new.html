@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611192330">
+<link rel="stylesheet" href="css/style.css?v=202611192340">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611192330"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611192330"></script>
-<script src="js/printpdf.js?v=202611192330"></script>
-<script src="js/vendor/pdf.min.js?v=202611192330"></script>
-<script src="js/config.js?v=202611192330"></script>
-<script src="js/api.js?v=202611192330"></script>
-<script src="js/common.js?v=202611192330"></script>
-<script src="js/ocr.js?v=202611192330"></script>
-<script src="js/bankcore.js?v=202611192330"></script>
-<script src="js/pdfui.js?v=202611192330"></script>
-<script src="js/pdfview.js?v=202611192330"></script>
+<script src="js/vendor/qrcode.min.js?v=202611192340"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611192340"></script>
+<script src="js/printpdf.js?v=202611192340"></script>
+<script src="js/vendor/pdf.min.js?v=202611192340"></script>
+<script src="js/config.js?v=202611192340"></script>
+<script src="js/api.js?v=202611192340"></script>
+<script src="js/common.js?v=202611192340"></script>
+<script src="js/ocr.js?v=202611192340"></script>
+<script src="js/bankcore.js?v=202611192340"></script>
+<script src="js/pdfui.js?v=202611192340"></script>
+<script src="js/pdfview.js?v=202611192340"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1055,7 +1055,7 @@ function showAutoReview(R) {
         const pgs = x.peekPages || [], hitP = pgs.filter(p => p.hit), restP = pgs.filter(p => !p.hit);
         const pageHtml = pgs.length ? '<div style="margin:8px 0;"><b style="font-size:13px;">📄 원본 PDF 정답·해설 쪽 (' + hitP.map(p => p.n + '쪽').join(', ') + ')</b><div class="hint" style="margin:2px 0 6px;">그림을 누르면 크게 보여요.</div>' + hitP.map(p => '<img src="' + p.url + '" alt="' + p.n + '쪽" style="width:min(520px,100%); border:1px solid var(--line); border-radius:6px; margin:0 8px 8px 0; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(520px,100%)\':\'100%\'">').join('') + (restP.length ? '<details><summary style="cursor:pointer; font-size:13px;">나머지 쪽 보기 (' + restP.length + '쪽)</summary>' + restP.map(p => '<img src="' + p.url + '" alt="' + p.n + '쪽" style="width:min(520px,100%); border:1px solid var(--line); border-radius:6px; margin:6px 8px 0 0; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(520px,100%)\':\'100%\'">').join('') + '</details>' : '') + '</div>' : '';
         box.innerHTML = pageHtml + '<div class="hint" style="margin:4px 0;">문항마다 정답이 적힌 부분이에요. 오른쪽 숫자가 지금 입력된 정답이고, 다르면 위쪽 칸에서 고치고 「저장」을 누르세요.</div><div class="rv-imgs">' +
-          cur.map((a, i) => '<div class="rv-img"><b>' + (i + 1) + '번 &nbsp;<input type="text" class="pk-in ag-in" data-n="' + (i + 1) + '" value="' + escapeHtml(a || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + (imgs[i + 1] ? '<img src="' + imgs[i + 1] + '" alt="' + (i + 1) + '번 정답 부분">' : (x.qthumb && x.qthumb[i + 1] ? '<img src="' + x.qthumb[i + 1] + '" alt="' + (i + 1) + '번 문제"><span class="hint">정답 그림이 없어서 문제 그림을 보여 줘요 — 「정답 쪽 보면서 입력」을 쓰세요</span>' : '<span class="hint">그림 없음 — 「정답 쪽 보면서 입력」으로 정답 쪽을 보세요</span>')) + '</div>').join('') + '</div>';
+          cur.map((a, i) => '<div class="rv-img"><b>' + numNameOf(cur, i + 1) + ' &nbsp;<input type="text" class="pk-in ag-in" data-n="' + (i + 1) + '" value="' + escapeHtml(a || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + (imgs[i + 1] ? '<img src="' + imgs[i + 1] + '" alt="' + (i + 1) + '번 정답 부분">' : (x.qthumb && x.qthumb[i + 1] ? '<img src="' + x.qthumb[i + 1] + '" alt="' + (i + 1) + '번 문제"><span class="hint">정답 그림이 없어서 문제 그림을 보여 줘요 — 「정답 쪽 보면서 입력」을 쓰세요</span>' : '<span class="hint">그림 없음 — 「정답 쪽 보면서 입력」으로 정답 쪽을 보세요</span>')) + '</div>').join('') + '</div>';
         bindPk(box);
       };
       pb.addEventListener('click', async () => {
@@ -1105,7 +1105,7 @@ function showAutoReview(R) {
       const g0 = (q[0] && q[0].grade) || '';
       body.className = 'rv-ubody'; body.innerHTML = '<div class="hint" style="margin:0 0 6px; font-weight:700; color:#0F766E;">💾 단원·소단원은 고르는 즉시 자동 저장돼요 (저장 버튼을 누를 필요 없어요). 번호 옆에 ✅ 저장됨이 보이면 끝난 거예요.</div><div class="qunit-row" style="flex-wrap:wrap;"><b>전체</b><select class="rv-allu" style="width:auto; max-width:100%;">' + unitSelectOptions(g0, '', '') + '</select><span class="sub-wrap"><select class="rv-alls" style="width:auto; max-width:100%;"></select></span><button type="button" class="btn outline rv-allbtn" style="padding:4px 10px;">이 시험지 전체에 적용</button><span class="hint rv-umsg" style="margin:0; position:sticky; top:0; background:#fff; font-weight:700;"></span></div>' +
         '<div class="qunit-row" style="flex-wrap:wrap;"><b>📏 구간</b><input type="number" class="rv-rf" min="1" placeholder="시작" style="width:64px;"> <span>번 ~</span> <input type="number" class="rv-rt" min="1" placeholder="끝" style="width:64px;"> <span>번</span><button type="button" class="btn outline rv-rangebtn" style="padding:4px 10px;">위에서 고른 단원·소단원을 이 구간에 적용</button></div><div class="hint rv-rsum" style="margin:2px 0 6px; font-weight:700;"></div>' +
-        q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b>' + o.n + '번</b>' + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span></div>').join('');
+        q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b title="' + o.n + '번">' + numNameOf(x.answers, o.n) + '</b>' + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span></div>').join('');
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
       { const hd = document.createElement('div'); hd.className = 'rv-uhead'; hd.style.cssText = 'position:sticky; top:0; z-index:6; background:#fff; padding:6px 0 4px; border-bottom:2px solid var(--line); box-shadow:0 4px 6px -4px rgba(0,0,0,.15);';
         const kids = Array.from(body.children).slice(0, 4); body.insertBefore(hd, kids[0]); kids.forEach(k => hd.appendChild(k)); }       // 전체·구간 지정 줄을 맨 위에 고정해서, 아래로 내려가도 구간 버튼이 보이게 한다

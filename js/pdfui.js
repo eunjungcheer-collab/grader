@@ -110,6 +110,11 @@ function relNum(q, canvas) {
   return r && off ? [r[0], Math.round((r[1] + off) * 10) / 10, r[2], Math.round((r[3] + off) * 10) / 10] : r;
 }
 
+// 맨 뒤에 연속으로 이어지는 주관식(-)은 「서술형 1번, 2번…」으로 부른다 (시험지에 적힌 이름과 같게). 중간에 섞인 주관식은 그냥 번호
+function numNameOf(answers, n) {
+  const a = (answers || []).map(x => String(x === undefined || x === null ? '' : (x.answer !== undefined ? x.answer : x)).trim()); let k = a.length; while (k > 0 && a[k - 1] === '-') k--;
+  return (k < a.length && n > k && n <= a.length) ? '서술형 ' + (n - k) + '번' : n + '번';
+}
 function attachAnswerAdvance(root) {
   const inputs = Array.from(root.querySelectorAll('input.ans-input'));
   // 주관식(회색·비활성)으로 표시된 칸은 건너뛰고 다음/이전 "입력 가능한" 칸으로 간다
