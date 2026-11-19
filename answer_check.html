@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611200005">
+<link rel="stylesheet" href="css/style.css?v=202611200012">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611200005"></script>
-<script src="js/api.js?v=202611200005"></script>
-<script src="js/common.js?v=202611200005"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611200005"></script>
-<script src="js/vendor/pdf.min.js?v=202611200005"></script>
-<script src="js/printpdf.js?v=202611200005"></script>
-<script src="js/pdfui.js?v=202611200005"></script>
-<script src="js/pdfview.js?v=202611200005"></script>
-<script src="js/bankcore.js?v=202611200005"></script>
+<script src="js/config.js?v=202611200012"></script>
+<script src="js/api.js?v=202611200012"></script>
+<script src="js/common.js?v=202611200012"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611200012"></script>
+<script src="js/vendor/pdf.min.js?v=202611200012"></script>
+<script src="js/printpdf.js?v=202611200012"></script>
+<script src="js/pdfui.js?v=202611200012"></script>
+<script src="js/pdfview.js?v=202611200012"></script>
+<script src="js/bankcore.js?v=202611200012"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -313,9 +313,12 @@ function linkScan(exam) {
 }
 async function scanExam(id, say) {
   say = say || function () {};
+  // 시험지와 문제은행을 동시에 불러온다 (문제은행은 한 번 불러오면 계속 쓴다)
+  const bankP = BANK ? null : callApi('listQuestions', { password: getTeacherPassword() });
+  if (bankP) bankP.catch(() => {});
   const exam = await callApi('getExamDetail', { password: getTeacherPassword(), id: id });
   if (!exam.ok) throw new Error(exam.error || '시험지를 불러오지 못했어요');
-  if (!BANK) { const lq = await callApi('listQuestions', { password: getTeacherPassword() }); if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요'); BANK = lq.questions; }
+  if (bankP) { const lq = await bankP; if (!lq.ok) throw new Error(lq.error || '문제은행을 불러오지 못했어요'); BANK = lq.questions; }
   const byId = {}; BANK.forEach(q => { byId[q.id] = q; });
   { const ex0 = exam; ex0.id = ex0.id || id; linkScan(ex0); LINK[String(id)] = LINK[String(ex0.id)]; }
   const unk = m => { SCAN[String(id)] = { n: 0, weak: 0, nums: [], unknown: m }; return { exam: exam, found: null, noimg: m }; };
@@ -339,14 +342,15 @@ async function scanExam(id, say) {
   const need = [];
   slots.forEach((s, k) => { for (let j = s.start - 1; j < s.start - 1 + s.k; j++) if (exam.answers[j] === '-') { need.push(k); break; } });
   prefetchImages(need.map(k => picks[k].fileId));
-  const found = [];
-  for (let t = 0; t < need.length; t++) {
-    say('문항 그림을 확인하는 중... ' + (t + 1) + '/' + need.length);
-    const k = need[t], q = picks[k];
+  const found = []; let doneN = 0;
+  const one = async k => {
+    const q = picks[k];
     const im = (await getImgs([q.fileId]))[0];
     let mk = null; try { mk = await BankCore.detectOptionMarkersB64(im.base64); } catch (e) {}
-    found.push({ k: k, q: q, slot: slots[k], b64: im.base64, mc: !!(mk && mk.length === 5), weak: !!(mk && mk.length >= 3 && mk.length < 5) });
-  }
+    say('문항 그림을 확인하는 중... ' + (++doneN) + '/' + need.length);
+    return { k: k, q: q, slot: slots[k], b64: im.base64, mc: !!(mk && mk.length === 5), weak: !!(mk && mk.length >= 3 && mk.length < 5) };
+  };
+  { let nx = 0; await Promise.all([0, 1, 2, 3].map(async () => { while (nx < need.length) { const k = need[nx++]; found.push(await one(k)); } })); found.sort((a, b) => a.k - b.k); }      // 4개씩 동시에 확인
   const mcs = found.filter(f => f.mc), wk = found.filter(f => f.weak);
   SCAN[String(id)] = { n: mcs.length, weak: wk.length, nums: mcs.map(f => f.slot.start), wnums: wk.map(f => f.slot.start), sync: { b: toBank.length, e: toExam.length, d: differ.length } };
   return { exam: exam, found: found, picks: picks, slots: slots, sync: sync, none: !found.length && !toBank.length && !toExam.length && !differ.length };
@@ -368,7 +372,6 @@ async function inspect(id) {
   const fail = m => { box.innerHTML = back + '<div class="banner error">' + escapeHtml(m) + '</div>'; $('ac-back').onclick = goBack; };
   say('시험지를 불러오는 중...');
   try {
-    _imgCache.clear();
     const r = await scanExam(id, say);
     if (r.noimg) return renderNoImages(r.exam, r.noimg);
     const exam = r.exam, found = r.found;
