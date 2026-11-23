@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611231320">
+<link rel="stylesheet" href="css/style.css?v=202611231910">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611231320"></script>
-<script src="js/api.js?v=202611231320"></script>
-<script src="js/common.js?v=202611231320"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611231320"></script>
-<script src="js/vendor/pdf.min.js?v=202611231320"></script>
-<script src="js/printpdf.js?v=202611231320"></script>
-<script src="js/pdfui.js?v=202611231320"></script>
-<script src="js/pdfview.js?v=202611231320"></script>
-<script src="js/bankcore.js?v=202611231320"></script>
+<script src="js/config.js?v=202611231910"></script>
+<script src="js/api.js?v=202611231910"></script>
+<script src="js/common.js?v=202611231910"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611231910"></script>
+<script src="js/vendor/pdf.min.js?v=202611231910"></script>
+<script src="js/printpdf.js?v=202611231910"></script>
+<script src="js/pdfui.js?v=202611231910"></script>
+<script src="js/pdfview.js?v=202611231910"></script>
+<script src="js/bankcore.js?v=202611231910"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -320,6 +320,22 @@ async function unitsUi(exam) {
       }
     } catch (e) { box.style.color = '#B45309'; box.textContent = '저장 확인을 못 했어요: ' + (e.message || e); }
   }, 2500); };
+  // 시험지 이름 끝의 「중2-1,2,5,8단원」은 등록할 때의 단원 선택으로 붙은 것이라, 여기서 단원을 고쳐도 그대로 남는다 → 지금 지정된 단원에 맞게 이름 끝을 자동으로 고친다 (이름 앞부분은 그대로)
+  let _tt = null;
+  const syncTitle = () => { clearTimeout(_tt); _tt = setTimeout(async () => {
+    try {
+      if (!UNIT_SUFFIX_RE.test(String(exam.title || ''))) return;
+      const sfx = unitSuffixText(rows.map(r2 => ({ unit: r2.unit, grade: r2.grade })), ''); if (!sfx) return;
+      const old = exam.title, nt = old.replace(UNIT_SUFFIX_RE, '').trim() + ' ' + sfx; if (nt === old) return;
+      const r = await callApi('updateExamTitle', { password: getTeacherPassword(), id: exam.id, title: nt });
+      if (r && r.ok) {
+        exam.title = nt; (BANK || []).forEach(q2 => { if (q2.source === old) q2.source = nt; });
+        document.querySelectorAll('h2').forEach(h => { if (h.textContent === old) h.textContent = nt; });
+        const bx = $('ac-verify'); if (bx) { bx.style.color = '#166534'; bx.textContent = '✔ 지정된 단원에 맞게 시험지 이름 끝을 「' + sfx + '」로 고쳤어요'; }
+      }
+    } catch (e) {}
+  }, 3500); };
+  syncTitle();
   host.querySelectorAll('.ac-urow').forEach(el => {
     const q = rows.find(x => String(x.id) === el.getAttribute('data-id')), us = el.querySelector('.u'), ss = el.querySelector('.subsel'), fl = el.querySelector('.flash');
     refreshSubSelect(ss, tocEntryFor(q.grade, q.unit), q.sub || '');
@@ -327,7 +343,7 @@ async function unitsUi(exam) {
       fl.textContent = '저장 중...';
       const auto = what === 'sub' ? ((q.auto || 0) & ~1) : (((q.auto || 0) & ~(q.unit === unit ? 0 : 2)) & (sub ? 3 : 2));      // 소단원을 직접 고르면 「자동 추정」 표시(1)를 지운다. 안 지우면 나중에 자동 채우기가 내가 고른 값을 덮어쓸 수 있다
       const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: q.id, unit: unit, sub: sub, auto: auto });
-      if (r.ok) { markDone(exam.id); markOk(exam, true); q.unit = unit; q.sub = sub; q.auto = auto; host.querySelectorAll('.ac-urow[data-id="' + String(q.id).replace(/"/g, '') + '"]').forEach(o => { const u2 = o.querySelector('.u'), s2 = o.querySelector('.subsel'); if (o !== el) { setUnitSelect(u2, unit, q.grade); refreshSubSelect(s2, tocEntryFor(q.grade, unit), sub); } o.style.background = bad(q) ? '#FEF3C7' : ''; const f2 = o.querySelector('.flash'); if (f2) f2.textContent = '✓ 저장'; }); verify(); } else { fl.textContent = '⚠️ ' + (r.error || '저장 못함'); }
+      if (r.ok) { markDone(exam.id); markOk(exam, true); q.unit = unit; q.sub = sub; q.auto = auto; syncTitle(); host.querySelectorAll('.ac-urow[data-id="' + String(q.id).replace(/"/g, '') + '"]').forEach(o => { const u2 = o.querySelector('.u'), s2 = o.querySelector('.subsel'); if (o !== el) { setUnitSelect(u2, unit, q.grade); refreshSubSelect(s2, tocEntryFor(q.grade, unit), sub); } o.style.background = bad(q) ? '#FEF3C7' : ''; const f2 = o.querySelector('.flash'); if (f2) f2.textContent = '✓ 저장'; }); verify(); } else { fl.textContent = '⚠️ ' + (r.error || '저장 못함'); }
     };
     ss.addEventListener('change', () => persist(q.unit, ss.value, 'sub'));
     us.addEventListener('change', () => {
