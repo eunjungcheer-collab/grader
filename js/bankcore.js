@@ -1554,8 +1554,41 @@
   // 옛 번호 위치를 아는 문항은 그 자리를 흰색으로 지우고 새 번호(진한 파란 원)를 덮어쓴다.
   // 위치를 모르는 문항(예전에 저장한 것)은 왼쪽 여백에 진한 파란 원을 붙인다.
   // opts: { subtitle, qrReserve(머리글 오른쪽에 비워둘 폭 pt) }
+  // 옛 번호 자리(numRect) 바로 오른쪽에 작은 글씨 찌꺼기(예전에 조합한 시험지에 찍힌 「180~181」 같은 번호표의 남은 부분)가 붙어 있으면 지울 자리를 그만큼 넓힌다.
+  // 안전장치: 번호 자리에서 1.6pt 안에 바로 붙어 있고, 글자가 번호 자리 높이의 62% 이하로 옛 번호 글자보다 크지 않을 때만 (본문 글자는 더 크니 건드리지 않는다). 최대 45pt.
+  async function fitNumRect(b64, numRect, naturalW, imgW) {
+    try {
+      if (!numRect || !b64 || !naturalW || typeof document === 'undefined') return numRect;
+      const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+      const sc = img.naturalWidth / naturalW, cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      const cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0);
+      const x0 = Math.max(0, Math.round(numRect[2] * sc)), y0 = Math.max(0, Math.round(numRect[1] * sc)), y1 = Math.min(cv.height, Math.round(numRect[3] * sc));
+      const maxX = Math.min(cv.width, x0 + Math.round(45 * sc)), bandH = y1 - y0;
+      if (bandH < 4 || x0 >= cv.width - 2) return numRect;
+      const d = cx.getImageData(x0, y0, maxX - x0, bandH).data, w = maxX - x0;
+      const ink = (x, y) => { const i = (y * w + x) * 4; return d[i + 3] > 40 && (d[i] + d[i + 1] + d[i + 2]) / 3 < 170; };
+      const colInk = x => { for (let y = 0; y < bandH; y++) if (ink(x, y)) return true; return false; };
+      const gapMax = Math.max(2, Math.round(1.6 * sc));
+      let last = -1, gap = 0, started = false;
+      for (let x = 0; x < w; x++) {
+        if (colInk(x)) { started = true; last = x; gap = 0; } else { gap++; if (gap > gapMax) break; }
+        if (!started && x > gapMax) break;
+      }
+      if (last < 0) return numRect;
+      let t = bandH, b = -1;
+      for (let y = 0; y < bandH; y++) for (let x = 0; x <= last; x++) if (ink(x, y)) { if (y < t) t = y; if (y > b) b = y; break; }
+      // 번호 자리 안쪽 글자(옛 번호)의 높이를 재서, 붙어 있는 글자가 그보다 크면(본문 글자) 건드리지 않는다
+      const nx1 = Math.max(1, Math.round((numRect[2] - numRect[0]) * sc)), dn = cx.getImageData(Math.max(0, Math.round(numRect[0] * sc)), y0, nx1, bandH).data;
+      let nt = bandH, nb = -1;
+      for (let y = 0; y < bandH; y++) for (let x = 0; x < nx1; x++) { const i = (y * nx1 + x) * 4; if (dn[i + 3] > 40 && (dn[i] + dn[i + 1] + dn[i + 2]) / 3 < 170) { if (y < nt) nt = y; if (y > nb) nb = y; break; } }
+      if (nb < 0 || b < 0 || (b - t + 1) > (nb - nt + 1) * 1.08) return numRect;
+      return [numRect[0], numRect[1], numRect[2] + (last + 2) / sc, numRect[3]];
+    } catch (e) { return numRect; }
+  }
+
   async function composeExamPdf(PDFLib, title, images, opts) {
     opts = opts || {};
+    for (const im of images) { if (im && im.numRect && im.base64) im.numRect = await fitNumRect(im.base64, im.numRect, im.naturalW, im.width); }
     const { PDFDocument, rgb, StandardFonts } = PDFLib;
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -4430,6 +4463,7 @@
   }
 
   root.BankCore = {
+    fitNumRect: fitNumRect,
     scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, extendCutQuestions: extendCutQuestions, parseBookToc: parseBookToc, coverTitleSpotByPixels: coverTitleSpotByPixels, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,

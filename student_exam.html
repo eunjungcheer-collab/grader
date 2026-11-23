@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611201112">
+<link rel="stylesheet" href="css/style.css?v=202611231320">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611201112"></script>
-<script src="js/api.js?v=202611201112"></script>
-<script src="js/common.js?v=202611201112"></script>
-<script src="js/confirmans.js?v=202611201112"></script>
+<script src="js/config.js?v=202611231320"></script>
+<script src="js/api.js?v=202611231320"></script>
+<script src="js/common.js?v=202611231320"></script>
+<script src="js/confirmans.js?v=202611231320"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -198,6 +198,10 @@ async function loadExam() {
           const eb = document.getElementById('edit-banner'); eb.style.display = ''; eb.style.background = '#FFF4E0'; eb.style.border = '1px solid #F3D9A4';
           eb.innerHTML = '📝 <b>' + escapeHtml(last.name) + '</b>님이 낸 답안 중 비워 둔 문항(' + escapeHtml(rangeText(last.skipped)) + ')이 있어요. <button type="button" class="btn primary" id="resume-btn" style="padding:6px 12px; margin-left:6px;">이어서 입력하기</button>';
           document.getElementById('resume-btn').addEventListener('click', () => goEdit('fill', last.submittedAt, last.answers, last.name, false, last.oor));
+        } else if (last && last.wrong && last.wrong.length) {
+          const eb = document.getElementById('edit-banner'); eb.style.display = ''; eb.style.background = '#FDECEA'; eb.style.border = '1px solid #E8A8A0';
+          const u = 'student_retry.html?id=' + encodeURIComponent(examId) + '&n=' + last.wrong.join(',') + '&name=' + encodeURIComponent(last.name || '');
+          eb.innerHTML = '🔁 <b>' + escapeHtml(last.name) + '</b>님이 틀린 문항(' + escapeHtml(rangeText(last.wrong)) + ')이 있어요. <a class="btn primary" href="' + u + '" style="padding:6px 12px; margin-left:6px; display:inline-block;">틀린 문제만 다시 풀기</a>';
         }
       } catch (e) {}
     }
@@ -287,7 +291,7 @@ async function submitAnswers(e) {
                      : await callApi('submitAnswer', { defer: true, id: examId, studentName: name, answers: arr, outOfRange: oorNew });
     if (!res.ok) { alert(res.error || '제출에 실패했어요.'); btn.disabled = false; btn.textContent = '제출하고 채점받기'; return; }
     if (!EDIT) callApi('afterSubmit', { id: examId, studentName: name }).catch(() => {});
-    try { localStorage.setItem('sx_last_' + examId, JSON.stringify({ name: name, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], oor: res.outOfRange || [], answers: res.studentAnswers })); } catch (e) {}      // 알림은 결과를 보여 준 뒤 따로 보낸다
+    try { localStorage.setItem('sx_last_' + examId, JSON.stringify({ name: name, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], oor: res.outOfRange || [], answers: res.studentAnswers, wrong: (res.results || []).map((r, i) => r === 'x' ? i + 1 : 0).filter(Boolean) })); } catch (e) {}      // 알림은 결과를 보여 준 뒤 따로 보낸다
 
     const sc100 = res.total ? to100(res.score, res.total) : null;
     const wrongN = res.results.filter(r => r === 'x').length;

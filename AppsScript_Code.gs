@@ -575,23 +575,61 @@ function actionSubmitAnswer_(p) {
   const score100 = objective ? Math.round(score / objective * 100) : 0;
 
   const scoresSheet = ss.getSheetByName(SHEET_SCORES);
-  const submittedAt = new Date().toISOString();
-  const oor = oorClean_(p.outOfRange, studentAnswers);      // 「시험 범위가 아니라서」 뺀 문항 (나중에 풀 문항과 구분, 12열)
-  const rowVals = [String(found.row[0]), p.studentName || '이름없음', studentAnswers.join(','), score, objective, submittedAt, score100];
-  if (oor.length) { rowVals.push('', '', '', '', JSON.stringify(oor)); }
-  scoresSheet.appendRow(rowVals);
+  let submittedAt = new Date().toISOString();
+  let oor = oorClean_(p.outOfRange, studentAnswers);      // 「시험 범위가 아니라서」 뺀 문항 (나중에 풀 문항과 구분, 12열)
+  // 같은 학생이 같은 시험에 「나중에 풀기」로 비워 둔 문항이 남은 기록이 있으면(「이어서 입력」을 거치지 않고 새로 제출해도) 새 기록을 만들지 않고 그 기록에 합친다.
+  // 이미 낸 답은 그대로 두고(바꿀 수 없다), 비워 둔 문항만 이번 답으로 채운다.
+  let mergedInto = false, lastScore = score, lastObjective = objective, lastScore100 = score100, lastResults = results, lastAnswers = studentAnswers, lastSkipped = skipped;
+  const lock0 = LockService.getScriptLock(); lock0.waitLock(30000);
+  try {
+    const eid0 = String(found.row[0]), nm1 = String(p.studentName || '이름없음').trim(), lastRow0 = scoresSheet.getLastRow();
+    if (lastRow0 >= 2) {
+      const d0 = scoresSheet.getRange(2, 1, lastRow0 - 1, 12).getValues();
+      for (let i = d0.length - 1; i >= 0; i--) {
+        if (String(d0[i][0]) !== eid0 || String(d0[i][1]).trim() !== nm1) continue;
+        const t0 = new Date(d0[i][5]).getTime();
+        if (isFinite(t0) && Date.now() - t0 <= EDIT_WINDOW_MS_ && pendingOf_(d0[i]) > 0) {
+          const oldA = String(d0[i][2]).split(',').map(function (a) { return String(a).trim(); });
+          let oorOld0 = []; try { oorOld0 = d0[i][11] ? (JSON.parse(String(d0[i][11])) || []) : []; } catch (e) {}
+          const mer = []; let filled = 0;
+          for (let k = 0; k < correctAnswers.length; k++) {
+            const o = oldA[k] === undefined ? '' : oldA[k];
+            if (o !== '' && o !== '~') mer.push(o);
+            else if (oorOld0.indexOf(k + 1) >= 0) mer.push('~');
+            else { const nv = studentAnswers[k] === undefined ? '~' : studentAnswers[k]; if (nv !== '~' && nv !== '') filled++; mer.push(nv === '' ? '~' : nv); }
+          }
+          if (filled > 0) {
+            const g2 = gradeAnswers_(correctAnswers, mer), s100 = g2.objective ? Math.round(g2.score / g2.objective * 100) : 0;
+            const oorAll0 = oorClean_(oorOld0.concat(Array.isArray(p.outOfRange) ? p.outOfRange : []), mer);
+            scoresSheet.getRange(i + 2, 12).setValue(oorAll0.length ? JSON.stringify(oorAll0) : '');
+            scoresSheet.getRange(i + 2, 3).setValue(mer.join(','));
+            scoresSheet.getRange(i + 2, 4, 1, 2).setValues([[g2.score, g2.objective]]);
+            scoresSheet.getRange(i + 2, 7).setValue(s100);
+            mergedInto = true; submittedAt = (d0[i][5] instanceof Date) ? d0[i][5].toISOString() : String(d0[i][5]);
+            oor = oorAll0; lastScore = g2.score; lastObjective = g2.objective; lastScore100 = s100; lastResults = g2.results; lastAnswers = mer; lastSkipped = g2.skipped;
+          }
+        }
+        break;      // 가장 최근 기록 하나만 본다
+      }
+    }
+    if (!mergedInto) {
+      const rowVals = [String(found.row[0]), p.studentName || '이름없음', studentAnswers.join(','), score, objective, submittedAt, score100];
+      if (oor.length) { rowVals.push('', '', '', '', JSON.stringify(oor)); }
+      scoresSheet.appendRow(rowVals);
+    }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock0.releaseLock(); }
   if (p.defer) {      // 가장 빠른 알림: 제출을 받자마자 이름·점수만 먼저 보낸다 (자세한 분석은 뒤의 afterSubmit 에서)
     try {
       const nm0 = String(p.studentName || '이름없음');
       CacheService.getScriptCache().put('ep_' + String(found.row[0]) + '|' + nm0, '1', 300);
-      pushToTeacher_((objective > 0 && score100 < 70 ? '📉 ' : '📝 ') + nm0 + ' 학생 제출 · ' + score100 + '점' + (objective > 0 && score100 < 70 ? ' (70점 미만)' : ''), String(found.row[1]) + '\n' + score + '/' + objective, '?sub=' + encodeURIComponent(String(found.row[0])) + '&stu=' + encodeURIComponent(nm0));
+      pushToTeacher_((lastObjective > 0 && lastScore100 < 70 ? '📉 ' : '📝 ') + nm0 + ' 학생 ' + (mergedInto ? '이어서 제출' : '제출') + ' · ' + lastScore100 + '점' + (lastObjective > 0 && lastScore100 < 70 ? ' (70점 미만)' : ''), String(found.row[1]) + '\n' + lastScore + '/' + lastObjective, '?sub=' + encodeURIComponent(String(found.row[0])) + '&stu=' + encodeURIComponent(nm0));
     } catch (e) {}
   }
-  if (!p.defer) { try { afterSubmit_(ss, found, p, score, objective, score100); } catch (e) {} }      // 알림 때문에 제출이 실패하면 안 된다. defer면 학생에게 결과부터 보내고 알림은 따로(afterSubmit) 보낸다
+  if (!p.defer) { try { afterSubmit_(ss, found, p, lastScore, lastObjective, lastScore100); } catch (e) {} }      // 알림 때문에 제출이 실패하면 안 된다. defer면 학생에게 결과부터 보내고 알림은 따로(afterSubmit) 보낸다
 
   return {
-    ok: true, score: score, total: objective, score100: score100, subjective: subjectiveNumbers_(correctAnswers), skipped: skipped.filter(function (n) { return oor.indexOf(n) < 0; }), outOfRange: oor,
-    results: results, studentAnswers: studentAnswers, submittedAt: submittedAt, shiftSuspect: shiftSuspect_(correctAnswers, studentAnswers),
+    ok: true, score: lastScore, total: lastObjective, score100: lastScore100, subjective: subjectiveNumbers_(correctAnswers), skipped: lastSkipped.filter(function (n) { return oor.indexOf(n) < 0; }), outOfRange: oor,
+    results: lastResults, studentAnswers: lastAnswers, submittedAt: submittedAt, shiftSuspect: shiftSuspect_(correctAnswers, lastAnswers), merged: mergedInto,
   };
 }
 
