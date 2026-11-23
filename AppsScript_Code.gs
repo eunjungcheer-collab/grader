@@ -580,10 +580,11 @@ function actionSubmitAnswer_(p) {
   // 같은 학생이 같은 시험에 「나중에 풀기」로 비워 둔 문항이 남은 기록이 있으면(「이어서 입력」을 거치지 않고 새로 제출해도) 새 기록을 만들지 않고 그 기록에 합친다.
   // 이미 낸 답은 그대로 두고(바꿀 수 없다), 비워 둔 문항만 이번 답으로 채운다.
   let mergedInto = false, lastScore = score, lastObjective = objective, lastScore100 = score100, lastResults = results, lastAnswers = studentAnswers, lastSkipped = skipped;
-  const lock0 = LockService.getScriptLock(); lock0.waitLock(30000);
+  // 학생 제출은 선생님의 다른 저장 작업(문제은행 저장 등)이 잠금을 오래 쥐고 있어도 멈추면 안 된다 → 잠금은 4초만 기다리고, 못 잡으면 합치지 않고 그냥 새 기록으로 저장한다
+  const lock0 = LockService.getScriptLock(); let got0 = false; try { got0 = lock0.tryLock(4000); } catch (e) {}
   try {
     const eid0 = String(found.row[0]), nm1 = String(p.studentName || '이름없음').trim(), lastRow0 = scoresSheet.getLastRow();
-    if (lastRow0 >= 2) {
+    if (got0 && lastRow0 >= 2) {
       const d0 = scoresSheet.getRange(2, 1, lastRow0 - 1, 12).getValues();
       for (let i = d0.length - 1; i >= 0; i--) {
         if (String(d0[i][0]) !== eid0 || String(d0[i][1]).trim() !== nm1) continue;
@@ -617,7 +618,7 @@ function actionSubmitAnswer_(p) {
       if (oor.length) { rowVals.push('', '', '', '', JSON.stringify(oor)); }
       scoresSheet.appendRow(rowVals);
     }
-  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock0.releaseLock(); }
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} if (got0) lock0.releaseLock(); }
   if (p.defer) {      // 가장 빠른 알림: 제출을 받자마자 이름·점수만 먼저 보낸다 (자세한 분석은 뒤의 afterSubmit 에서)
     try {
       const nm0 = String(p.studentName || '이름없음');
