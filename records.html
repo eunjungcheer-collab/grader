@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 기록 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611231950">
+<link rel="stylesheet" href="css/style.css?v=202611232005">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -49,17 +49,17 @@
   </div>
 </template>
 
-<script src="js/vendor/pdf.min.js?v=202611231950"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611231950"></script>
-<script src="js/vendor/qrcode.min.js?v=202611231950"></script>
-<script src="js/config.js?v=202611231950"></script>
-<script src="js/api.js?v=202611231950"></script>
-<script src="js/common.js?v=202611231950"></script>
-<script src="js/bankcore.js?v=202611231950"></script>
-<script src="js/wrongnote.js?v=202611231950"></script>
-<script src="js/printpdf.js?v=202611231950"></script>
-<script src="js/wnpanel.js?v=202611231950"></script>
-<script src="js/pdfui.js?v=202611231950"></script>
+<script src="js/vendor/pdf.min.js?v=202611232005"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611232005"></script>
+<script src="js/vendor/qrcode.min.js?v=202611232005"></script>
+<script src="js/config.js?v=202611232005"></script>
+<script src="js/api.js?v=202611232005"></script>
+<script src="js/common.js?v=202611232005"></script>
+<script src="js/bankcore.js?v=202611232005"></script>
+<script src="js/wrongnote.js?v=202611232005"></script>
+<script src="js/printpdf.js?v=202611232005"></script>
+<script src="js/wnpanel.js?v=202611232005"></script>
+<script src="js/pdfui.js?v=202611232005"></script>
 <style>
 .rs-grid { display:flex; flex-wrap:wrap; gap:5px; }
 .rs-cell { min-width:34px; padding:5px 6px; border-radius:8px; text-align:center; font-weight:700; font-size:13px; border:1.5px solid transparent; line-height:1.1; }
@@ -80,7 +80,7 @@ const PER_PAGE = 20;
 let all = [], retries = [], examFilter = '', page = 1;
 
 const hydrate = wnHydrate;      // js/wrongnote.js
-wnPanelMount($('wn-host'), { getAll: async () => all });
+wnPanelMount($('wn-host'));      // 학생 기록은 알림 화면과 똑같이 서버에서 받는다 (이 화면의 목록은 처음에 옛 저장본 600건만 보일 수 있어 일부만 나왔다)
 const REC_CACHE = 'rec_cache_v1';
 async function loadBankUnitsBg() {
   try {
