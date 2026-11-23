@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611231935">
+<link rel="stylesheet" href="css/style.css?v=202611231950">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611231935"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611231935"></script>
-<script src="js/printpdf.js?v=202611231935"></script>
-<script src="js/vendor/pdf.min.js?v=202611231935"></script>
-<script src="js/config.js?v=202611231935"></script>
-<script src="js/api.js?v=202611231935"></script>
-<script src="js/common.js?v=202611231935"></script>
-<script src="js/ocr.js?v=202611231935"></script>
-<script src="js/bankcore.js?v=202611231935"></script>
-<script src="js/pdfui.js?v=202611231935"></script>
-<script src="js/pdfview.js?v=202611231935"></script>
+<script src="js/vendor/qrcode.min.js?v=202611231950"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611231950"></script>
+<script src="js/printpdf.js?v=202611231950"></script>
+<script src="js/vendor/pdf.min.js?v=202611231950"></script>
+<script src="js/config.js?v=202611231950"></script>
+<script src="js/api.js?v=202611231950"></script>
+<script src="js/common.js?v=202611231950"></script>
+<script src="js/ocr.js?v=202611231950"></script>
+<script src="js/bankcore.js?v=202611231950"></script>
+<script src="js/pdfui.js?v=202611231950"></script>
+<script src="js/pdfview.js?v=202611231950"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1144,7 +1144,23 @@ function showAutoReview(R) {
       const upSum = () => { const d = row.querySelector('.rv-usum'); if (d) d.innerHTML = unitSumHtml(x); };
       const idN = {}; Object.keys(x.bankIds || {}).forEach(k => { idN[x.bankIds[k]] = k; });
       const mark = (items, t, c) => items.forEach(it => { const el = body.querySelector('.rv-st[data-n="' + idN[it.id] + '"]'); if (el) { el.textContent = t; el.style.color = c; } });
-      const save = async (items) => { upSum(); umsg.textContent = '저장 중...'; mark(items, '⏳ 저장 중', '#B45309'); try { for (let i = 0; i < items.length; i += 40) { const r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: items.slice(i, i + 40) }); if (!r.ok) throw new Error(r.error || '저장 실패'); } umsg.textContent = '✅ 저장했어요'; mark(items, '✅ 저장됨', '#15803D'); persistReview(R); } catch (err) { umsg.textContent = '⚠️ ' + err.message; mark(items, '⚠️ 저장 안 됨', '#C1392B'); } };
+      // 저장 요청이 한꺼번에 몰리면 서버가 줄 서서 기다리다 「잠금 시간초과」가 난다 → 한 번에 하나씩 차례로 보내고, 잠금 때문에 실패하면 잠시 뒤 자동으로 다시 보낸다 (최대 4번)
+      const save = (items) => { upSum(); umsg.textContent = '저장 중...'; mark(items, '⏳ 저장 중', '#B45309');
+        const run = async () => {
+          try {
+            for (let i = 0; i < items.length; i += 40) {
+              const part = items.slice(i, i + 40); let r = null, tries = 0;
+              while (true) {
+                try { r = await callApi('updateQuestions', { password: getTeacherPassword(), updates: part }); } catch (e) { r = { ok: false, error: e.message || String(e) }; }
+                if (r && r.ok) break;
+                if (++tries >= 4 || !/잠금|lock|시간초과|timeout|Exception/i.test(String((r && r.error) || ''))) throw new Error((r && r.error) || '저장 실패');
+                umsg.textContent = '서버가 바빠서 다시 시도하는 중... (' + tries + '/3)'; await new Promise(res => setTimeout(res, 3000 * tries));
+              }
+            }
+            umsg.textContent = '✅ 저장했어요'; mark(items, '✅ 저장됨', '#15803D'); persistReview(R);
+          } catch (err) { umsg.textContent = '⚠️ ' + err.message + ' — 같은 칸을 다시 한 번 골라 주세요'; mark(items, '⚠️ 저장 안 됨', '#C1392B'); }
+        };
+        window.__rvSaveChain = (window.__rvSaveChain || Promise.resolve()).then(run, run); return window.__rvSaveChain; };
       body.querySelectorAll('.rv-u').forEach(us => {
         const n = +us.dataset.n, ss = body.querySelector('.rv-s[data-n="' + n + '"]'), o = q.find(z => z.n === n);
         refreshSubSelect(ss, tocEntryFor(o.grade, o.unit), o.sub);

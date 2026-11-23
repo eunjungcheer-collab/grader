@@ -928,7 +928,7 @@ function actionUpdateQuestion_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   // 다른 요청(많은 문항을 한꺼번에 고치는 요청 등)과 동시에 시트를 고치면, 한쪽이 읽어 둔 옛 값을 다시 써서 방금 고친 단원·소단원이 되돌아갈 수 있다 → 같은 잠금 안에서 고친다
   const lockU = LockService.getScriptLock();
-  lockU.waitLock(30000);
+  lockU.waitLock(55000);
   try {
     const sheet = questionsSheet_();
     const row = findQuestionRow_(sheet, p.id);
@@ -1002,7 +1002,7 @@ function actionUpdateQuestions_(p) {
   const updates = p.updates || [];
   if (!updates.length) return { ok: true, updated: 0 };
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  lock.waitLock(55000);
   try {
     const sheet = questionsSheet_();
     const last = sheet.getLastRow();
