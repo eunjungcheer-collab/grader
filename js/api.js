@@ -60,6 +60,12 @@ async function callApiSWR(action, params, render) {
 }
 window.callApiSWR = callApiSWR;
 
+// 저장이 끝나기 전에 창을 닫거나 다른 화면으로 나가면 방금 고른 값이 사라진다 → 저장 중인 요청이 있으면 나가기 전에 경고한다
+const _SAVE_GUARD_RE = /^(updateQuestions?|updateExamAnswers|updateExamTitle|saveQuestions|deleteQuestions?|deleteExams?|saveRedoUnits)$/;
+window.__savePending = 0; window.__saveDirty = 0;
+window.savePendingCount = function () { return (window.__savePending || 0) + (window.__saveDirty || 0); };
+window.addEventListener('beforeunload', function (e) { if (window.savePendingCount() > 0) { e.preventDefault(); e.returnValue = '아직 저장이 되지 않았어요'; return e.returnValue; } });
+window.warnIfSaving = function () { if (window.savePendingCount() > 0) { alert('⏳ 아직 저장이 되지 않았어요.\n\n「✅ 저장됨」 표시가 뜰 때까지 잠깐만 기다린 뒤에 나가 주세요.'); return true; } return false; };
 async function callApi(action, params) {
   if (_PF_OK.test(action)) { const hit = _pfGet(action, params); if (hit) return JSON.parse(JSON.stringify(hit)); }
   else if (!_PF_READ.test(action)) _pfClear();
@@ -68,7 +74,8 @@ async function callApi(action, params) {
     if (c) return { ok: true, questions: c.slice(), cached: true };
   }
   if (_QC_WRITE_RE.test(action)) _qcClear();
-  const out = await _callApiRaw(action, params);
+  const _wr = _SAVE_GUARD_RE.test(action); if (_wr) window.__savePending = (window.__savePending || 0) + 1;
+  let out; try { out = await _callApiRaw(action, params); } finally { if (_wr) window.__savePending = Math.max(0, (window.__savePending || 1) - 1); }
   if (action === 'listQuestions' && out && out.ok && Array.isArray(out.questions)) _qcSet(out.questions);
   if (_QC_WRITE_RE.test(action)) _qcClear();
   return out;

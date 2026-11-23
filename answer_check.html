@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611232005">
+<link rel="stylesheet" href="css/style.css?v=202611232030">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611232005"></script>
-<script src="js/api.js?v=202611232005"></script>
-<script src="js/common.js?v=202611232005"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611232005"></script>
-<script src="js/vendor/pdf.min.js?v=202611232005"></script>
-<script src="js/printpdf.js?v=202611232005"></script>
-<script src="js/pdfui.js?v=202611232005"></script>
-<script src="js/pdfview.js?v=202611232005"></script>
-<script src="js/bankcore.js?v=202611232005"></script>
+<script src="js/config.js?v=202611232030"></script>
+<script src="js/api.js?v=202611232030"></script>
+<script src="js/common.js?v=202611232030"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611232030"></script>
+<script src="js/vendor/pdf.min.js?v=202611232030"></script>
+<script src="js/printpdf.js?v=202611232030"></script>
+<script src="js/pdfui.js?v=202611232030"></script>
+<script src="js/pdfview.js?v=202611232030"></script>
+<script src="js/bankcore.js?v=202611232030"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -307,7 +307,7 @@ async function unitsUi(exam) {
   { const miss = lines.filter(l => !l.q).map(l => l.n); if (miss.length) { host.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:8px 0;padding:10px 14px;border:2px solid #B45309;"><b>문제은행에 빠진 번호가 ' + miss.length + '개 있어요</b> (' + miss.slice(0, 12).join(', ') + (miss.length > 12 ? ' …' : '') + '번). 하나씩 만들지 말고 아래 버튼을 누르세요.<br><button type="button" class="btn primary" id="ac-fill" style="margin-top:8px;padding:10px 16px;">🧩 빠진 ' + miss.length + '개 번호만 채우기 (있는 문항은 그대로)</button> <span class="hint" id="ac-fill-msg"></span><br><button type="button" class="btn outline" id="ac-redo2" style="margin-top:8px;padding:8px 14px;">🔁 이 시험지 통째로 다시 올리기 (QR 그대로)</button> <span class="hint" id="ac-redo2-msg"></span></div>'); $('ac-fill').addEventListener('click', () => fillMissing(exam, miss, $('ac-fill-msg'), $('ac-fill'))); $('ac-redo2').addEventListener('click', () => redoBank(exam, '문제은행에 빠진 번호: ' + miss.join(', ') + '번', $('ac-redo2-msg'), $('ac-redo2'))); } }
   // 저장했다고 뜬 값이 서버에 실제로 남았는지, 잠시 뒤 서버에서 다시 읽어 확인한다. 다르면 한 번 다시 저장하고, 그래도 다르면 빨간 글씨로 알려 준다
   let _vt = null, _vOkAt = '';
-  const verify = () => { clearTimeout(_vt); _vt = setTimeout(async () => {
+  const verify = () => { clearTimeout(_vt); window.__saveDirty = 1; _vt = setTimeout(async () => {
     const box = $('ac-verify') || (() => { const d = document.createElement('div'); d.id = 'ac-verify'; d.className = 'hint'; d.style.cssText = 'margin:6px 0;font-weight:700;'; host.insertBefore(d, host.firstChild); return d; })();
     try {
       for (let round = 0; round < 2; round++) {
@@ -318,7 +318,7 @@ async function unitsUi(exam) {
         if (round === 0) { for (const r2 of bad2) { if (byId[r2.id]) await callApi('updateQuestion', { password: getTeacherPassword(), id: r2.id, unit: r2.unit || '', sub: r2.sub || '', auto: r2.auto || 0 }); } }
         else { box.style.color = '#B91C1C'; box.textContent = '⚠️ 서버에 저장이 안 된 문항이 있어요: ' + bad2.map(r2 => (r2.num || '?') + '번' + (byId[r2.id] ? '' : '(서버에 없음)')).join(', ') + ' — 이 번호는 다시 골라 주세요. 계속 이러면 알려 주세요.'; }
       }
-    } catch (e) { box.style.color = '#B45309'; box.textContent = '저장 확인을 못 했어요: ' + (e.message || e); }
+    } catch (e) { box.style.color = '#B45309'; box.textContent = '저장 확인을 못 했어요: ' + (e.message || e); } finally { window.__saveDirty = 0; }
   }, 2500); };
   // 시험지 이름 끝의 「중2-1,2,5,8단원」은 등록할 때의 단원 선택으로 붙은 것이라, 여기서 단원을 고쳐도 그대로 남는다 → 지금 지정된 단원에 맞게 이름 끝을 자동으로 고친다 (이름 앞부분은 그대로)
   let _tt = null;
@@ -563,7 +563,7 @@ document.addEventListener('app:back', function (e) { const d = $('ac-detail'); i
 function hideDetail() { $('ac-detail').style.display = 'none'; $('ac-list').style.display = 'block'; try { renderList(); } catch (e) {} }
 function pushDetailState() { try { if (!(history.state && history.state.acDetail)) history.pushState({ acDetail: 1 }, '', location.href); } catch (e) {} }
 window.addEventListener('popstate', () => { const d = $('ac-detail'); if (d && d.style.display !== 'none') hideDetail(); });
-function goBack(ev) { if (ev) ev.preventDefault(); if (history.state && history.state.acDetail) { try { history.back(); return; } catch (e) {} } hideDetail(); }
+function goBack(ev) { if (ev) ev.preventDefault(); if (window.warnIfSaving && warnIfSaving()) return; if (history.state && history.state.acDetail) { try { history.back(); return; } catch (e) {} } hideDetail(); }
 
 // 문제은행에서 그림을 못 찾는 시험지(PDF로만 올린 것 등): 번호별로 정답만 고치게 한다
 function renderNoImages(exam, why) {
