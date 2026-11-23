@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>정답 점검 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611231910">
+<link rel="stylesheet" href="css/style.css?v=202611231935">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -40,15 +40,15 @@
   <div id="ac-detail" style="display:none;"></div>
 </template>
 
-<script src="js/config.js?v=202611231910"></script>
-<script src="js/api.js?v=202611231910"></script>
-<script src="js/common.js?v=202611231910"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611231910"></script>
-<script src="js/vendor/pdf.min.js?v=202611231910"></script>
-<script src="js/printpdf.js?v=202611231910"></script>
-<script src="js/pdfui.js?v=202611231910"></script>
-<script src="js/pdfview.js?v=202611231910"></script>
-<script src="js/bankcore.js?v=202611231910"></script>
+<script src="js/config.js?v=202611231935"></script>
+<script src="js/api.js?v=202611231935"></script>
+<script src="js/common.js?v=202611231935"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611231935"></script>
+<script src="js/vendor/pdf.min.js?v=202611231935"></script>
+<script src="js/printpdf.js?v=202611231935"></script>
+<script src="js/pdfui.js?v=202611231935"></script>
+<script src="js/pdfview.js?v=202611231935"></script>
+<script src="js/bankcore.js?v=202611231935"></script>
 <script>
 requireLogin();
 renderHeader({ wider: true });
@@ -385,9 +385,10 @@ function renderList() {
   rows.sort((a, b) => (((a.r.checked && !checkedIssue(a.ex)) ? 1 : 0) - ((b.r.checked && !checkedIssue(b.ex)) ? 1 : 0)) || ((linkMissing(b.ex) ? 1 : 0) - (linkMissing(a.ex) ? 1 : 0)) || (((((SCAN[String(b.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(b.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(b.ex.id)] || {}).weak || 0)) - (((((SCAN[String(a.ex.id)] || {}).sync || {}).b) ? 100 : 0) + ((SCAN[String(a.ex.id)] || {}).n || 0) * 10 + ((SCAN[String(a.ex.id)] || {}).weak || 0)) || b.r.score - a.r.score || String(b.ex.createdAt).localeCompare(String(a.ex.createdAt)));
   const susp = EXAMS.filter(ex => risk(ex).score >= 2).length;
   $('ac-sum').innerHTML = '시험지 ' + EXAMS.length + '개 중 <b>주관식이 있는 것 ' + EXAMS.filter(ex => ex.subjectiveCount > 0).length + '개</b>, 그중 <b style="color:#B91C1C">의심 ' + susp + '개</b>, 이 중 <b style="color:#B91C1C">정답을 거의 못 읽은 시험지 ' + EXAMS.filter(ex => risk(ex).unread).length + '개</b>예요. 「검사」를 누르면 문제 그림에서 보기 ①~⑤가 있는지 직접 확인해요.';
-  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"' + (x.r.checked && !checkedIssue(x.ex) ? ' style="background:#F0FDF4;"' : x.r.checked ? ' style="background:#FEF2F2;"' : '') + '><label title="확인했으면 체크 (목록 아래쪽에 체크된 채로 남아요)" style="display:inline-flex;align-items:center;cursor:pointer;"><input type="checkbox" class="ac-rowok" data-id="' + escapeHtml(String(x.ex.id)) + '"' + (x.r.checked ? ' checked' : '') + ' style="width:24px;height:24px;accent-color:#15803D;"></label><div class="t">' + (doneSet()[String(x.ex.id)] ? '<span title="' + doneSet()[String(x.ex.id)] + ' 저장함" style="font-size:12px;font-weight:700;color:#1D4ED8;background:#DBEAFE;border-radius:6px;padding:1px 6px;margin-right:6px;">✏️ 수정함</span>' : '') + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
+  $('ac-list').innerHTML = rows.length ? rows.map(x => '<div class="ac-row"' + (x.r.checked && !checkedIssue(x.ex) ? ' style="background:#F0FDF4;"' : x.r.checked ? ' style="background:#FEF2F2;"' : '') + '><label title="확인했으면 체크 (목록 아래쪽에 체크된 채로 남아요)" style="display:inline-flex;align-items:center;cursor:pointer;"><input type="checkbox" class="ac-rowok" data-id="' + escapeHtml(String(x.ex.id)) + '"' + (x.r.checked ? ' checked' : '') + ' style="width:24px;height:24px;accent-color:#15803D;"></label><div class="t">' + (doneSet()[String(x.ex.id)] ? '<span title="' + doneSet()[String(x.ex.id)] + ' 저장함" style="font-size:12px;font-weight:700;color:#1D4ED8;background:#DBEAFE;border-radius:6px;padding:1px 6px;margin-right:6px;">✏️ 수정함</span>' : '') + escapeHtml(x.ex.title) + '<div class="m">' + x.ex.answerCount + '문항 · 주관식 ' + (x.ex.subjectiveCount || 0) + ' · 제출 ' + (x.ex.submissionCount || 0) + '건</div></div>' + scanBadge(x) + '<button type="button" class="btn ' + (x.r.score >= 2 ? 'primary' : 'outline') + '" data-id="' + escapeHtml(String(x.ex.id)) + '" style="padding:7px 14px;">검사</button><button type="button" class="btn ghost ac-rowdel" data-del="' + escapeHtml(String(x.ex.id)) + '" title="이 시험지 삭제 (휴지통으로 이동)" style="padding:7px 10px;color:#B91C1C;">🗑 삭제</button></div>').join('') : '<p class="muted" style="padding:12px 0;">해당하는 시험지가 없어요.</p>';
   $('ac-list').querySelectorAll('.ac-rowok').forEach(c => c.addEventListener('change', () => { const ex = EXAMS.find(e => String(e.id) === c.getAttribute('data-id')); if (ex) { markOk(ex, c.checked); renderList(); } }));
   $('ac-list').querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => inspect(b.getAttribute('data-id'))));
+  $('ac-list').querySelectorAll('.ac-rowdel').forEach(b => b.addEventListener('click', () => { const ex = EXAMS.find(e => String(e.id) === b.getAttribute('data-del')); if (ex) deleteThisExam(ex, b); }));
 }
 
 let CUR = null;
@@ -620,19 +621,19 @@ async function scanSubjAll() {
   btn.disabled = false; btn.textContent = '📝 서술형 빠짐 검사 (' + EXAMS.filter(sjMissing).length + '개 발견)'; renderList();
 }
 // 이 시험지를 지운다 (서버 휴지통에 들어가므로 복구 가능). 제출 기록은 그대로 두고, 문제은행 문항은 물어보고 같이 지운다
-async function deleteThisExam(exam) {
-  const msg = $('ac-delmsg'), btn = $('ac-delexam'), nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+async function deleteThisExam(exam, listBtn) {
+  const inList = !!listBtn, msg = inList ? { textContent: '' } : $('ac-delmsg'), btn = inList ? listBtn : $('ac-delexam'), nz = t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
   if (!confirm('「' + exam.title + '」 시험지를 삭제할까요?\n\n· 시험지·정답·QR이 지워져요 (학생이 이 QR로는 더 못 풀어요).\n· 제출 기록은 그대로 남아요.\n· 지운 시험지는 휴지통에서 복구할 수 있어요.')) return;
   let own = []; try { const lq = await callApi('listQuestions', { password: getTeacherPassword(), fresh: 1 }); if (lq && lq.ok) { BANK = lq.questions; own = BANK.filter(q => sameSrc(q.source, exam.title)); } } catch (e) {}
   const delBank = own.length && confirm('문제은행에 이 시험지 이름으로 저장된 문항이 ' + own.length + '개 있어요.\n문제은행 문항도 같이 지울까요?\n\n[확인] 같이 지움   [취소] 문제은행은 그대로 둠');
-  btn.disabled = true; msg.textContent = '삭제 중...';
+  btn.disabled = true; msg.textContent = '삭제 중...'; if (inList) btn.textContent = '삭제 중...';
   try {
     const r = await callApi('deleteExam', { password: getTeacherPassword(), id: exam.id, deleteSubmissions: false });
     if (!r.ok) throw new Error(r.error || '삭제하지 못했어요');
     if (delBank) { const ids = own.map(q => q.id); for (let i = 0; i < ids.length; i += 40) { msg.textContent = '문제은행 정리 중... ' + Math.min(i + 40, ids.length) + '/' + ids.length; const d = await callApi('deleteQuestions', { password: getTeacherPassword(), ids: ids.slice(i, i + 40) }); if (!d.ok) throw new Error('시험지는 지웠지만 문제은행 문항을 다 지우지 못했어요: ' + (d.error || '')); } BANK = null; }
     EXAMS = EXAMS.filter(e => String(e.id) !== String(exam.id));
-    goBack();
-  } catch (e) { msg.textContent = '⚠️ ' + (e.message || e); btn.disabled = false; }
+    if (inList) renderList(); else goBack();
+  } catch (e) { msg.textContent = '⚠️ ' + (e.message || e); btn.disabled = false; if (inList) { btn.textContent = '🗑 삭제'; alert('⚠️ ' + (e.message || e)); } }
 }
 async function offerSubjective(exam, doc) {
   const len = (exam.answers || []).length; if (!len || !doc) return;
