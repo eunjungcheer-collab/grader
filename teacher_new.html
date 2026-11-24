@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250125">
+<link rel="stylesheet" href="css/style.css?v=202611250135">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -159,17 +159,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250125"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250125"></script>
-<script src="js/printpdf.js?v=202611250125"></script>
-<script src="js/vendor/pdf.min.js?v=202611250125"></script>
-<script src="js/config.js?v=202611250125"></script>
-<script src="js/api.js?v=202611250125"></script>
-<script src="js/common.js?v=202611250125"></script>
-<script src="js/ocr.js?v=202611250125"></script>
-<script src="js/bankcore.js?v=202611250125"></script>
-<script src="js/pdfui.js?v=202611250125"></script>
-<script src="js/pdfview.js?v=202611250125"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250135"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250135"></script>
+<script src="js/printpdf.js?v=202611250135"></script>
+<script src="js/vendor/pdf.min.js?v=202611250135"></script>
+<script src="js/config.js?v=202611250135"></script>
+<script src="js/api.js?v=202611250135"></script>
+<script src="js/common.js?v=202611250135"></script>
+<script src="js/ocr.js?v=202611250135"></script>
+<script src="js/bankcore.js?v=202611250135"></script>
+<script src="js/pdfui.js?v=202611250135"></script>
+<script src="js/pdfview.js?v=202611250135"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -835,7 +835,9 @@ async function heldInfo(reason) {
   const unread = answers.map((a, i) => (a ? 0 : i + 1)).filter(Boolean), unreadImg = {};
   for (const n of unread.slice(0, 30)) { try { unreadImg[n] = await answerSnap(n); } catch (e) {} }
   let kind = ''; try { kind = readClassify(document, 'bk').kind || ''; } catch (e) {}
-  return { type: 'stuck', hold: true, title: $('title').value, reason: reason, answers: answers, unread: unread, unreadImg: unreadImg, dash: (window.__dash || []).slice(), dashImg: window.__dashImg || {}, cls: kind, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) };
+  const qthumb = {};      // 단원을 고를 때 문제를 보면서 하도록 문제 그림도 같이 보낸다
+  for (const q of (scanned && scanned.questions || []).slice(0, 60)) { try { qthumb[q.num] = thumbOf(await rcBankQ(q)); } catch (e) {} }
+  return { qthumb: qthumb, type: 'stuck', hold: true, title: $('title').value, reason: reason, answers: answers, unread: unread, unreadImg: unreadImg, dash: (window.__dash || []).slice(), dashImg: window.__dashImg || {}, cls: kind, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) };
 }
 async function autoRegisterMaybe(stale) {
   if (!IS_CHILD || !autoOn() || !scanned) return;
@@ -919,7 +921,7 @@ async function runParallelAuto(pairs) {
       else if (d.type === 'stuck') {
         const keep = !!d.hold && (window.__heldN || 0) < 12;
         done('확인 대기: ' + d.reason, () => {
-          if (keep) { window.__heldN = (window.__heldN || 0) + 1; reg.push({ pending: true, fr: fr, reason: d.reason, title: d.title || state[idx].name, id: 'pending-' + Date.now() + '-' + idx, answers: d.answers.slice(), units: [], unread: d.unread || [], dash: d.dash || [], dashImg: d.dashImg || {}, unreadImg: d.unreadImg || {}, pair: pairs[idx], bankIds: (d.qinfo || []).reduce((o, q) => { o[q.n] = 'p' + q.n; return o; }, {}), qinfo: d.qinfo || [], tm: {}, qthumb: {} }); }
+          if (keep) { window.__heldN = (window.__heldN || 0) + 1; reg.push({ pending: true, fr: fr, reason: d.reason, title: d.title || state[idx].name, id: 'pending-' + Date.now() + '-' + idx, answers: d.answers.slice(), units: [], unread: d.unread || [], dash: d.dash || [], dashImg: d.dashImg || {}, unreadImg: d.unreadImg || {}, pair: pairs[idx], bankIds: (d.qinfo || []).reduce((o, q) => { o[q.n] = 'p' + q.n; return o; }, {}), qinfo: d.qinfo || [], tm: {}, qthumb: d.qthumb || {} }); }
           else stuck.push({ name: state[idx].name, reason: d.reason, pair: pairs[idx] });
         }, keep);
       }
