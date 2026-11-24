@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250112">
+<link rel="stylesheet" href="css/style.css?v=202611250127">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -159,17 +159,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250112"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250112"></script>
-<script src="js/printpdf.js?v=202611250112"></script>
-<script src="js/vendor/pdf.min.js?v=202611250112"></script>
-<script src="js/config.js?v=202611250112"></script>
-<script src="js/api.js?v=202611250112"></script>
-<script src="js/common.js?v=202611250112"></script>
-<script src="js/ocr.js?v=202611250112"></script>
-<script src="js/bankcore.js?v=202611250112"></script>
-<script src="js/pdfui.js?v=202611250112"></script>
-<script src="js/pdfview.js?v=202611250112"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250127"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250127"></script>
+<script src="js/printpdf.js?v=202611250127"></script>
+<script src="js/vendor/pdf.min.js?v=202611250127"></script>
+<script src="js/config.js?v=202611250127"></script>
+<script src="js/api.js?v=202611250127"></script>
+<script src="js/common.js?v=202611250127"></script>
+<script src="js/ocr.js?v=202611250127"></script>
+<script src="js/bankcore.js?v=202611250127"></script>
+<script src="js/pdfui.js?v=202611250127"></script>
+<script src="js/pdfview.js?v=202611250127"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -818,10 +818,10 @@ async function autoRegisterMaybe(stale) {
   if (stale()) return;
   try { await autoSubsNew(); } catch (e) {}
   const missing = answerInputs.map((a, i) => (a.value ? null : i + 1)).filter(Boolean);
-  if (answerInputs.length && missing.length && IS_CHILD) { window.__unreadImg = {}; for (const n of missing.slice(0, 40)) { try { window.__unreadImg[n] = await answerSnap(n); } catch (e) {} } }
+  // (예전에는 여기서 못 읽은 정답을 「-」로 채워 그대로 등록했지만, 정답이 덜 채워진 시험지는 등록하지 않고 「직접 확인이 필요한 시험지」로 넘긴다)
   // 못 읽은 게 아니라 「주관식(-)」으로 읽은 문항도, 맞게 읽었는지 선생님이 볼 수 있게 정답 부분 그림을 남긴다
   if (answerInputs.length && IS_CHILD) { window.__dashImg = {}; const ds = answerInputs.map((a, i) => (String(a.value).trim() === '-' && missing.indexOf(i + 1) < 0 ? i + 1 : null)).filter(Boolean); window.__dash = ds.slice(); for (const n of ds.slice(0, 30)) { try { window.__dashImg[n] = await answerSnap(n); } catch (e) {} } }
-  if (answerInputs.length && missing.length && IS_CHILD) { window.__unread = missing.slice(); missing.forEach(n => { answerInputs[n - 1].value = '-'; }); missing.length = 0; }
+  // 정답을 못 읽은 문항이 있으면 아래 「멈춤」 처리로 넘어간다 (등록 안 함)
   if (!answerInputs.length || missing.length) {
     if (IS_CHILD) { childReport({ type: 'stuck', title: $('title').value, reason: answerInputs.length ? '정답을 못 읽은 문항 ' + missing.slice(0, 10).join(', ') + (missing.length > 10 ? ' …' : '') + '번' : '정답 칸을 만들지 못함' }); return; }
     $('error-banner').innerHTML = '<div class="banner error">⏸ 자동 등록이 이 시험지에서 멈췄어요. ' + (answerInputs.length ? '정답을 못 읽은 문항: ' + missing.slice(0, 15).join(', ') + (missing.length > 15 ? ' ...' : '') + '번. 정답을 채우고 「시험지 등록하고 QR 만들기」를 누르면 다음 시험지부터 다시 자동으로 이어져요.' : '정답 칸을 만들지 못했어요.') + '</div>';
