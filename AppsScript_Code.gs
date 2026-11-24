@@ -198,6 +198,8 @@ function handle_(e) {
       case 'healthCheck': result = actionHealthCheck_(params); break;
       case 'driveUsage': result = actionDriveUsage_(params); break;
       case 'dataTrim': result = actionDataTrim_(params); break;
+      case 'backupTabs': result = actionBackupTabs_(params); break;
+      case 'backupRestore': result = actionBackupRestore_(params); break;
       case 'retryCheck': result = actionRetryCheck_(params); break;
       case 'retryLog': result = actionRetryLog_(params); break;
       case 'retryRounds': result = actionRetryRounds_(params); break;
@@ -406,15 +408,21 @@ function subjectiveNumbers_(answers) {
 }
 
 function findExamRow_(sheet, examId) {
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(examId)) return { rowIndex: i + 1, row: data[i] };
+  // 시험지가 수백 개로 늘어도 빠르도록: 먼저 ID 열만 읽어 줄을 찾고, 그 한 줄만 전체를 읽는다 (예전에는 매번 시트 전체를 읽었다)
+  const last = sheet.getLastRow(), lc = sheet.getLastColumn();
+  if (last < 2) return null;
+  const want = String(examId), ids = sheet.getRange(2, 1, last - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === want) return { rowIndex: i + 2, row: sheet.getRange(i + 2, 1, 1, lc).getValues()[0] };
   }
   // 삭제하고 다시 등록한 시험지: 예전 QR(예전 시험 번호)이 새 시험지로 이어지게 한다 (recipe 의 aliases)
-  for (let i = 1; i < data.length; i++) {
-    const t = String(data[i][8] || ''); if (t.indexOf('"aliases"') < 0) continue;
-    const rc = safeJson_(t, null);
-    if (rc && (rc.aliases || []).map(String).indexOf(String(examId)) >= 0) return { rowIndex: i + 1, row: data[i] };
+  if (lc >= 9) {
+    const rec = sheet.getRange(2, 9, last - 1, 1).getValues();
+    for (let i = 0; i < rec.length; i++) {
+      const t = String(rec[i][0] || ''); if (t.indexOf('"aliases"') < 0) continue;
+      const rc = safeJson_(t, null);
+      if (rc && (rc.aliases || []).map(String).indexOf(want) >= 0) return { rowIndex: i + 2, row: sheet.getRange(i + 2, 1, 1, lc).getValues()[0] };
+    }
   }
   return null;
 }
@@ -2522,13 +2530,14 @@ function autoBackup_() {
 }
 // 되돌리기 어려운 큰 작업(문항 여러 개 삭제, 시험지 삭제, 이름 합치기, 단원 일괄 저장)을 하기 직전에 한 번 백업한다.
 // 20분 안에 이미 백업했으면 건너뛴다 (연달아 눌러도 백업이 쌓이지 않게). 백업이 실패해도 작업은 막지 않는다. 「작업전」 백업은 최근 6개만 남긴다.
-function preBackup_(why) {
+function preBackup_(why, force) {
   try {
     const props = PropertiesService.getScriptProperties(), last = Number(props.getProperty('preBackupAt')) || 0;
-    if (Date.now() - last < 20 * 60 * 1000) return;
+    if (!force && Date.now() - last < 20 * 60 * 1000) return;
     props.setProperty('preBackupAt', String(Date.now()));
     makeBackup_('작업전 ' + String(why || '').slice(0, 12));
     trimBackups_(/ 작업전/, 6);
+    trimBackups_(/ 복원전/, 6);
   } catch (e) {}
 }
 function actionInstallBackup_(p) {
@@ -2634,6 +2643,73 @@ function actionDataStatus_(p) {
   let pdfBytes = 0, pdfCount = 0, chunks = 0;
   try { const it = mergeFolder_().getFiles(); while (it.hasNext() && Date.now() - t0 < 12000) { const f = it.next(), n = f.getName(); if (n.indexOf('__chunk__') >= 0) chunks++; else { pdfCount++; pdfBytes += f.getSize(); } } } catch (e) {}
   return { ok: true, rows: rows, cells: cells, sheetCount: ss.getSheets().length, backups: bk, autoOn: hasTrigger_('autoBackup_'), pdfCount: pdfCount, pdfBytes: pdfBytes, chunks: chunks, partial: Date.now() - t0 >= 12000 };
+}
+
+// ────────────── 백업에서 되돌리기 ──────────────
+// 백업 파일의 탭(시트)을 골라 지금 시트로 되돌린다. 되돌리기 직전에 「복원전」 백업을 한 번 더 만들어 두므로, 잘못 눌러도 다시 되돌릴 수 있다.
+const RESTORE_TABS_ = ['Exams', 'Questions', 'Scores', 'Retries', 'RetryWrong', 'RetryRounds', 'Cleared', 'Rosters', 'Assignments', 'Homework'];
+function backupById_(id) {
+  const ok = backupFiles_().some(function (f) { return f.getId() === id; });      // 「자동채점 백업」 폴더 안의 파일만 허용
+  if (!ok) throw new Error('백업 파일을 찾을 수 없어요.');
+  return SpreadsheetApp.openById(id);
+}
+function actionBackupTabs_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  try {
+    const bk = backupById_(String(p.id || '')), live = SpreadsheetApp.getActiveSpreadsheet(), out = [];
+    RESTORE_TABS_.forEach(function (n) {
+      const b = bk.getSheetByName(n); if (!b) return;
+      const l = live.getSheetByName(n);
+      out.push({ name: n, backupRows: Math.max(0, b.getLastRow() - 1), liveRows: l ? Math.max(0, l.getLastRow() - 1) : 0 });
+    });
+    return { ok: true, tabs: out };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+// mode 'missing': 지금 시트에 없는 줄만 백업에서 다시 붙인다 (실수로 지운 것을 되살릴 때. 지금 데이터는 그대로 둔다)
+// mode 'replace': 그 탭을 백업 상태로 통째로 바꾼다 (백업 이후에 쌓인 기록은 사라진다)
+function actionBackupRestore_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const tabs = (p.tabs || []).filter(function (n) { return RESTORE_TABS_.indexOf(n) >= 0; });
+  if (!tabs.length) return { ok: false, error: '되돌릴 항목을 골라 주세요.' };
+  const mode = p.mode === 'replace' ? 'replace' : 'missing';
+  let bk; try { bk = backupById_(String(p.id || '')); } catch (e) { return { ok: false, error: e.message }; }
+  preBackup_('복원전', true);
+  const lock = LockService.getScriptLock(); lock.waitLock(55000);
+  const live = SpreadsheetApp.getActiveSpreadsheet(), report = [], fileIds = [];
+  try {
+    tabs.forEach(function (name) {
+      const b = bk.getSheetByName(name); if (!b || b.getLastRow() < 1) return;
+      const bv = b.getDataRange().getValues(), bh = bv[0].map(String), brows = bv.slice(1).filter(function (r) { return r.some(function (c) { return c !== ''; }); });
+      let l = live.getSheetByName(name);
+      if (!l) { l = live.insertSheet(name); l.getRange(1, 1, 1, bh.length).setValues([bh]); }
+      const lh = l.getRange(1, 1, 1, Math.max(1, l.getLastColumn())).getValues()[0].map(String);
+      const map = lh.map(function (h) { return bh.indexOf(h); });
+      const conv = function (r) { return map.map(function (i) { return i < 0 ? '' : r[i]; }); };
+      const keyOf = function (r, hdr) { return (name === 'Exams' || name === 'Questions') ? String(r[0]) : r.map(String).join('\u0001'); };
+      let add;
+      if (mode === 'replace') {
+        add = brows.map(conv);
+        const old = l.getLastRow() - 1; if (old > 0) l.getRange(2, 1, old, lh.length).clearContent();
+      } else {
+        const lastRow = l.getLastRow(), have = {};
+        if (lastRow > 1) l.getRange(2, 1, lastRow - 1, lh.length).getValues().forEach(function (r) { have[keyOf(r)] = true; });
+        add = brows.map(conv).filter(function (r) { return !have[keyOf(r)]; });
+      }
+      if (add.length) {
+        const start = mode === 'replace' ? 2 : l.getLastRow() + 1, need = start + add.length - 1;
+        if (need > l.getMaxRows()) l.insertRowsAfter(l.getMaxRows(), need - l.getMaxRows());
+        l.getRange(start, 1, add.length, lh.length).setValues(add);
+        // 문항·시험지는 지울 때 드라이브 파일이 휴지통으로 가므로, 되살린 줄의 파일도 휴지통에서 꺼낸다
+        if (name === 'Questions') add.forEach(function (r) { [lh.indexOf('fileId'), lh.indexOf('explFileId')].forEach(function (ci) { if (ci >= 0 && r[ci]) fileIds.push(String(r[ci])); }); });
+        if (name === 'Exams') add.forEach(function (r) { [lh.indexOf('pdfFileId')].forEach(function (ci) { if (ci >= 0 && r[ci]) fileIds.push(String(r[ci])); }); });
+      }
+      report.push({ name: name, added: add.length });
+    });
+  } finally { lock.releaseLock(); }
+  let revived = 0;
+  fileIds.slice(0, 400).forEach(function (id) { try { const f = DriveApp.getFileById(id); if (f.isTrashed()) { f.setTrashed(false); revived++; } } catch (e) {} });
+  bustCache_();
+  return { ok: true, mode: mode, report: report, revivedFiles: revived };
 }
 function actionDataTrim_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };

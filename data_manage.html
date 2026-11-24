@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611241958">
+<link rel="stylesheet" href="css/style.css?v=202611242012">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -23,6 +23,18 @@
       <button type="button" class="btn outline" id="bk-trim" style="padding:8px 14px;">자동 백업 최근 4개만 남기기</button>
     </div>
     <div id="bk-msg" class="hint" style="margin-top:6px;"></div>
+  </div>
+  <div class="card" id="rs-card"><b>♻️ 백업에서 되돌리기</b>
+    <p class="hint" style="margin:6px 0 8px;">잘못 지웠거나 망가졌을 때 백업 시점으로 되돌려요. 되돌리기 직전의 상태는 「복원전」 백업으로 자동 보관돼서, 잘못 눌러도 다시 되돌릴 수 있어요.</p>
+    <select id="rs-file" style="padding:8px;max-width:100%;"></select>
+    <button type="button" class="btn outline" id="rs-load" style="padding:8px 14px;">항목 불러오기</button>
+    <div id="rs-tabs" style="margin-top:10px;"></div>
+    <div id="rs-act" style="display:none;margin-top:8px;">
+      <label><input type="radio" name="rsm" value="missing" checked> <b>지워진 것만 되살리기</b> (지금 데이터는 그대로 두고, 백업에만 있는 줄을 다시 붙여요 · 추천)</label><br>
+      <label><input type="radio" name="rsm" value="replace"> <b>백업 상태로 통째로 바꾸기</b> (백업 이후에 쌓인 기록은 사라져요)</label><br>
+      <button type="button" class="btn primary" id="rs-go" style="padding:8px 14px;margin-top:8px;">선택한 항목 되돌리기</button>
+    </div>
+    <div id="rs-msg" class="hint" style="margin-top:6px;"></div>
   </div>
   <div class="card" id="rq-card">
       <b>🔗 삭제 후 다시 등록한 시험지의 예전 QR 이어붙이기</b>
@@ -86,10 +98,10 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611241958"></script>
-<script src="js/api.js?v=202611241958"></script>
-<script src="js/common.js?v=202611241958"></script>
-<script src="js/pdfui.js?v=202611241958"></script>
+<script src="js/config.js?v=202611242012"></script>
+<script src="js/api.js?v=202611242012"></script>
+<script src="js/common.js?v=202611242012"></script>
+<script src="js/pdfui.js?v=202611242012"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -112,11 +124,39 @@ async function loadUsage() {
   } catch (x) { $('du-info').textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
 }
 $('du-reload').addEventListener('click', loadUsage);
+
+const RS_LABEL = { Exams: '시험지', Questions: '문제은행 문항', Scores: '학생 채점 기록', Retries: '다시풀기 기록(예전)', RetryWrong: '다시풀기 오답', RetryRounds: '회차별 다시풀기', Cleared: '오답 통과 표시', Rosters: '반 명단', Assignments: '시험 예약', Homework: '숙제' };
+function rsFill(backups) {
+  const sel = $('rs-file'); if (!sel) return;
+  sel.innerHTML = backups.map(b => '<option value="' + b.id + '">' + new Date(b.at).toLocaleString('ko-KR') + ' · ' + e(b.name.replace('자동채점 백업 ', '').replace(/^\d{4}-\d\d-\d\d \d{4} ?/, '') || '수동') + '</option>').join('') || '<option value="">백업이 없어요</option>';
+}
+$('rs-load').addEventListener('click', async () => {
+  const id = $('rs-file').value; if (!id) return;
+  $('rs-msg').textContent = '백업 파일을 여는 중...'; $('rs-tabs').innerHTML = ''; $('rs-act').style.display = 'none';
+  try {
+    const r = await callApi('backupTabs', { password: getTeacherPassword(), id });
+    if (!r.ok) { $('rs-msg').textContent = '⚠️ ' + r.error; return; }
+    $('rs-tabs').innerHTML = r.tabs.map(t => '<label style="display:block;padding:3px 0;"><input type="checkbox" class="rs-t" value="' + t.name + '"> <b>' + (RS_LABEL[t.name] || t.name) + '</b> <span class="hint">백업 ' + t.backupRows.toLocaleString() + '줄 · 지금 ' + t.liveRows.toLocaleString() + '줄' + (t.backupRows > t.liveRows ? ' · <b style="color:#C1392B;">' + (t.backupRows - t.liveRows) + '줄 적어요</b>' : '') + '</span></label>').join('');
+    $('rs-act').style.display = ''; $('rs-msg').textContent = '되돌릴 항목을 고르세요.';
+  } catch (x) { $('rs-msg').textContent = '⚠️ ' + x.message; }
+});
+$('rs-go').addEventListener('click', async () => {
+  const tabs = [...document.querySelectorAll('.rs-t:checked')].map(c => c.value), mode = document.querySelector('input[name=rsm]:checked').value;
+  if (!tabs.length) { $('rs-msg').textContent = '되돌릴 항목을 먼저 골라 주세요.'; return; }
+  if (!confirm((mode === 'replace' ? '선택한 항목을 백업 시점 상태로 통째로 바꿉니다. 백업 이후에 쌓인 기록은 사라져요.' : '선택한 항목에서 지워진 줄만 백업에서 다시 붙입니다.') + '\n\n되돌리기 직전 상태는 「복원전」 백업으로 자동 보관돼요.\n계속할까요?')) return;
+  $('rs-go').disabled = true; $('rs-msg').textContent = '되돌리는 중... (1분쯤 걸릴 수 있어요)';
+  try {
+    const r = await callApi('backupRestore', { password: getTeacherPassword(), id: $('rs-file').value, tabs, mode });
+    $('rs-msg').textContent = r.ok ? '✅ 되돌렸어요: ' + r.report.map(x => (RS_LABEL[x.name] || x.name) + ' ' + x.added + '줄').join(', ') + (r.revivedFiles ? ' · 휴지통의 파일 ' + r.revivedFiles + '개도 꺼냈어요' : '') : '⚠️ ' + r.error;
+    load();
+  } catch (x) { $('rs-msg').textContent = '⚠️ ' + x.message; }
+  $('rs-go').disabled = false;
+});
 async function load() {
   try {
     const r = await callApi('dataStatus', { password: getTeacherPassword() });
     if (!r.ok) { $('bk-info').textContent = r.error || '불러오지 못했어요'; return; }
-    const auto = r.backups.filter(b => b.auto), last = r.backups[0];
+    const auto = r.backups.filter(b => b.auto), last = r.backups[0]; rsFill(r.backups);
     { const hrs = last ? (Date.now() - new Date(last.at).getTime()) / 3600000 : null, badge = $('bk-badge');
       if (badge) { const bad = !last || (r.autoOn && hrs > 36) || !r.autoOn; badge.style.cssText = 'margin:0 0 8px;padding:10px 12px;border-radius:8px;font-weight:800;font-size:15px;' + (bad ? 'background:#FDECEA;color:#C1392B;border:1px solid #C1392B;' : 'background:#E8F5EE;color:#1f6f4a;border:1px solid #1f6f4a;');
         badge.textContent = !last ? '⚠️ 아직 백업이 없어요' : !r.autoOn ? '⚠️ 자동 백업이 꺼져 있어요 (마지막 백업 ' + (hrs < 48 ? Math.round(hrs) + '시간' : Math.round(hrs / 24) + '일') + ' 전)' : hrs > 36 ? '⚠️ 마지막 자동 백업이 ' + (hrs < 72 ? Math.round(hrs) + '시간' : Math.round(hrs / 24) + '일') + ' 전이에요. 자동 백업이 멈췄을 수 있어요' : '✅ 백업 정상 · 마지막 백업 ' + (hrs < 1 ? '방금' : Math.round(hrs) + '시간 전'); } }
