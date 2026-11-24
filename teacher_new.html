@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250138">
+<link rel="stylesheet" href="css/style.css?v=202611250156">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -159,17 +159,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250138"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250138"></script>
-<script src="js/printpdf.js?v=202611250138"></script>
-<script src="js/vendor/pdf.min.js?v=202611250138"></script>
-<script src="js/config.js?v=202611250138"></script>
-<script src="js/api.js?v=202611250138"></script>
-<script src="js/common.js?v=202611250138"></script>
-<script src="js/ocr.js?v=202611250138"></script>
-<script src="js/bankcore.js?v=202611250138"></script>
-<script src="js/pdfui.js?v=202611250138"></script>
-<script src="js/pdfview.js?v=202611250138"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250156"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250156"></script>
+<script src="js/printpdf.js?v=202611250156"></script>
+<script src="js/vendor/pdf.min.js?v=202611250156"></script>
+<script src="js/config.js?v=202611250156"></script>
+<script src="js/api.js?v=202611250156"></script>
+<script src="js/common.js?v=202611250156"></script>
+<script src="js/ocr.js?v=202611250156"></script>
+<script src="js/bankcore.js?v=202611250156"></script>
+<script src="js/pdfui.js?v=202611250156"></script>
+<script src="js/pdfview.js?v=202611250156"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -828,6 +828,11 @@ async function autoRegisterMaybe(stale) {
     window.scrollTo(0, 0);
     return;
   }
+  // 기출문제(학교 시험)는 선생님이 직접 확인하고 등록 버튼(OK)을 누르기 전에는 저장하지 않는다 → 「직접 확인이 필요한 시험지」로 넘긴다
+  try { if (readClassify(document, 'bk').kind === '기출') {
+    if (IS_CHILD) { childReport({ type: 'stuck', title: $('title').value, reason: '기출문제라서 확인(등록 버튼) 후에만 저장해요' }); return; }
+    $('error-banner').innerHTML = '<div class="banner error">⏸ 기출문제라서 자동으로 저장하지 않아요. 정답·단원을 확인하고 「시험지 등록하고 QR 만들기」를 누르면 저장돼요.</div>'; window.scrollTo(0, 0); return;
+  } } catch (e) {}
   mark('ready'); window.__auto = true;
   $('pdf-file').required = false;                 // 작은 창(자동 등록)에서는 파일 칸이 비어 있어 폼 검사에 걸리니 끈다
   $('new-exam-form').dispatchEvent(new Event('submit', { cancelable: true }));
