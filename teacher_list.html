@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250009">
+<link rel="stylesheet" href="css/style.css?v=202611250021">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -43,11 +43,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611250009"></script>
-<script src="js/api.js?v=202611250009"></script>
-<script src="js/common.js?v=202611250009"></script>
-<script src="js/bankcore.js?v=202611250009"></script>
-<script src="js/pdfui.js?v=202611250009"></script>
+<script src="js/config.js?v=202611250021"></script>
+<script src="js/api.js?v=202611250021"></script>
+<script src="js/common.js?v=202611250021"></script>
+<script src="js/bankcore.js?v=202611250021"></script>
+<script src="js/pdfui.js?v=202611250021"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -208,7 +208,9 @@ renderHeader();
         h += '<tr><td style="' + th + '">' + y + '</td>' + cols.map(c => {
           return cell[y + '|' + c.g + '|' + c.sm + '|' + c.k]
             ? '<td style="' + td + 'color:#1f6f4a;background:#E8F5EE;">O</td>'
-            : '<td style="' + td + 'color:#C1392B;background:#FDECEA;">X</td>';
+            : (c.g === 3 && c.sm === 2 && c.k === '중간')      // 3학년 2학기는 중간고사를 안 봐서 비활성 칸으로 둔다 (등록된 게 있으면 위에서 O로 보인다)
+              ? '<td style="' + td + 'color:#9CA3AF;background:#E5E7EB;font-weight:400;" title="3학년 2학기는 중간고사가 없어요">–</td>'
+              : '<td style="' + td + 'color:#C1392B;background:#FDECEA;">X</td>';
         }).join('') + '</tr>';
       }
       box.innerHTML = h + '</table>' + (unread.length ? '<div style="margin-top:8px;font-size:13px;color:#B45309;font-weight:700;">⚠️ 제목에서 연도·학기·중간/기말을 못 읽어 표에 못 넣은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread) : ''); box.style.display = '';
