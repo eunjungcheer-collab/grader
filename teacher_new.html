@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250450">
+<link rel="stylesheet" href="css/style.css?v=202611250500">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250450"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250450"></script>
-<script src="js/printpdf.js?v=202611250450"></script>
-<script src="js/vendor/pdf.min.js?v=202611250450"></script>
-<script src="js/config.js?v=202611250450"></script>
-<script src="js/api.js?v=202611250450"></script>
-<script src="js/common.js?v=202611250450"></script>
-<script src="js/ocr.js?v=202611250450"></script>
-<script src="js/bankcore.js?v=202611250450"></script>
-<script src="js/pdfui.js?v=202611250450"></script>
-<script src="js/pdfview.js?v=202611250450"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250500"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250500"></script>
+<script src="js/printpdf.js?v=202611250500"></script>
+<script src="js/vendor/pdf.min.js?v=202611250500"></script>
+<script src="js/config.js?v=202611250500"></script>
+<script src="js/api.js?v=202611250500"></script>
+<script src="js/common.js?v=202611250500"></script>
+<script src="js/ocr.js?v=202611250500"></script>
+<script src="js/bankcore.js?v=202611250500"></script>
+<script src="js/pdfui.js?v=202611250500"></script>
+<script src="js/pdfview.js?v=202611250500"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1326,7 +1326,10 @@ function showAutoReview(R) {
       if (x.pending) { const w = document.createElement('div'); w.className = 'banner'; w.style.cssText = 'margin:6px 0;'; w.innerHTML = '📌 아직 등록 전이라, 여기서 고른 단원은 <b>OK를 누를 때 함께 저장돼요</b>.'; body.insertBefore(w, body.firstChild); }
       if (x.pending) {      // 단원 목록 맨 아래(오른쪽)에도 OK 등록 버튼
         const okb = document.createElement('div'); okb.style.cssText = 'display:flex; justify-content:flex-end; align-items:center; gap:10px; margin:14px 0 4px;';
-        okb.innerHTML = '<span class="hint ok-msg" style="margin:0;"></span><button type="button" class="btn primary" style="padding:8px 18px;">✅ OK — 이 시험지 등록</button>';
+        okb.innerHTML = '<label style="font-size:13px; font-weight:700; color:#1F3A6B; background:#E0E7FF; border-radius:6px; padding:5px 10px; cursor:pointer;"><input type="checkbox" class="rv-chk2" style="width:auto; margin:0 4px 0 0; vertical-align:middle;">등록할 시험지</label><span class="hint ok-msg" style="margin:0;"></span><button type="button" class="btn primary" style="padding:8px 18px;">✅ OK — 이 시험지 등록</button>';
+        { const c2 = okb.querySelector('.rv-chk2'), c1 = row.querySelector('.rv-chk'); if (c1) { c2.checked = c1.checked;      // 맨 위 체크와 맨 아래 체크는 서로 같이 움직인다
+          c2.addEventListener('change', () => { c1.checked = c2.checked; c1.dispatchEvent(new Event('change')); });
+          c1.addEventListener('change', () => { c2.checked = c1.checked; }); } else c2.parentNode.remove(); }
         okb.querySelector('button').addEventListener('click', () => { const sv = row.querySelector('.rv-save'); sv.disabled = false; sv.click(); });
         const om = okb.querySelector('.ok-msg'); new MutationObserver(() => { om.textContent = msg.textContent; }).observe(msg, { childList: true, characterData: true, subtree: true });
         body.appendChild(okb);
