@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>틀린 문항 다시 풀기</title>
-<link rel="stylesheet" href="css/style.css?v=202611241830">
+<link rel="stylesheet" href="css/style.css?v=202611241900">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -23,12 +23,13 @@
 <template id="page-content">
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
-<script src="js/config.js?v=202611241830"></script>
-<script src="js/api.js?v=202611241830"></script>
-<script src="js/common.js?v=202611241830"></script>
+<script src="js/config.js?v=202611241900"></script>
+<script src="js/api.js?v=202611241900"></script>
+<script src="js/common.js?v=202611241900"></script>
 <script>
 renderHeader();
 const qs = new URLSearchParams(location.search), examId = qs.get('id');
+const round = Math.max(2, Math.min(9, parseInt(qs.get('r'), 10) || 2));
 const nums = (qs.get('n') || '').split(',').map(x => parseInt(x, 10)).filter(x => x > 0);
 let subjective = [], multi = [], ans = {}, state = {}, title = '';
 async function init() {
@@ -40,7 +41,7 @@ async function init() {
     title = r.title; subjective = r.subjective || []; multi = r.multi || [];
     const list = nums.filter(n => n <= r.answerCount && subjective.indexOf(n) < 0);
     let nm = qs.get('name') || ''; try { nm = nm || sessionStorage.getItem('stu_name') || ''; } catch (e) {}
-    area.innerHTML = '<h1>🔁 틀린 문항 다시 풀기</h1><p class="muted"><b>' + escapeHtml(title) + '</b><br>오답노트에 있던 <b>' + list.length + '문항</b>만 다시 풀어요. 풀고 「확인하기」를 누르면 맞았는지 알려 줘요. 정답은 오답노트 맨 뒤 쪽에 있어요.</p>' +
+    area.innerHTML = '<h1>🔁 ' + round + '차 · 틀린 문항 다시 풀기</h1><p class="muted"><b>' + escapeHtml(title) + '</b><br>오답노트에 있던 <b>' + list.length + '문항</b>만 다시 풀어요. 풀고 「확인하기」를 누르면 맞았는지 알려 줘요. 정답은 오답노트 맨 뒤 쪽에 있어요. <b>' + round + '차 점수는 문항마다 처음 고른 답으로 계산돼요</b> (틀린 뒤 다시 골라 맞혀도 점수는 처음 답 기준이에요).</p>' +
       '<div class="card"><label>이름</label><input type="text" id="nm" value="' + escapeHtml(nm) + '" autocomplete="off"><div id="grid" style="margin-top:14px;"></div><button type="button" class="btn primary" id="chk" style="width:100%;margin-top:14px;font-size:17px;padding:15px;">확인하기</button><div id="sum" class="hint" style="margin-top:10px;text-align:center;"></div></div>';
     const grid = document.getElementById('grid');
     list.forEach(n => {
@@ -60,7 +61,7 @@ async function init() {
       if (!todo.length) { document.getElementById('sum').textContent = '답을 먼저 골라 주세요.'; return; }
       const btn = document.getElementById('chk'); btn.disabled = true; btn.textContent = '확인 중...';
       try {
-        const r2 = await callApi('retryCheck', { id: examId, studentName: document.getElementById('nm').value.trim(), answers: todo.map(n => ({ n: n, a: ans[n] })) });
+        const r2 = await callApi('retryCheck', { id: examId, round: round, studentName: document.getElementById('nm').value.trim(), answers: todo.map(n => ({ n: n, a: ans[n] })) });
         if (!r2.ok) throw new Error(r2.error);
         todo.forEach(n => {
           const row = document.getElementById('r' + n), v = r2.results[n]; state[n] = v;
@@ -69,6 +70,7 @@ async function init() {
           if (v === 'ok') grid.querySelectorAll('.ans-btn[data-n="' + n + '"]').forEach(x => x.disabled = true);
         });
         const okN = list.filter(n => state[n] === 'ok').length;
+        if (r2.score100 !== undefined) { let sb = document.getElementById('rscore'); if (!sb) { sb = document.createElement('div'); sb.id = 'rscore'; sb.style.cssText = 'margin-top:10px;padding:10px 12px;background:#EDE9FE;border:2px solid #7C3AED;border-radius:10px;font-weight:800;color:#5B21B6;'; document.getElementById('sum').parentNode.insertBefore(sb, document.getElementById('sum')); } sb.innerHTML = '🏅 ' + round + '차 점수: <span style="font-size:20px;">' + r2.score100 + '점</span> <span style="font-weight:500;font-size:12px;color:#475569;">(처음 고른 답 기준 · 1차에서 맞힌 ' + r2.roundScore.base + '개 + 다시 풀어 새로 맞힌 ' + r2.roundScore.gain + '개 = ' + (r2.roundScore.base + r2.roundScore.gain) + '/' + r2.roundScore.objective + ')</span>'; }
         document.getElementById('sum').innerHTML = okN === list.length ? '<b style="color:#1a7a4a;font-size:16px;">🎉 모두 맞혔어요!</b>' : '지금까지 <b>' + okN + ' / ' + list.length + '</b> 맞혔어요. 틀린 문항만 다시 골라서 「확인하기」를 눌러요.';
       } catch (e) { document.getElementById('sum').innerHTML = '<span style="color:#C1392B;">' + escapeHtml(e.message || '확인하지 못했어요') + '</span>'; }
       btn.disabled = false; btn.textContent = '확인하기';

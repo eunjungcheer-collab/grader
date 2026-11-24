@@ -30,8 +30,8 @@ function rangeInfo(q, picks) {
 }
 async function wnGather(s, opt, say, ctx) {
   ctx = ctx || {}; let wnNote = '';
-  const wrong = itemResults(s).filter(r => !r.subj && !r.skip && !r.ok);
-  if (!wrong.length) throw new Error('틀린 문항이 없어요.');
+  const wrong = itemResults(s).filter(r => !r.subj && !r.skip && !r.ok && (!opt.onlyNums || opt.onlyNums.indexOf(r.n) >= 0));
+  if (!wrong.length) throw new Error(opt.onlyNums ? (opt.round || 2) + '차 다시풀기에서 처음에 틀린 문항이 없어요.' : '틀린 문항이 없어요.');
   const wrongBy = {}; wrong.forEach(r => { wrongBy[r.n] = r; });
   const entryOf = r => ({ n: r.n, given: r.given, answer: r.correct });
   const items = [], B = 5;
@@ -113,7 +113,7 @@ async function wnGather(s, opt, say, ctx) {
 //  kind 'note'  : 오답노트(내 답 표시) — student: 문제+내 답(+해설) / teacher: 내 답과 정답을 같이 적고 해설을 붙인 강사용
 //  kind 'retry' : 오답문제 다시풀기(내 답·정답 표시 없음) — student: 틀린 문제만 / answers: 정답표+해설 / teacher: 문제 아래 정답 표시 + 해설
 async function wnComposeDocs(s, g, kind, files, opt, qrBase64) {
-  const base = { studentName: s.studentName, examTitle: s.examTitle, wrongCount: g.wrong.length, blank: opt.blank || 0, qrBase64: qrBase64 }, out = {}, C = o => BankCore.composeWrongNotePdf(PDFLib, g.items, Object.assign({}, base, o));
+  const RL = (opt.round || 1) + '차 ', base = { studentName: s.studentName, examTitle: s.examTitle, wrongCount: g.wrong.length, blank: opt.blank || 0, qrBase64: qrBase64 }, out = {}, C = o => BankCore.composeWrongNotePdf(PDFLib, g.items, Object.assign({}, base, o));
   // 강사용: 다른 시험지 강사용과 똑같이 — 문제 바로 밑에 정답(빨간 글씨)+해설, 객관식 정답 번호에 빨간 동그라미
   const T = (label, withGiven) => BankCore.composeTeacherPdf(PDFLib, s.studentName + ' · ' + s.examTitle + ' ' + label, g.items.map(it => {
     const es = it.entries || [], single = es.length === 1 && !/~/.test(String(it.num || ''));
@@ -123,12 +123,12 @@ async function wnComposeDocs(s, g, kind, files, opt, qrBase64) {
   }), { keepTitle: false });
   if (kind === 'note') {
     const sc = s.total ? s.score100 + '점' : '';
-    if (files.student) out.student = await C({ scoreText: sc, withExpl: !!opt.withExpl, labelMode: 'given', kindLabel: '오답노트' });
-    if (files.teacher) out.teacher = await T('오답노트', true);
+    if (files.student) out.student = await C({ scoreText: (opt.round || 1) > 1 ? '' : sc, withExpl: !!opt.withExpl, labelMode: 'given', kindLabel: RL + '오답노트' });
+    if (files.teacher) out.teacher = await T(RL + '오답노트', true);
   } else {
-    if (files.student) out.student = await C({ withExpl: false, answersAtEnd: false, labelMode: 'none', blank: 0, kindLabel: '다시풀기' });
+    if (files.student) out.student = await C({ withExpl: false, answersAtEnd: false, labelMode: 'none', blank: 0, kindLabel: RL + '다시풀기' });
     if (files.answers) out.answers = await C({ withExpl: true, part: 'answers', kindLabel: '정답·해설' });
-    if (files.teacher) out.teacher = await T('다시풀기', false);
+    if (files.teacher) out.teacher = await T(RL + '다시풀기', false);
   }
   return out;
 }
@@ -146,6 +146,7 @@ async function wnMerge(docs) {
 async function wnBuild(records, kind, files, opt, say, prog) {
   const ctx = {}, parts = { student: [], answers: [], teacher: [] }, notes = [], used = [];
   const recs = records.slice().sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt)), N = recs.length;
+  const R = Math.max(1, Math.min(8, parseInt(opt.round, 10) || 1)); let roundRows = null; opt = Object.assign({}, opt, { round: R });
   const needExpl = !!(files.teacher || (kind === 'retry' && files.answers) || (kind === 'note' && opt.withExpl));
   for (let ri = 0; ri < N; ri++) {
     const s = recs[ri], tag = N > 1 ? '(' + (ri + 1) + '/' + N + ') ' + s.examTitle + ' · ' : '';
@@ -153,11 +154,18 @@ async function wnBuild(records, kind, files, opt, say, prog) {
     try {
       P(0.02);
       let counts = null; try { counts = opt.counts || await wnLoadCounts(opt.subs); } catch (e) { counts = null; }
-      const g = await wnGather(s, { withExpl: needExpl }, t => { say(tag + t); const m = /(\d+)\/(\d+)/.exec(t); P(0.05 + (m ? 0.7 * (+m[1] / +m[2]) : 0.3)); }, ctx);
+      let onlyNums = null;
+      if (R > 1) {        // N차 오답노트 = (N-1)번째 다시 풀기에서 「처음 고른 답」이 틀린 문항
+        if (!roundRows) { const rr = await callApi('retryRounds', { password: getTeacherPassword() }); roundRows = (rr && rr.ok) ? rr.rows : []; }
+        const nk = wnNameKey(s.studentName);
+        onlyNums = roundRows.filter(r => String(r[0]) === String(s.examId) && wnNameKey(r[1]) === nk && Number(r[2]) === R && r[4] === 'x').map(r => Number(r[3]));
+        if (!onlyNums.length) throw new Error(R + '차 오답노트: 학생이 아직 ' + R + '차 다시풀기를 풀지 않았거나 틀린 문항이 없어요. (먼저 ' + (R - 1) + '차 오답노트로 다시풀기를 풀게 해 주세요)');
+      }
+      const g = await wnGather(s, { withExpl: needExpl, onlyNums: onlyNums, round: R }, t => { say(tag + t); const m = /(\d+)\/(\d+)/.exec(t); P(0.05 + (m ? 0.7 * (+m[1] / +m[2]) : 0.3)); }, ctx);
       if (counts) g.items.forEach(it => { it.wrongTimes = Math.max(1, Math.max.apply(null, (it.entries || []).map(en => counts(s.studentName, s.examId, en.n)))); });
       if (g.note) notes.push(s.examTitle + ': ' + g.note);
       let qr = '';
-      try { const u = new URL('student_retry.html', location.href).href + '?id=' + encodeURIComponent(s.examId) + '&n=' + g.wrong.map(r => r.n).join(',') + '&name=' + encodeURIComponent(s.studentName); qr = (await QRCode.toDataURL(u, { width: 300, margin: 1 })).split(',')[1]; } catch (e) { qr = ''; }
+      try { const u = new URL('student_retry.html', location.href).href + '?id=' + encodeURIComponent(s.examId) + '&n=' + g.wrong.map(r => r.n).join(',') + '&r=' + (R + 1) + '&name=' + encodeURIComponent(s.studentName); qr = (await QRCode.toDataURL(u, { width: 300, margin: 1 })).split(',')[1]; } catch (e) { qr = ''; }
       say(tag + 'PDF 만드는 중...'); P(0.85);
       const d = await wnComposeDocs(s, g, kind, files, opt, qr);
       Object.keys(d).forEach(k => parts[k].push(d[k])); used.push(s);
@@ -180,9 +188,9 @@ async function wnBuild(records, kind, files, opt, say, prog) {
   return out;
 }
 const WN_NAME = { note: { student: '오답노트', teacher: '오답노트_강사용' }, retry: { combined: '다시풀기_학생용', student: '다시풀기_학생용', answers: '다시풀기_정답해설', teacher: '다시풀기_강사용' } };
-function wnFileName(kind, file, records) {
+function wnFileName(kind, file, records, round) {
   const sorted = records.slice().sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt)), who = sorted[0].studentName, what = records.length > 1 ? '합본(' + sorted[0].examTitle + ' 외 ' + (records.length - 1) + '개)' : sorted[0].examTitle;
-  return (who + '_' + what + '_' + WN_NAME[kind][file]).replace(/[\\/:*?"<>|]/g, ' ') + '.pdf';
+  return (who + '_' + what + '_' + ((round || 1) + '차_') + WN_NAME[kind][file]).replace(/[\\/:*?"<>|]/g, ' ') + '.pdf';
 }
 function wnDownload(bytes, name) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));

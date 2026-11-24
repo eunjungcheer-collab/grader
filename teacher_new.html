@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611241830">
+<link rel="stylesheet" href="css/style.css?v=202611241900">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611241830"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611241830"></script>
-<script src="js/printpdf.js?v=202611241830"></script>
-<script src="js/vendor/pdf.min.js?v=202611241830"></script>
-<script src="js/config.js?v=202611241830"></script>
-<script src="js/api.js?v=202611241830"></script>
-<script src="js/common.js?v=202611241830"></script>
-<script src="js/ocr.js?v=202611241830"></script>
-<script src="js/bankcore.js?v=202611241830"></script>
-<script src="js/pdfui.js?v=202611241830"></script>
-<script src="js/pdfview.js?v=202611241830"></script>
+<script src="js/vendor/qrcode.min.js?v=202611241900"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611241900"></script>
+<script src="js/printpdf.js?v=202611241900"></script>
+<script src="js/vendor/pdf.min.js?v=202611241900"></script>
+<script src="js/config.js?v=202611241900"></script>
+<script src="js/api.js?v=202611241900"></script>
+<script src="js/common.js?v=202611241900"></script>
+<script src="js/ocr.js?v=202611241900"></script>
+<script src="js/bankcore.js?v=202611241900"></script>
+<script src="js/pdfui.js?v=202611241900"></script>
+<script src="js/pdfview.js?v=202611241900"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1634,7 +1634,7 @@ async function saveToBank(cls, source, onProgress, ranges) {
   window.__bankIds = {}; picks.forEach(p => { window.__bankIds[p.num] = p.id; });
   unassignedCount += picks.filter(p => p.unit === '(단원 미지정)').length;
   // 2단계: 그림을 만들면서 바로바로 서버로 보낸다 (그림 만들기와 서버 저장이 겹쳐서 빠르다). 문항마다 드라이브 파일을 만드느라 서버가 느려서 작게 묶어 많이 동시에 보낸다.
-  const BATCH = 5, PARALLEL = 4;
+  const BATCH = 5; let PARALLEL = 4; try { PARALLEL = Math.max(1, Math.min(8, parseInt(localStorage.getItem('regParallel'), 10) || 4)); } catch (e) {}
   const chunks = [];
   for (let s2 = 0; s2 < picks.length; s2 += BATCH) chunks.push(picks.slice(s2, s2 + BATCH));
   let next = 0, done = 0, failure = null; const failedNums = [];

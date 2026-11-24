@@ -66,6 +66,18 @@ window.__savePending = 0; window.__saveDirty = 0;
 window.savePendingCount = function () { return (window.__savePending || 0) + (window.__saveDirty || 0); };
 window.addEventListener('beforeunload', function (e) { if (window.savePendingCount() > 0) { e.preventDefault(); e.returnValue = '아직 저장이 되지 않았어요'; return e.returnValue; } });
 window.warnIfSaving = function () { if (window.savePendingCount() > 0) { alert('⏳ 아직 저장이 되지 않았어요.\n\n「✅ 저장됨」 표시가 뜰 때까지 잠깐만 기다린 뒤에 나가 주세요.'); return true; } return false; };
+// 서버가 바빠서(잠금 시간초과 등) 실패하면 잠시 뒤 자동으로 다시 보낸다 (저장처럼 한 번 더 보내도 안전한 요청에만 쓴다)
+async function callApiRetry(action, params, tries, onWait) {
+  tries = tries || 4; let r = null;
+  for (let i = 0; i < tries; i++) {
+    try { r = await callApi(action, params); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+    if (r && r.ok) return r;
+    if (i === tries - 1 || !/잠금|lock|시간초과|timeout|Exception|서버에 연결|fetch|network/i.test(String((r && r.error) || ''))) break;
+    if (onWait) { try { onWait(i + 1, tries - 1); } catch (e) {} }
+    await new Promise(res => setTimeout(res, 2500 * (i + 1)));
+  }
+  return r;
+}
 async function callApi(action, params) {
   if (_PF_OK.test(action)) { const hit = _pfGet(action, params); if (hit) return JSON.parse(JSON.stringify(hit)); }
   else if (!_PF_READ.test(action)) _pfClear();

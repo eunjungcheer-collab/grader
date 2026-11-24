@@ -110,7 +110,7 @@ function handle_(e) {
     }
     const action = params.action;
     let result;
-    if (!/^(list|get|stu(Status|Home|Weak|Wrong|Login|PushInfo)|weakReport|reviewReport|noticeRoster|bankUnitMap|stats|retryLog|teacherPushInfo|suggestName|homeBadges|login)/.test(String(action))) bustCache_();
+    if (!/^(list|get|stu(Status|Home|Weak|Wrong|Login|PushInfo)|weakReport|reviewReport|noticeRoster|bankUnitMap|stats|retryLog|retryRounds|teacherPushInfo|suggestName|homeBadges|login)/.test(String(action))) bustCache_();
     switch (action) {
       case 'login': result = actionLogin_(params); break;
       case 'backupNow': result = actionBackupNow_(params); break;
@@ -195,10 +195,12 @@ function handle_(e) {
       case 'nameGroups': result = actionNameGroups_(params); break;
       case 'mergeNames': result = actionMergeNames_(params); break;
       case 'dataStatus': result = actionDataStatus_(params); break;
+      case 'healthCheck': result = actionHealthCheck_(params); break;
       case 'driveUsage': result = actionDriveUsage_(params); break;
       case 'dataTrim': result = actionDataTrim_(params); break;
       case 'retryCheck': result = actionRetryCheck_(params); break;
       case 'retryLog': result = actionRetryLog_(params); break;
+      case 'retryRounds': result = actionRetryRounds_(params); break;
       case 'weakReport': result = actionWeakReport_(params); break;
       case 'teacherPushInfo': result = actionTeacherPushInfo_(params); break;
       case 'teacherSaveToken': result = actionTeacherSaveToken_(params); break;
@@ -224,7 +226,7 @@ function handle_(e) {
       default: result = { ok: false, error: 'unknown action' };
     }
     // 쓰기가 끝난 뒤에도 한 번 더 비운다: 시작할 때만 비우면, 쓰는 도중에 들어온 목록 요청이 옛 값을 새 버전 이름으로 10분 동안 저장해 둬서 방금 고친 값이 되돌아간 것처럼 보였다
-    if (!/^(list|get|stu(Status|Home|Weak|Wrong|Login|PushInfo)|weakReport|reviewReport|noticeRoster|bankUnitMap|stats|retryLog|teacherPushInfo|suggestName|homeBadges|login)/.test(String(action))) bustCache_();
+    if (!/^(list|get|stu(Status|Home|Weak|Wrong|Login|PushInfo)|weakReport|reviewReport|noticeRoster|bankUnitMap|stats|retryLog|retryRounds|teacherPushInfo|suggestName|homeBadges|login)/.test(String(action))) bustCache_();
     return json_(result);
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -722,7 +724,7 @@ function actionEditSubmission_(p) {
   const correctAnswers = examAnswers_(found.row);
   const studentAnswers = (p.answers || []).map(function (a) { return String(a === undefined || a === null ? '' : a).trim() === '~' ? '~' : normAns_(a); });
   const want = new Date(p.submittedAt).getTime(); if (!isFinite(want)) return { ok: false, error: '고칠 기록을 찾지 못했어요.' };
-  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(10000)) return { ok: false, error: '서버가 바빠서 저장하지 못했어요. 잠시 뒤에 다시 눌러 주세요. (입력한 답은 화면에 그대로 있어요)' };
   try {
     const sheet = ss.getSheetByName(SHEET_SCORES), last = sheet.getLastRow();
     if (last < 2) return { ok: false, error: '고칠 기록을 찾지 못했어요.' };
@@ -2579,6 +2581,32 @@ function actionDriveUsage_(p) {
   return { ok: true, used: used, limit: limit, folders: out };
 }
 
+// ───────── 데이터 점검 (읽기만 한다. 아무것도 고치거나 지우지 않는다) ─────────
+function actionHealthCheck_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), out = { noAnswer: [], allSubjective: [], dupSubmit: [], oddTitle: [], exams: 0, submissions: 0, bank: 0, emptyFile: 0 };
+  const ex = ss.getSheetByName(SHEET_EXAMS), exRows = ex && ex.getLastRow() >= 2 ? ex.getRange(2, 1, ex.getLastRow() - 1, 3).getValues() : [];
+  const titleOf = {};
+  exRows.forEach(function (r) {
+    if (!r[0]) return; out.exams++; const id = String(r[0]), t = String(r[1]), a = String(r[2]).split(',').filter(String); titleOf[id] = t;
+    if (!a.length) out.noAnswer.push(t);
+    else if (a.every(function (x) { return String(x).trim() === '-' || String(x).trim() === ''; })) out.allSubjective.push(t);
+    if (/중\s?\d-[\d,]+단원/.test(t) && /\d-\d-\d\./.test(t)) out.oddTitle.push(t);
+  });
+  const sc = ss.getSheetByName(SHEET_SCORES);
+  if (sc && sc.getLastRow() >= 2) {
+    const d = sc.getRange(2, 1, sc.getLastRow() - 1, 12).getValues(), seen = {};
+    d.forEach(function (r, i) {
+      out.submissions++; const k = String(r[0]) + '|' + nameKey_(r[1]), t = new Date(r[5]).getTime() || 0;
+      if (seen[k] && Math.abs(t - seen[k].t) < 3 * 24 * 3600 * 1000 && (pendingOf_(seen[k].r) > 0 || pendingOf_(r) > 0)) out.dupSubmit.push((titleOf[String(r[0])] || String(r[0])) + ' · ' + String(r[1]));
+      seen[k] = { t: t, r: r };
+    });
+  }
+  try { const qs = questionsSheet_(); if (qs.getLastRow() >= 2) { const q = qs.getRange(2, 1, qs.getLastRow() - 1, 7).getValues(); q.forEach(function (r) { if (!r[0]) return; out.bank++; if (!String(r[6] || '').trim()) out.emptyFile++; }); } } catch (e) {}
+  ['noAnswer', 'allSubjective', 'dupSubmit', 'oddTitle'].forEach(function (k) { out[k] = out[k].filter(function (x, i, a) { return a.indexOf(x) === i; }).slice(0, 30); });
+  return { ok: true, result: out };
+}
+
 function actionDataStatus_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const ss = SpreadsheetApp.getActiveSpreadsheet(), t0 = Date.now();
@@ -2690,7 +2718,52 @@ function actionRetryCheck_(p) {
     if (p.studentName) { const cl = ensureSheet_(ss, 'Cleared', ['examId', 'name', 'n', 'at']), nowIso = new Date().toISOString(); Object.keys(results).forEach(function (n) { if (results[n] === 'ok') cl.appendRow([String(p.id), String(p.studentName).trim(), Number(n), nowIso]); else if (results[n] === 'x') ensureSheet_(ss, 'ReviewFail', ['examId', 'name', 'n', 'at']).appendRow([String(p.id), String(p.studentName).trim(), Number(n), nowIso]); }); }
     if (p.studentName) { const rw = ensureSheet_(ss, 'RetryWrong', ['examId', 'name', 'n', 'at']), nowIso2 = new Date().toISOString(); Object.keys(results).forEach(function (n) { if (results[n] === 'x') rw.appendRow([p.id, String(p.studentName), Number(n), nowIso2]); }); }      // 다시 풀고도 틀린 문항: 「N번 틀림」 표시에 쓴다
   } catch (e) {}
-  return { ok: true, results: results, tried: tried, correct: okN };
+  let rs = null;
+  try { if (p.studentName) rs = recordRetryRound_(ss, found, p, results); } catch (e) {}
+  return { ok: true, results: results, tried: tried, correct: okN, round: rs ? rs.round : undefined, score100: rs ? rs.score100 : undefined, roundScore: rs || undefined };
+}
+
+// ───────── 다시 풀기 회차(2차·3차) 점수 ─────────
+// 오답노트·다시풀기는 회차가 있다: 1차 = 처음 제출 기록, 2차 = 1차에서 틀린 문항을 다시 푼 것, 3차 = 2차에서 또 틀린 문항을 다시 푼 것.
+// N차 점수 = 1차에서 맞힌 수 + 2~N차 다시 풀기에서 「처음 고른 답」으로 맞힌 수 (같은 문항을 여러 번 눌러 맞혀도 처음 답만 센다).
+const RETRY_ROUNDS_SHEET = 'RetryRounds';
+function latestScoreOf_(ss, examId, name) {
+  const sh = ss.getSheetByName(SHEET_SCORES); if (!sh || sh.getLastRow() < 2) return null;
+  const d = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues(), nk = nameKey_(name); let best = null;
+  d.forEach(function (r) { if (String(r[0]) === String(examId) && nameKey_(r[1]) === nk) { const t = new Date(r[5]).getTime() || 0; if (!best || t >= best.t) best = { t: t, answers: String(r[2]).split(','), score: Number(r[3]) || 0, objective: Number(r[4]) || 0 }; } });
+  return best;
+}
+function roundScore_(ss, found, name, upTo) {
+  const base = latestScoreOf_(ss, found.row[0], name); if (!base) return null;
+  const correct = examAnswers_(found.row), wrong1 = {};
+  correct.forEach(function (c, i) { if (isSubjective_(c)) return; const a = base.answers[i]; if (a === '~' || a === undefined || a === '') return; if (!ansMatches_(a, c)) wrong1[i + 1] = true; });
+  const sh = ss.getSheetByName(RETRY_ROUNDS_SHEET), okByRound = {}, tried = {}, seen = {}, nk = nameKey_(name);
+  if (sh && sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, 6).getValues().forEach(function (r) {
+    if (String(r[0]) !== String(found.row[0]) || nameKey_(r[1]) !== nk) return;
+    const rd = Number(r[2]) || 1, n = Number(r[3]); if (rd > upTo || seen[rd + ':' + n]) return; seen[rd + ':' + n] = 1;
+    tried[rd] = (tried[rd] || 0) + 1;
+    if (String(r[4]) === 'ok' && wrong1[n] && !seen['got:' + n]) { seen['got:' + n] = 1; okByRound[rd] = (okByRound[rd] || 0) + 1; }
+  });
+  let gain = 0; for (let k = 2; k <= upTo; k++) gain += okByRound[k] || 0;
+  const total = base.objective, sc = base.score + gain;
+  return { round: upTo, base: base.score, gain: gain, objective: total, score: sc, score100: total ? Math.round(sc / total * 100) : 0, tried: tried[upTo] || 0, okThis: okByRound[upTo] || 0 };
+}
+function recordRetryRound_(ss, found, p, results) {
+  const round = Math.max(2, Math.min(9, parseInt(p.round, 10) || 2));        // 다시 풀기는 2차부터 (1차 = 처음 제출)
+  const sh = ensureSheet_(ss, RETRY_ROUNDS_SHEET, ['examId', 'name', 'round', 'n', 'result', 'at', 'key']), nk = nameKey_(p.studentName);
+  const have = {};
+  if (sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues().forEach(function (r) { if (String(r[0]) === String(p.id) && nameKey_(r[1]) === nk) have[(Number(r[2]) || 1) + ':' + Number(r[3])] = 1; });
+  const now = new Date().toISOString(), rows = [];
+  Object.keys(results).forEach(function (n) { const v = results[n]; if (v !== 'ok' && v !== 'x') return; if (have[round + ':' + n]) return; rows.push([String(p.id), String(p.studentName).trim(), round, Number(n), v, now, '']); });
+  if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
+  return roundScore_(ss, found, p.studentName, round);
+}
+// 선생님용: 오답노트·다시풀기 회차 만들 때 「N차에서 처음 틀린 문항」을 알려 준다
+function actionRetryRounds_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(RETRY_ROUNDS_SHEET);
+  if (!sh || sh.getLastRow() < 2) return { ok: true, rows: [] };
+  return { ok: true, rows: sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues().map(function (r) { return [String(r[0]), String(r[1]), Number(r[2]) || 2, Number(r[3]), String(r[4])]; }) };
 }
 
 // 다시 풀기에서 또 틀린 문항 기록 (오답노트·다시풀기 PDF의 「N번 틀림」 표시용)
@@ -2711,8 +2784,20 @@ function actionRetryLog_(p) {
   const rows = sh.getDataRange().getValues().slice(1).map(function (r) {
     return { examId: String(r[0]), examTitle: titleOf[String(r[0])] || '(삭제된 시험)', studentName: String(r[1]), total: Number(r[2]) || 0, score: Number(r[3]) || 0, submittedAt: String(r[4]) };
   });
-  rows.reverse();
-  return { ok: true, rows: rows.slice(0, 300) };
+  // 회차별 다시 풀기(2차·3차…) 기록: 같은 학생·시험·회차를 한 줄로 묶어 N차 점수를 붙인다
+  const seenRound = {}, roundRows = [];
+  const rsh = ss.getSheetByName(RETRY_ROUNDS_SHEET);
+  if (rsh && rsh.getLastRow() >= 2) {
+    const ex = {}; ss.getSheetByName(SHEET_EXAMS).getDataRange().getValues().slice(1).forEach(function (r) { if (r[0]) ex[String(r[0])] = r; });
+    const agg = {};
+    rsh.getRange(2, 1, rsh.getLastRow() - 1, 6).getValues().forEach(function (r) { const k = r[0] + '|' + nameKey_(r[1]) + '|' + (Number(r[2]) || 2); const a = agg[k] = agg[k] || { examId: String(r[0]), studentName: String(r[1]), round: Number(r[2]) || 2, total: 0, score: 0, at: '' }; a.total++; if (String(r[4]) === 'ok') a.score++; const t = String(r[5]); if (t > a.at) a.at = t; });
+    Object.keys(agg).forEach(function (k) { const a = agg[k]; seenRound[a.examId + '|' + nameKey_(a.studentName)] = 1; const found = ex[a.examId] ? { row: ex[a.examId] } : null; let rs = null; try { if (found) rs = roundScore_(ss, found, a.studentName, a.round); } catch (e) {}
+      roundRows.push({ examId: a.examId, examTitle: titleOf[a.examId] || '(삭제된 시험)', studentName: a.studentName, round: a.round, total: a.total, score: a.score, score100: rs ? rs.score100 : undefined, submittedAt: a.at }); });
+  }
+  const legacy = rows.filter(function (r) { return !seenRound[r.examId + '|' + nameKey_(r.studentName)]; });
+  const all = roundRows.concat(legacy);
+  all.sort(function (a, b) { return String(b.submittedAt) < String(a.submittedAt) ? -1 : 1; });
+  return { ok: true, rows: all.slice(0, 300) };
 }
 
 // ───────── 약점 분석: 오답률 높은 문항 · 반복 오답 ─────────

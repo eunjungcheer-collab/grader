@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611241830">
+<link rel="stylesheet" href="css/style.css?v=202611241900">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -42,6 +42,25 @@
       <button type="button" class="btn outline" id="pc-clear">🗑️ 보관한 PDF 지우기</button>
       <span class="hint" id="pc-msg"></span>
     </div>
+    <div class="card" id="hc-card">
+      <b>🩺 데이터 점검</b>
+      <p class="hint" style="margin:6px 0 8px;">시험·학생 기록·문제은행을 읽기만 해서 이상한 곳을 알려 줘요. 아무것도 고치거나 지우지 않아요.</p>
+      <button type="button" class="btn outline" id="hc-run" style="padding:8px 14px;">점검하기</button>
+      <div id="hc-out" class="hint" style="margin-top:8px;"></div>
+    </div>
+    <div class="card" id="rp-card">
+      <b>⚡ 시험지 등록 속도 (이 컴퓨터만)</b>
+      <p class="hint" style="margin:6px 0 8px;">시험지를 올릴 때 문제 그림을 서버로 몇 묶음씩 동시에 보낼지 정해요. 컴퓨터가 느리거나 서버가 「바쁘다」고 할 때는 「안정적으로」가 낫고, 이 컴퓨터가 빠르면 「빠르게」를 쓰세요.</p>
+      <label style="display:block; margin:6px 0;"><input type="radio" name="rp" value="2"> <b>안정적으로</b> — 2묶음씩 (느린 컴퓨터·학원 컴퓨터)</label>
+      <label style="display:block; margin:6px 0;"><input type="radio" name="rp" value="4"> <b>보통</b> (기본) — 4묶음씩</label>
+      <label style="display:block; margin:6px 0;"><input type="radio" name="rp" value="6"> <b>빠르게</b> — 6묶음씩 (빠른 컴퓨터)</label>
+    </div>
+    <div class="card" id="kp-card">
+      <b>⚡ 인쇄 창 없이 바로 인쇄 (시작 파일 받기)</b>
+      <p class="hint" style="margin:6px 0 8px;">웹 화면은 보안 때문에 스스로 「인쇄 창 건너뛰기」를 켤 수 없어요. 대신 이 파일을 더블클릭해서 열면 Edge(없으면 Chrome)가 「바로 인쇄」 설정으로 시작하고, 이 사이트가 바로 열려요. 그 창에서 🖨️ 인쇄를 누르면 기본 프린터로 바로 나가요. 바탕화면에 바로가기를 못 만드는 컴퓨터는 문서·다운로드 폴더에 이 파일을 두고 쓰세요. 컴퓨터마다 한 번만 받으면 돼요.</p>
+      <button type="button" class="btn outline" id="kp-get" style="padding:8px 14px;">⬇️ 바로인쇄 시작 파일 받기 (.bat)</button>
+      <p class="hint" style="margin:8px 0 0;">쓰기 전에 윈도우 설정에서 이 프린터를 「기본 프린터」로, 양면·용지(A4)를 미리 정해 두세요. 바로 인쇄 창에서는 로그인을 한 번 더 해야 하고, 끝나면 로그아웃하세요.</p>
+    </div>
     <div class="card" id="pm-card">
       <b>🖨️ 인쇄 방식</b>
       <label style="display:block; margin:6px 0;"><input type="radio" name="pm" value="fast"> <b>빠른 인쇄</b> (기본) — PDF를 그대로 보내요. 더 빠르고 선명해요. 안 되면 자동으로 예전 방식으로 인쇄해요.</label>
@@ -67,10 +86,10 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611241830"></script>
-<script src="js/api.js?v=202611241830"></script>
-<script src="js/common.js?v=202611241830"></script>
-<script src="js/pdfui.js?v=202611241830"></script>
+<script src="js/config.js?v=202611241900"></script>
+<script src="js/api.js?v=202611241900"></script>
+<script src="js/common.js?v=202611241900"></script>
+<script src="js/pdfui.js?v=202611241900"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -125,6 +144,28 @@ $('nm-go').addEventListener('click', async () => {
   $('nm-msg').textContent = '합치는 중...'; try { const r = await callApi('mergeNames', { password: getTeacherPassword(), from: from, to: to }); $('nm-msg').textContent = r.ok ? '✅ ' + r.changed + '곳을 「' + to + '」로 통일했어요' : '⚠️ ' + r.error; loadNames(); } catch (x) { $('nm-msg').textContent = '⚠️ ' + x.message; }
 });
 load();
+document.getElementById('hc-run').addEventListener('click', async () => {
+  const o = document.getElementById('hc-out'), b = document.getElementById('hc-run'); b.disabled = true; o.textContent = '점검 중...';
+  try {
+    const r = await callApi('healthCheck', { password: getTeacherPassword() }); if (!r.ok) throw new Error(r.error || '점검하지 못했어요');
+    const x = r.result, li = (t, a) => a.length ? '<div style="margin-top:6px;"><b style="color:#B91C1C;">⚠️ ' + t + ' ' + a.length + '건</b><br>' + a.map(escapeHtml).join('<br>') + '</div>' : '<div style="margin-top:6px;color:#166534;">✅ ' + t + ' 없음</div>';
+    o.innerHTML = '시험 ' + x.exams + '개 · 학생 기록 ' + x.submissions + '건 · 문제은행 ' + x.bank + '문항' + li('정답이 하나도 없는 시험', x.noAnswer) + li('정답이 전부 서술형(-)인 시험', x.allSubjective) + li('같은 학생이 같은 시험을 나눠서 제출한 기록(합쳐지지 않은 것)', x.dupSubmit) + li('이름 끝 단원 표시가 이상한 시험', x.oddTitle) + (x.emptyFile ? '<div style="margin-top:6px;"><b style="color:#B91C1C;">⚠️ 그림 파일이 없는 문제은행 문항 ' + x.emptyFile + '개</b></div>' : '<div style="margin-top:6px;color:#166534;">✅ 그림 파일 없는 문항 없음</div>');
+  } catch (e) { o.innerHTML = '<span style="color:#B91C1C;">' + escapeHtml(e.message || e) + '</span>'; }
+  b.disabled = false;
+});
+document.getElementById('kp-get').addEventListener('click', () => {
+  const url = new URL('./', location.href).href.replace(/"/g, '');
+  const L = ['@echo off', 'chcp 65001 >nul', 'set "URL=' + url + '"',
+    'set "EXE=%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe"',
+    'if not exist "%EXE%" set "EXE=%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe"',
+    'if not exist "%EXE%" set "EXE=%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe"',
+    'if not exist "%EXE%" set "EXE=%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe"',
+    'if not exist "%EXE%" echo Edge or Chrome was not found. & pause & exit /b 1',
+    'start "" "%EXE%" --kiosk-printing --user-data-dir="%LOCALAPPDATA%\\grader-print" "%URL%"', ''];
+  const blob = new Blob([L.join('\r\n')], { type: 'application/octet-stream' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'grader-quick-print.bat'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+});
+(function () { let v = '4'; try { v = localStorage.getItem('regParallel') || '4'; } catch (e) {} document.querySelectorAll('input[name=rp]').forEach(r => { r.checked = r.value === v; r.addEventListener('change', () => { try { localStorage.setItem('regParallel', r.value); } catch (e) {} }); }); })();
 (function () { let m = 'fast'; try { m = localStorage.getItem('printMode') === 'raster' ? 'raster' : 'fast'; } catch (e) {} document.querySelectorAll('input[name=pm]').forEach(r => { r.checked = r.value === m; r.addEventListener('change', () => { try { localStorage.setItem('printMode', r.value); document.getElementById('pm-msg').textContent = '✅ 저장했어요 (이 브라우저에서만 적용돼요).'; } catch (e) { document.getElementById('pm-msg').textContent = '⚠️ 저장하지 못했어요.'; } }); }); })();
 (async function () { const on = $('pc-on'); try { on.checked = localStorage.getItem('pdfCache') !== 'off'; } catch (e) { on.checked = true; }
   const show = async () => { const i = await pdfCacheInfo(); $('pc-info').textContent = '보관 중: ' + i.count + '개 · ' + MB(i.bytes); };
