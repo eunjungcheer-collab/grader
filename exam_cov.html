@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>기출 현황 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250540">
+<link rel="stylesheet" href="css/style.css?v=202611250550">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <style>body{padding:10px 12px;max-width:none;} #cov-card{overflow-x:auto;} .gb{padding:6px 12px;font-size:13px;}</style>
 </head>
@@ -12,14 +12,15 @@
 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
   <input type="search" id="q-inp" placeholder="학교 이름 (예: 불암중) — 비우면 전체 학교" style="flex:1 1 160px;min-width:120px;" autofocus>
   <button type="button" class="btn outline gb" id="all-btn">🏫 전체 학교 현황표</button>
+  <button type="button" class="btn outline gb" id="all-detail">📚 학교별 O/X 표 모두 보기</button>
   <span id="grade-chips" style="display:flex;gap:6px;"></span>
 </div>
 <div id="cov-card" class="card" style="padding:12px 14px;">학교 이름을 입력하세요.</div>
 <div class="hint" id="cov-msg" style="margin-top:6px;"></div>
-<script src="js/config.js?v=202611250540"></script>
-<script src="js/api.js?v=202611250540"></script>
-<script src="js/common.js?v=202611250540"></script>
-<script src="js/pdfui.js?v=202611250540"></script>
+<script src="js/config.js?v=202611250550"></script>
+<script src="js/api.js?v=202611250550"></script>
+<script src="js/common.js?v=202611250550"></script>
+<script src="js/pdfui.js?v=202611250550"></script>
 <script>
 requireLogin();
 let exams = [];
@@ -98,6 +99,17 @@ function drawOverview() {
 }
 document.getElementById('cov-card').addEventListener('click', e => { const t = e.target.closest('[data-school]'); if (!t) return; qInp.value = st.q = t.dataset.school; render(); });
 document.getElementById('all-btn').addEventListener('click', () => { qInp.value = st.q = ''; render(); });
+// 등록한 학교마다 연도×학기 O/X 상세표를 한 화면에 차례로 모두 보여준다
+function drawAllDetail() {
+  const box = document.getElementById('cov-card'), names = [];
+  exams.forEach(ex => { const sc = schoolOf(ex); if (sc && names.indexOf(sc) < 0) names.push(sc); });
+  names.sort((a, b) => a.localeCompare(b, 'ko'));
+  if (!names.length) { box.style.display = ''; box.innerHTML = '학교 이름이 들어 있는 시험지가 아직 없어요.'; return; }
+  const saveQ = st.q, saveV = qInp.value; let all = '';
+  names.forEach(n => { st.q = n; qInp.value = n; drawCoverage(); if (box.style.display !== 'none') all += '<div style="margin:0 0 18px;padding-bottom:12px;border-bottom:2px solid #E2E8F0;"><div style="font-size:16px;font-weight:800;color:#1F3A6B;margin-bottom:4px;">🏫 ' + escapeHtml(n) + '</div>' + box.innerHTML + '</div>'; });
+  st.q = saveQ; qInp.value = saveV; box.style.display = ''; box.innerHTML = '<div style="font-weight:800;margin-bottom:10px;">📚 시험지를 등록한 학교 ' + names.length + '곳 — 학교별 O/X 표 (가나다 순)</div>' + all;
+}
+document.getElementById('all-detail').addEventListener('click', () => { st.q = ''; qInp.value = ''; drawChips(); drawAllDetail(); });
 function drawChips() { document.getElementById('grade-chips').innerHTML = [['', '전체'], ['중1', '중1'], ['중2', '중2'], ['중3', '중3']].map(g => '<button type="button" class="btn ' + (st.grade === g[0] ? '' : 'outline') + ' gb" data-g="' + g[0] + '">' + g[1] + '</button>').join(''); }
 function render() { drawChips(); if (!st.q.trim()) { drawOverview(); return; } drawCoverage(); const box = document.getElementById('cov-card'); if (box.style.display === 'none') { box.style.display = ''; box.innerHTML = '검색한 이름의 시험지 중 연도·학기·중간/기말을 읽을 수 있는 것이 없어요.'; } }
 document.getElementById('grade-chips').addEventListener('click', e => { const b = e.target.closest('button[data-g]'); if (!b) return; st.grade = b.dataset.g; render(); });
