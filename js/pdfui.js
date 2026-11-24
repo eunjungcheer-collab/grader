@@ -753,9 +753,10 @@ function isDupPreview(text, keys) { const k = dupKey(text); return k.length >= 2
 // entries: [{name, scan}] → 각 entry에 isAnswer를 달고, {answerOf: 문제지 인덱스 → 정답지 인덱스(없으면 -1)}를 돌려준다
 function pairAnswerFiles(entries) {
   const NAME_RE = /정답|해설|답지|답안|answer|key/i;
-  entries.forEach(e => { e.isAnswer = (e.scan.questions.length === 0) || (NAME_RE.test(e.name) && e.scan.questions.length <= 2 && Object.keys(e.scan.answers || {}).length > e.scan.questions.length); });
+  const RUBRIC_RE = /기준표|채점\s*기준|평가\s*기준|모범\s*답안|채점표/;      // 「서술형 기준표」 같은 서술형 정답·채점기준 파일은 따로 시험지로 등록하지 않고, 이름이 같은 시험지의 정답지로 붙인다
+  entries.forEach(e => { e.isAnswer = (e.scan.questions.length === 0) || RUBRIC_RE.test(e.name) || (NAME_RE.test(e.name) && e.scan.questions.length <= 2 && Object.keys(e.scan.answers || {}).length > e.scan.questions.length); });
   if (!entries.some(e => !e.isAnswer)) entries.forEach(e => { e.isAnswer = false; });          // 문제지가 하나도 없으면 전부 문제지로 취급(원래 동작)
-  const norm = n => String(n).replace(/\.pdf$/i, '').replace(/정답\s*및\s*해설|정답과\s*해설|정답|해설|답지|답안|문제지|문제|answers?|keys?|questions?|[\s_\-()\[\].,+]/gi, '').toLowerCase();
+  const norm = n => String(n).replace(/\.pdf$/i, '').replace(/서술형|서답형|논술형|평가\s*기준표|채점\s*기준표|채점\s*기준|기준표|모범\s*답안|정답\s*및\s*해설|정답과\s*해설|정답|해설|답지|답안|문제지|문제|answers?|keys?|questions?|[\s_\-()\[\].,+]/gi, '').toLowerCase();
   const common = (a, b) => { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; };
   const answerOf = {}, used = {};
   entries.forEach((e, i) => { answerOf[i] = -1; });
