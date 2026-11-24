@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250205">
+<link rel="stylesheet" href="css/style.css?v=202611250215">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -29,6 +29,9 @@
       <div style="margin:4px 0 0 24px; font-size:13px;">동시에 처리할 시험지 수 <select id="auto-pool" style="width:auto; display:inline-block; margin:0; padding:4px 8px;"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>8</option></select> <span class="hint" style="margin:0;">많을수록 서버 저장을 더 많이 겹치지만, 컴퓨터가 느려지고 구글 서버가 거부할 수 있어요. 막히면 줄이세요.</span></div>
       <label class="field-label-spaced">정답지 PDF <span class="muted" style="font-weight:400;">(문제지와 따로 있을 때만 · 없으면 비워두세요)</span></label>
       <input type="file" id="pdf-answer-file" accept="application/pdf">
+      <label class="field-label-spaced">서술형 기준표 PDF <span class="muted" style="font-weight:400;">(있을 때만 · 시험지를 올리기 전에 고르거나 시험지와 같이 올리면 같은 시험지 정답지 뒤에 붙고, 서술형 문항별 답안으로 저장돼요 · 이 칸에 안 올리고 시험지와 함께 올려도 이름·내용으로 알아서 붙여요)</span></label>
+      <input type="file" id="rubric-file" accept="application/pdf" multiple>
+      <div id="rubric-note" class="hint" style="margin:4px 0 0;"></div>
       <label class="field-label-spaced">시험지 이름</label>
       <input type="text" id="title" required>
       <div id="scan-summary" class="banner" style="margin:14px 0 0; display:none;"></div>
@@ -159,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250205"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250205"></script>
-<script src="js/printpdf.js?v=202611250205"></script>
-<script src="js/vendor/pdf.min.js?v=202611250205"></script>
-<script src="js/config.js?v=202611250205"></script>
-<script src="js/api.js?v=202611250205"></script>
-<script src="js/common.js?v=202611250205"></script>
-<script src="js/ocr.js?v=202611250205"></script>
-<script src="js/bankcore.js?v=202611250205"></script>
-<script src="js/pdfui.js?v=202611250205"></script>
-<script src="js/pdfview.js?v=202611250205"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250215"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250215"></script>
+<script src="js/printpdf.js?v=202611250215"></script>
+<script src="js/vendor/pdf.min.js?v=202611250215"></script>
+<script src="js/config.js?v=202611250215"></script>
+<script src="js/api.js?v=202611250215"></script>
+<script src="js/common.js?v=202611250215"></script>
+<script src="js/ocr.js?v=202611250215"></script>
+<script src="js/bankcore.js?v=202611250215"></script>
+<script src="js/pdfui.js?v=202611250215"></script>
+<script src="js/pdfview.js?v=202611250215"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -189,8 +192,9 @@ const ANS_NAME_RE = /정답|해설|답지|답안|answer|객관식\s*답|답\s*[(
 function normName(n) { return String(n).replace(/\.pdf$/i, '').replace(/서술형|서답형|논술형|평가\s*기준표|채점\s*기준표|채점\s*기준|평가\s*기준|기준표|모범\s*답안|정답\s*및\s*해설|정답과\s*해설|정답|해설|답지|답안|문제지|문제|answers?|[\s_\-()\[\].,+]/gi, '').toLowerCase(); }
 function commonLen(a, b) { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; }
 // 파일 이름으로 문제지와 정답지를 짝짓는다: [{file, ans}]  (isAnsOverride: 이름만으로는 몰라도 내용을 보고 정답지로 판단한 것)
+const RUBSET = new WeakSet();      // 「서술형 기준표 PDF」 칸으로 올린 파일
 function pairByName(files, isAnsOverride) {
-  const isA = files.map((f, i) => ANS_NAME_RE.test(f.name) || !!(isAnsOverride && isAnsOverride[i]));
+  const isA = files.map((f, i) => ANS_NAME_RE.test(f.name) || RUBSET.has(f) || !!(isAnsOverride && isAnsOverride[i]));
   if (isA.every(x => x)) return files.map(f => ({ file: f, ans: null }));
   const yr = n => { const m = String(n).match(/(20\d\d)/); return m ? m[1] : ''; };
   const qs = files.map((f, i) => ({ file: f, ans: null, idx: i })).filter((q, k) => !isA[q.idx]);
@@ -201,7 +205,7 @@ function pairByName(files, isAnsOverride) {
       if (tm(af.name) && tm(q.file.name) && tm(af.name) !== tm(q.file.name)) return;      // 중간 ↔ 기말은 짝이 아니다
       if (gs(af.name) && gs(q.file.name) && gs(af.name) !== gs(q.file.name)) return;      // 학년-학기가 다르면 짝이 아니다
       const bonus = (tm(af.name) && tm(af.name) === tm(q.file.name) ? 300 : 0) + (gs(af.name) && gs(af.name) === gs(q.file.name) ? 300 : 0);
-      cands.push({ ai: ai, q: q, bonus: bonus, sc: bonus + commonLen(normName(q.file.name), normName(af.name)) * 10 - Math.abs(q.idx - ai) - (/기준표|채점\s*기준|평가\s*기준|모범\s*답안|배점표/.test(af.name) ? 5000 : 0) }); }); });      // 서술형 기준표는 정답표 다음 순서(같은 시험지에 정답표와 기준표가 둘 다 붙을 수 있다)
+      cands.push({ ai: ai, q: q, bonus: bonus, sc: bonus + commonLen(normName(q.file.name), normName(af.name)) * 10 - Math.abs(q.idx - ai) - (RUBSET.has(af) || /기준표|채점\s*기준|평가\s*기준|모범\s*답안|배점표/.test(af.name) ? 5000 : 0) }); }); });      // 서술형 기준표는 정답표 다음 순서(같은 시험지에 정답표와 기준표가 둘 다 붙을 수 있다)
   cands.sort((x, y) => y.sc - x.sc);
   const usedA = {};
   cands.forEach(c => { if (usedA[c.ai]) return; if (!c.q.ans) { c.q.ans = files[c.ai]; usedA[c.ai] = true; } else if (c.bonus > 0) { (c.q.more = c.q.more || []).push(files[c.ai]); usedA[c.ai] = true; } });      // 시험지 하나에 정답지 하나, 정답지 하나는 시험지 하나에만
@@ -226,6 +230,10 @@ async function looksLikeAnswerSheet(file) {
 // 한 시험지에 정답표와 서술형 기준표가 따로 있으면 한 PDF로 합쳐서 정답지로 쓴다 (정답표 → 기준표 순서)
 async function mergeMore(pairs) {
   for (const p of pairs) {
+    if ((!p.more || !p.more.length) && p.ans && (RUBSET.has(p.ans) || /기준표|채점\s*기준|평가\s*기준|모범\s*답안/.test(p.ans.name)) && p.ans.__rub === undefined) {      // 정답표 없이 기준표만 있는 경우: 전체가 기준표 쪽
+      try { p.ans.__rub = (await PDFLib.PDFDocument.load(await p.ans.arrayBuffer(), { ignoreEncryption: true })).getPageCount(); } catch (e) {}
+      continue;
+    }
     if (!p.more || !p.more.length) continue;
     try {
       const doc = await PDFLib.PDFDocument.create();
@@ -246,6 +254,7 @@ function showQueueNote() {
     (fileQueue.length ? '<br>⏭ 남은 시험지: ' + fileQueue.map(q => escapeHtml(q.file.name)).join(' / ') : '');
 }
 $('pdf-file').addEventListener('change', function () { onPickFiles(Array.from(this.files)); });
+$('rubric-file').addEventListener('change', function () { const n = this.files.length, rn = $('rubric-note'); if (rn) rn.textContent = n ? '✅ 서술형 기준표 ' + n + '개를 골랐어요. 이제 시험지를 올리면 같은 시험지(중간/기말·학년학기가 같은 것)에 붙여요.' : ''; });
 // 파일을 화면 아무 곳에나 끌어다 놓아도 올라간다 (이미 열어 둔 시험지가 있으면 함께 여러 시험지 화면으로)
 (function () {
   const isFiles = ev => ev.dataTransfer && Array.from(ev.dataTransfer.types || []).indexOf('Files') >= 0;
@@ -258,6 +267,7 @@ $('pdf-file').addEventListener('change', function () { onPickFiles(Array.from(th
   });
 })();
 async function onPickFiles(newFiles) {
+  { const rfI = $('rubric-file'); if (rfI && rfI.files && rfI.files.length) { const rf = Array.from(rfI.files); rf.forEach(f => RUBSET.add(f)); newFiles = newFiles.concat(rf); rfI.value = ''; const rn = $('rubric-note'); if (rn) rn.textContent = ''; } }
   // 같은 파일이 두 번 들어오는 것 방지: 파일 칸에 끌어다 놓으면 「칸 자체의 선택」과 「화면 전체 끌어다 놓기」가 둘 다 동작해서 같은 시험지가 2개로 잡혔다
   { const fk = f => f.name + '|' + f.size + '|' + f.lastModified, seen = {}; newFiles = newFiles.filter(f => { const k = fk(f); if (seen[k]) return false; seen[k] = 1; return true; });
     const sig = newFiles.map(fk).sort().join('#'), now = Date.now();
@@ -269,7 +279,7 @@ async function onPickFiles(newFiles) {
   let fl = newFiles.slice();
   if (!fl.length) return;
   if (!IS_CHILD && window.__liveAdd) {      // 등록이 진행 중이면 기다리게 하지 않고 지금 돌아가는 줄에 바로 이어 붙인다
-    const ps = pairByName(fl, fl.map(f => ANS_NAME_RE.test(f.name) ? true : (f.size > 12 * 1024 * 1024 ? false : null)).map(v => v === null ? false : v));
+    const ps = pairByName(fl, fl.map(f => (ANS_NAME_RE.test(f.name) || RUBSET.has(f)) ? true : (f.size > 12 * 1024 * 1024 ? false : null)).map(v => v === null ? false : v));
     if (ps.length && window.__liveAdd) { await mergeMore(ps); window.__liveAdd(ps); return; }
   }
   const inReview = !IS_CHILD && !!(window.__RR && window.__RR.reg && $('auto-review') && $('new-exam-form').style.display === 'none');      // 결과 화면이 떠 있을 때
@@ -288,7 +298,7 @@ async function onPickFiles(newFiles) {
     showSpinner('파일 짝짓는 중...');
     ov = [];
     // 정답지인지 내용으로 보는 검사는 파일마다 PDF를 열어야 해서, 4개씩 동시에 하고 용량이 큰 파일(정답지로 보기엔 큼)은 건너뛴다
-    ov = fl.map((f, fi) => fi < keepOv.length ? keepOv[fi] : (ANS_NAME_RE.test(f.name) ? true : null));
+    ov = fl.map((f, fi) => fi < keepOv.length ? keepOv[fi] : ((ANS_NAME_RE.test(f.name) || RUBSET.has(f)) ? true : null));
     const todo = fl.map((f, fi) => fi).filter(fi => ov[fi] === null);
     let ti = 0;
     const lk = async () => { while (ti < todo.length) { const fi = todo[ti++]; ov[fi] = fl[fi].size > 12 * 1024 * 1024 ? false : await looksLikeAnswerSheet(fl[fi]); } };
