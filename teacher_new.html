@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250127">
+<link rel="stylesheet" href="css/style.css?v=202611250138">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -159,17 +159,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250127"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250127"></script>
-<script src="js/printpdf.js?v=202611250127"></script>
-<script src="js/vendor/pdf.min.js?v=202611250127"></script>
-<script src="js/config.js?v=202611250127"></script>
-<script src="js/api.js?v=202611250127"></script>
-<script src="js/common.js?v=202611250127"></script>
-<script src="js/ocr.js?v=202611250127"></script>
-<script src="js/bankcore.js?v=202611250127"></script>
-<script src="js/pdfui.js?v=202611250127"></script>
-<script src="js/pdfview.js?v=202611250127"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250138"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250138"></script>
+<script src="js/printpdf.js?v=202611250138"></script>
+<script src="js/vendor/pdf.min.js?v=202611250138"></script>
+<script src="js/config.js?v=202611250138"></script>
+<script src="js/api.js?v=202611250138"></script>
+<script src="js/common.js?v=202611250138"></script>
+<script src="js/ocr.js?v=202611250138"></script>
+<script src="js/bankcore.js?v=202611250138"></script>
+<script src="js/pdfui.js?v=202611250138"></script>
+<script src="js/pdfview.js?v=202611250138"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -185,8 +185,8 @@ const $ = id => document.getElementById(id);
 
 // ── 여러 시험지를 한꺼번에 고르면: 한 장씩 차례로 열어 준다 (정답은 시험지마다 확인해야 하니 자동 등록은 하지 않아요) ──
 let fileQueue = [], queueTotal = 0, queueDoneTitles = [], queueDoneIds = [];
-const ANS_NAME_RE = /정답|해설|답지|답안|answer|객관식\s*답|답\s*[(（]|배점표/i;      // 「객관식 답(과학)」「정답배점표」처럼 이름에 「정답」이 없는 정답지도 이름으로 알아본다
-function normName(n) { return String(n).replace(/\.pdf$/i, '').replace(/정답\s*및\s*해설|정답과\s*해설|정답|해설|답지|답안|문제지|문제|answers?|[\s_\-()\[\].,+]/gi, '').toLowerCase(); }
+const ANS_NAME_RE = /정답|해설|답지|답안|answer|객관식\s*답|답\s*[(（]|배점표|기준표|채점\s*기준|평가\s*기준|모범\s*답안/i;      // 「객관식 답(과학)」「정답배점표」처럼 이름에 「정답」이 없는 정답지도 이름으로 알아본다
+function normName(n) { return String(n).replace(/\.pdf$/i, '').replace(/서술형|서답형|논술형|평가\s*기준표|채점\s*기준표|채점\s*기준|평가\s*기준|기준표|모범\s*답안|정답\s*및\s*해설|정답과\s*해설|정답|해설|답지|답안|문제지|문제|answers?|[\s_\-()\[\].,+]/gi, '').toLowerCase(); }
 function commonLen(a, b) { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; }
 // 파일 이름으로 문제지와 정답지를 짝짓는다: [{file, ans}]  (isAnsOverride: 이름만으로는 몰라도 내용을 보고 정답지로 판단한 것)
 function pairByName(files, isAnsOverride) {
