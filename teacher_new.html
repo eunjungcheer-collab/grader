@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250112">
+<link rel="stylesheet" href="css/style.css?v=202611250125">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -159,17 +159,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250112"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250112"></script>
-<script src="js/printpdf.js?v=202611250112"></script>
-<script src="js/vendor/pdf.min.js?v=202611250112"></script>
-<script src="js/config.js?v=202611250112"></script>
-<script src="js/api.js?v=202611250112"></script>
-<script src="js/common.js?v=202611250112"></script>
-<script src="js/ocr.js?v=202611250112"></script>
-<script src="js/bankcore.js?v=202611250112"></script>
-<script src="js/pdfui.js?v=202611250112"></script>
-<script src="js/pdfview.js?v=202611250112"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250125"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250125"></script>
+<script src="js/printpdf.js?v=202611250125"></script>
+<script src="js/vendor/pdf.min.js?v=202611250125"></script>
+<script src="js/config.js?v=202611250125"></script>
+<script src="js/api.js?v=202611250125"></script>
+<script src="js/common.js?v=202611250125"></script>
+<script src="js/ocr.js?v=202611250125"></script>
+<script src="js/bankcore.js?v=202611250125"></script>
+<script src="js/pdfui.js?v=202611250125"></script>
+<script src="js/pdfview.js?v=202611250125"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -197,10 +197,14 @@ function pairByName(files, isAnsOverride) {
   const cands = [];
   files.forEach((af, ai) => { if (!isA[ai]) return;
     qs.forEach(q => { const ya = yr(af.name), yq = yr(q.file.name); if (ya && yq && ya !== yq) return;      // 연도가 다르면(2023 ↔ 2024) 짝이 아니다
-      cands.push({ ai: ai, q: q, sc: commonLen(normName(q.file.name), normName(af.name)) * 10 - Math.abs(q.idx - ai) }); }); });
+      const tm = n => /중간/.test(n) ? 'm' : (/기말/.test(n) ? 'f' : ''), gs = n => { const m = String(n).match(/(?<![\d])([123])\s*[-–]\s*([12])(?!\d)/) || String(n).match(/([123])\s*학년\s*([12])\s*학기/); return m ? m[1] + '-' + m[2] : ''; };
+      if (tm(af.name) && tm(q.file.name) && tm(af.name) !== tm(q.file.name)) return;      // 중간 ↔ 기말은 짝이 아니다
+      if (gs(af.name) && gs(q.file.name) && gs(af.name) !== gs(q.file.name)) return;      // 학년-학기가 다르면 짝이 아니다
+      const bonus = (tm(af.name) && tm(af.name) === tm(q.file.name) ? 300 : 0) + (gs(af.name) && gs(af.name) === gs(q.file.name) ? 300 : 0);
+      cands.push({ ai: ai, q: q, bonus: bonus, sc: bonus + commonLen(normName(q.file.name), normName(af.name)) * 10 - Math.abs(q.idx - ai) - (/기준표|채점\s*기준|평가\s*기준|모범\s*답안|배점표/.test(af.name) ? 5000 : 0) }); }); });      // 서술형 기준표는 정답표 다음 순서(같은 시험지에 정답표와 기준표가 둘 다 붙을 수 있다)
   cands.sort((x, y) => y.sc - x.sc);
   const usedA = {};
-  cands.forEach(c => { if (usedA[c.ai] || c.q.ans) return; c.q.ans = files[c.ai]; usedA[c.ai] = true; });      // 시험지 하나에 정답지 하나, 정답지 하나는 시험지 하나에만
+  cands.forEach(c => { if (usedA[c.ai]) return; if (!c.q.ans) { c.q.ans = files[c.ai]; usedA[c.ai] = true; } else if (c.bonus > 0) { (c.q.more = c.q.more || []).push(files[c.ai]); usedA[c.ai] = true; } });      // 시험지 하나에 정답지 하나, 정답지 하나는 시험지 하나에만
   // 짝을 못 찾은 "정답지" 파일은 버리지 않고 따로 시험지로 연다 (다른 해의 시험지가 정답이라는 이름을 갖고 있을 수 있다)
   files.forEach((af, ai) => { if (isA[ai] && !usedA[ai]) qs.push({ file: af, ans: null, idx: ai }); });
   return qs.sort((x, y) => x.idx - y.idx);
@@ -218,6 +222,18 @@ async function looksLikeAnswerSheet(file) {
     if (n > 2) return false;
     try { const rs = await BankCore.readScannedAnswerSheet(info.doc, Array.from({ length: n }, (_, i) => i + 1)); return rs.count >= 5; } catch (e) { return false; }
   } catch (e) { return false; }
+}
+// 한 시험지에 정답표와 서술형 기준표가 따로 있으면 한 PDF로 합쳐서 정답지로 쓴다 (정답표 → 기준표 순서)
+async function mergeMore(pairs) {
+  for (const p of pairs) {
+    if (!p.more || !p.more.length) continue;
+    try {
+      const doc = await PDFLib.PDFDocument.create();
+      for (const f of [p.ans].concat(p.more)) { const src = await PDFLib.PDFDocument.load(await f.arrayBuffer(), { ignoreEncryption: true }); (await doc.copyPages(src, src.getPageIndices())).forEach(pg => doc.addPage(pg)); }
+      p.ans = new File([await doc.save()], p.ans.name, { type: 'application/pdf' }); p.more = null;
+    } catch (e) { console.warn('정답지 합치기 실패', e); }
+  }
+  return pairs;
 }
 function showQueueNote() {
   const el = $('queue-note'); if (!el) return;
@@ -253,10 +269,10 @@ async function onPickFiles(newFiles) {
   if (!fl.length) return;
   if (!IS_CHILD && window.__liveAdd) {      // 등록이 진행 중이면 기다리게 하지 않고 지금 돌아가는 줄에 바로 이어 붙인다
     const ps = pairByName(fl, fl.map(f => ANS_NAME_RE.test(f.name) ? true : (f.size > 12 * 1024 * 1024 ? false : null)).map(v => v === null ? false : v));
-    if (ps.length && window.__liveAdd) { window.__liveAdd(ps); return; }
+    if (ps.length && window.__liveAdd) { await mergeMore(ps); window.__liveAdd(ps); return; }
   }
   const inReview = !IS_CHILD && !!(window.__RR && window.__RR.reg && $('auto-review') && $('new-exam-form').style.display === 'none');      // 결과 화면이 떠 있을 때
-  if (!IS_CHILD && (newFiles.length > 1 || inReview || (curPair && curPair.file))) {      // 시험지가 2개 이상이 되면 1개용 화면을 보이지 않고 곧바로 여러 시험지 화면으로 간다
+  if (!IS_CHILD && (!REPLACE_ID || newFiles.length > 1 || inReview || (curPair && curPair.file))) {      // 시험지가 2개 이상이 되면 1개용 화면을 보이지 않고 곧바로 여러 시험지 화면으로 간다
     { const fm0 = $('new-exam-form'); if (fm0) fm0.style.display = ''; const ar0 = $('auto-review'); if (ar0) ar0.style.display = 'none'; }
     ['scan-result', 'scan-summary'].forEach(id => { const el = $(id); if (el) el.style.display = 'none'; });
     const nt = $('queue-note'); if (nt) { nt.style.display = 'block'; nt.innerHTML = '⚡ 여러 시험지 화면으로 준비하는 중... 올린 파일 ' + (newFiles.length + (curPair && curPair.file ? (curPair.ans ? 2 : 1) : 0)) + '개를 확인하고 있어요.'; }
@@ -279,8 +295,8 @@ async function onPickFiles(newFiles) {
     hideSpinner();
     if (ov.every(x => x)) ov = null;      // 전부 짧은 PDF로 보이면 이름으로만 짝짓는다
   }
-  const pairs = pairByName(fl, ov);
-  if ((pairs.length > 1 || inReview) && !IS_CHILD) { curPair = null; await runParallelAuto(pairs); return; }     // 시험지를 2개 이상 고르면 항상 한꺼번에 읽어서 「여러 시험지 정답 확인」 화면으로 보여 준다
+  const pairs = await mergeMore(pairByName(fl, ov));
+  if ((pairs.length > 1 || inReview || !REPLACE_ID) && !IS_CHILD) { curPair = null; await runParallelAuto(pairs); return; }     // 시험지를 2개 이상 고르면 항상 한꺼번에 읽어서 「여러 시험지 정답 확인」 화면으로 보여 준다
   fileQueue = pairs.slice(1); queueTotal = pairs.length; queueDoneTitles = []; queueDoneIds = []; queueSkipped = []; queueNotes = []; unassignedCount = 0; window.__incomplete = [];
   if (pairs.length > 1 || (fl.length > 1 && pairs[0].ans)) $('pdf-answer-file').value = '';
   await loadExamFile(pairs[0].file, pairs[0].ans);
@@ -374,8 +390,9 @@ async function loadExamFile(file, ansOverride, opts) {
         return await loadExamFile(nf, ansOverride, { movedAnswerPages: moved });
       }
     } catch (e) { console.warn('정답표 쪽 옮기기 실패', e); }
-    let tableCount = 0;
+    let tableCount = 0; window.__tableMax = 0;
     if (tableInfo && Object.keys(tableInfo.answers).length) {
+      if (Object.keys(tableInfo.answers).length >= 5) window.__tableMax = Math.max.apply(null, Object.keys(tableInfo.answers).map(Number));      // 정답표가 객관식 번호까지만 있으면 그 뒤 번호는 서술형(주관식)으로 본다
       Object.keys(tableInfo.answers).forEach(n => {
         const cur = scanned.answers[n];
         if (!cur) { scanned.answers[n] = { page: null, rect: null, text: tableInfo.answers[n], fromTable: true }; tableCount++; }
@@ -818,7 +835,7 @@ async function heldInfo(reason) {
   const unread = answers.map((a, i) => (a ? 0 : i + 1)).filter(Boolean), unreadImg = {};
   for (const n of unread.slice(0, 30)) { try { unreadImg[n] = await answerSnap(n); } catch (e) {} }
   let kind = ''; try { kind = readClassify(document, 'bk').kind || ''; } catch (e) {}
-  return { type: 'stuck', hold: true, title: $('title').value, reason: reason, answers: answers, unread: unread, unreadImg: unreadImg, dash: (window.__dash || []).slice(), dashImg: window.__dashImg || {}, cls: kind };
+  return { type: 'stuck', hold: true, title: $('title').value, reason: reason, answers: answers, unread: unread, unreadImg: unreadImg, dash: (window.__dash || []).slice(), dashImg: window.__dashImg || {}, cls: kind, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) };
 }
 async function autoRegisterMaybe(stale) {
   if (!IS_CHILD || !autoOn() || !scanned) return;
@@ -902,7 +919,7 @@ async function runParallelAuto(pairs) {
       else if (d.type === 'stuck') {
         const keep = !!d.hold && (window.__heldN || 0) < 12;
         done('확인 대기: ' + d.reason, () => {
-          if (keep) { window.__heldN = (window.__heldN || 0) + 1; reg.push({ pending: true, fr: fr, reason: d.reason, title: d.title || state[idx].name, id: 'pending-' + Date.now() + '-' + idx, answers: d.answers.slice(), units: [], unread: d.unread || [], dash: d.dash || [], dashImg: d.dashImg || {}, unreadImg: d.unreadImg || {}, pair: pairs[idx], bankIds: {}, qinfo: [], tm: {}, qthumb: {} }); }
+          if (keep) { window.__heldN = (window.__heldN || 0) + 1; reg.push({ pending: true, fr: fr, reason: d.reason, title: d.title || state[idx].name, id: 'pending-' + Date.now() + '-' + idx, answers: d.answers.slice(), units: [], unread: d.unread || [], dash: d.dash || [], dashImg: d.dashImg || {}, unreadImg: d.unreadImg || {}, pair: pairs[idx], bankIds: (d.qinfo || []).reduce((o, q) => { o[q.n] = 'p' + q.n; return o; }, {}), qinfo: d.qinfo || [], tm: {}, qthumb: {} }); }
           else stuck.push({ name: state[idx].name, reason: d.reason, pair: pairs[idx] });
         }, keep);
       }
@@ -1062,7 +1079,7 @@ function showAutoReview(R) {
   if (nNeed) h += '<div class="card" style="border-color:#C1392B;"><b style="color:#C1392B;">✏️ 정답을 못 읽은 시험지 ' + nNeed + '개</b><div class="hint" style="margin:4px 0;">시험지는 등록됐지만, 아래 <b>빨간 칸</b>은 정답을 못 읽어 비워 뒀어요. 원본 PDF를 보고 채운 뒤 「저장」을 누르세요. 채우기 전에는 그 문항이 채점되지 않아요.</div></div>';
   if (R.reg.length) {
     h += '<div class="card"><b>📋 등록된 시험지 — 정답을 훑어보세요</b><div class="hint" style="margin:4px 0 10px;">칸 위 숫자가 문항 번호예요. 이상하면 고치고 「저장」을 누르세요. 빨간 칸은 형식이 이상한 값이에요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4로 쓰세요.</div>';
-    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b class="rv-title">' + e(x.title) + '</b> <button type="button" class="btn ghost rv-rename" style="padding:2px 9px; font-size:12px;">✏️ 이름 변경</button><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + (x.pending ? '<b style="color:#C1392B;">⏸ ' + e(x.reason) + ' — 확인하고 OK를 눌러야 등록돼요 (그 전에는 저장되지 않아요)</b>' : unitSumHtml(x)) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번 &nbsp;<input type="text" class="pk-in ag-in" data-n="' + n + '" value="' + escapeHtml(x.answers[n - 1] || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ' + (x.pending ? 'primary' : 'ghost') + ' rv-save" style="padding:5px 12px;" disabled>' + (x.pending ? '✅ OK — 이 시험지 등록' : '저장') + '</button> <span class="hint rv-msg" style="margin:0;"></span> <button type="button" class="btn ghost rv-peekbtn" style="padding:5px 12px;">🔎 정답 이미지로 확인</button> <button type="button" class="btn primary rv-splitbtn" style="padding:5px 12px;">🖥 정답 쪽 보면서 입력 (좌우 화면)</button></div><div class="rv-peekbox" style="display:none;"></div><details class="rv-units" style="margin-top:8px;' + (x.pending ? 'display:none;' : '') + '"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
+    R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b class="rv-title">' + e(x.title) + '</b> <button type="button" class="btn ghost rv-rename" style="padding:2px 9px; font-size:12px;">✏️ 이름 변경</button><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + (x.pending ? '<b style="color:#C1392B;">⏸ ' + e(x.reason) + ' — 확인하고 OK를 눌러야 등록돼요 (그 전에는 저장되지 않아요)</b>' : unitSumHtml(x)) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번 &nbsp;<input type="text" class="pk-in ag-in" data-n="' + n + '" value="' + escapeHtml(x.answers[n - 1] || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ' + (x.pending ? 'primary' : 'ghost') + ' rv-save" style="padding:5px 12px;" disabled>' + (x.pending ? '✅ OK — 이 시험지 등록' : '저장') + '</button> <span class="hint rv-msg" style="margin:0;"></span> <button type="button" class="btn ghost rv-peekbtn" style="padding:5px 12px;">🔎 정답 이미지로 확인</button> <button type="button" class="btn primary rv-splitbtn" style="padding:5px 12px;">🖥 정답 쪽 보면서 입력 (좌우 화면)</button></div><div class="rv-peekbox" style="display:none;"></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
     h += '</div>';
   }
   { const T = R.reg.filter(x => x.tm && x.tm.end);
@@ -1169,7 +1186,8 @@ function showAutoReview(R) {
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
       { const hd = document.createElement('div'); hd.className = 'rv-uhead'; hd.style.cssText = 'position:sticky; top:0; z-index:6; background:#fff; padding:6px 0 4px; border-bottom:2px solid var(--line); box-shadow:0 4px 6px -4px rgba(0,0,0,.15);';
         const kids = Array.from(body.children).slice(0, 4); body.insertBefore(hd, kids[0]); kids.forEach(k => hd.appendChild(k)); }       // 전체·구간 지정 줄을 맨 위에 고정해서, 아래로 내려가도 구간 버튼이 보이게 한다
-      if (noBank) { const w = document.createElement('div'); w.className = 'banner'; w.style.cssText = 'margin:6px 0;'; w.innerHTML = '⚠️ 이 시험지의 문항이 <b>문제은행에 저장돼 있지 않아서</b> 여기서 고른 단원은 저장되지 않아요. (문제은행 저장을 끄고 등록했거나, 문제 그림을 만들지 못한 시험지예요.) 문제은행에 넣으려면 「문제은행에 저장」을 켜고 다시 등록해 주세요.'; body.insertBefore(w, body.firstChild); }
+      if (x.pending) { const w = document.createElement('div'); w.className = 'banner'; w.style.cssText = 'margin:6px 0;'; w.innerHTML = '📌 아직 등록 전이라, 여기서 고른 단원은 <b>OK를 누를 때 함께 저장돼요</b>.'; body.insertBefore(w, body.firstChild); }
+      if (noBank && !x.pending) { const w = document.createElement('div'); w.className = 'banner'; w.style.cssText = 'margin:6px 0;'; w.innerHTML = '⚠️ 이 시험지의 문항이 <b>문제은행에 저장돼 있지 않아서</b> 여기서 고른 단원은 저장되지 않아요. (문제은행 저장을 끄고 등록했거나, 문제 그림을 만들지 못한 시험지예요.) 문제은행에 넣으려면 「문제은행에 저장」을 켜고 다시 등록해 주세요.'; body.insertBefore(w, body.firstChild); }
       let vLeft = null;
       const openViewer = () => {       // 「PDF 보면서 단원 지정」 버튼을 눌렀을 때만: 왼쪽에 시험지 PDF, 오른쪽에 단원 칸 (처음부터 띄우지 않는다)
         if (vLeft) { vLeft.style.display = vLeft.style.display === 'none' ? '' : 'none'; return; }
@@ -1205,7 +1223,14 @@ function showAutoReview(R) {
       const idN = {}; Object.keys(x.bankIds || {}).forEach(k => { idN[x.bankIds[k]] = k; });
       const mark = (items, t, c) => items.forEach(it => { const el = body.querySelector('.rv-st[data-n="' + idN[it.id] + '"]'); if (el) { el.textContent = t; el.style.color = c; } });
       // 저장 요청이 한꺼번에 몰리면 서버가 줄 서서 기다리다 「잠금 시간초과」가 난다 → 한 번에 하나씩 차례로 보내고, 잠금 때문에 실패하면 잠시 뒤 자동으로 다시 보낸다 (최대 4번)
-      const save = (items) => { upSum(); umsg.textContent = '저장 중...'; mark(items, '⏳ 저장 중', '#B45309');
+      const childApply = it => {      // OK 대기 시험지: 붙들어 둔 창의 단원 칸에 넣어 둔다 (등록할 때 같이 저장된다)
+        const n = +String(it.id).slice(1), w = x.fr && x.fr.contentWindow; if (!w) return;
+        const us = w.document.querySelector('.qunit-sel[data-n="' + n + '"]'), ss = w.document.querySelector('.qsub-sel[data-n="' + n + '"]');
+        if (us && it.unit !== undefined) { w.setUnitSelect(us, it.unit === '(단원 미지정)' ? '' : it.unit, it.grade || ''); us.dataset.auto = '0'; }
+        if (ss) { if (it.unit !== undefined) { try { w.refreshSubSelect(ss, w.tocEntryFor(it.grade || '', it.unit), it.sub || ''); } catch (e2) {} } if (it.sub !== undefined) ss.value = it.sub; }
+      };
+      const save = (items) => { if (x.pending) { items.forEach(childApply); upSum(); umsg.textContent = '✅ 적용했어요 (OK를 누를 때 함께 저장돼요)'; mark(items, '✅ 적용됨', '#15803D'); return Promise.resolve(); }
+        upSum(); umsg.textContent = '저장 중...'; mark(items, '⏳ 저장 중', '#B45309');
         const run = async () => {
           try {
             for (let i = 0; i < items.length; i += 40) {
@@ -1624,6 +1649,7 @@ async function buildBoxes() {
     inp.classList.toggle('filled', !!inp.value);
     if (scanned && scanned.answers[n] && (scanned.answers[n].multi || /^[1-5]{2,}$/.test(String(inp.value))) && String(inp.value).length > 1) setMulti(inp, true, cell);   // 정답표에 두 개 모두(AND)로 적힌 문항
     if (scanned && scanned.subj && scanned.subj[n]) setSubjective(inp, true, cell);   // 문제 글자로 추정한 주관식
+    if (window.__tableMax && n > window.__tableMax && n - window.__tableMax <= 8 && !inp.value) setSubjective(inp, true, cell);   // 정답표(객관식)가 끝난 뒤의 번호 = 서술형
   });
   $('submit-btn').disabled = false; $('teacher-btn').disabled = false; $('merge-btn').disabled = false; $('teacher-print-btn').disabled = false; $('merge-print-btn').disabled = false;
   updateSubNote(scanned && scanned.subj ? Object.keys(scanned.subj).filter(k => scanned.subj[k] && k <= count).length : 0);
