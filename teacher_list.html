@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250021">
+<link rel="stylesheet" href="css/style.css?v=202611250036">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -31,6 +31,7 @@
       <input type="search" id="q-inp" placeholder="이름 검색 (학교·연도…)" style="flex:1 1 150px; min-width:120px;">
     </div>
     <div class="hint" id="filter-msg" style="margin:8px 0 0;"></div>
+  <div style="margin-top:6px;"><button type="button" class="btn outline" id="cov-open" style="padding:6px 12px;font-size:13px;">📋 기출 현황 창 따로 열기</button></div>
   </div>
   <div id="garble-card" class="card" style="display:none; padding:12px 14px; margin-bottom:10px;"></div>
   <div id="bulk-bar" class="card" style="display:none; padding:10px 14px; margin-bottom:10px; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -43,11 +44,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611250021"></script>
-<script src="js/api.js?v=202611250021"></script>
-<script src="js/common.js?v=202611250021"></script>
-<script src="js/bankcore.js?v=202611250021"></script>
-<script src="js/pdfui.js?v=202611250021"></script>
+<script src="js/config.js?v=202611250036"></script>
+<script src="js/api.js?v=202611250036"></script>
+<script src="js/common.js?v=202611250036"></script>
+<script src="js/bankcore.js?v=202611250036"></script>
+<script src="js/pdfui.js?v=202611250036"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -246,6 +247,7 @@ renderHeader();
     unitSel.addEventListener('change', () => { st.unit = unitSel.value; render(); });
     sortSel.addEventListener('change', () => { st.sort = sortSel.value; render(); });
     qInp.addEventListener('input', () => { st.q = qInp.value; render(); qInp.focus(); });
+    document.getElementById('cov-open').addEventListener('click', () => { const w = 560, h = Math.min(screen.availHeight, 780), l = Math.max(0, (screen.availLeft || 0) + screen.availWidth - w - 8); window.open('exam_cov.html' + (st.q ? '?q=' + encodeURIComponent(st.q) : ''), 'examcov', 'popup=yes,width=' + w + ',height=' + h + ',left=' + l + ',top=' + (screen.availTop || 0)); });
     document.getElementById('filter-bar').style.display = 'block';
     const bar = document.getElementById('bulk-bar'); bar.style.display = 'flex';
     const sels = () => Array.from(container.querySelectorAll('.exsel'));

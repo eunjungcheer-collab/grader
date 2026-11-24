@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>기출 현황 - 자동 채점 시스템</title>
+<link rel="stylesheet" href="css/style.css?v=202611250036">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<style>body{padding:10px 12px;max-width:none;} #cov-card{overflow-x:auto;} .gb{padding:6px 12px;font-size:13px;}</style>
+</head>
+<body>
+<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+  <input type="search" id="q-inp" placeholder="학교 이름 (예: 불암중)" style="flex:1 1 160px;min-width:120px;" autofocus>
+  <span id="grade-chips" style="display:flex;gap:6px;"></span>
+</div>
+<div id="cov-card" class="card" style="padding:12px 14px;">학교 이름을 입력하세요.</div>
+<div class="hint" id="cov-msg" style="margin-top:6px;"></div>
+<script src="js/config.js?v=202611250036"></script>
+<script src="js/api.js?v=202611250036"></script>
+<script src="js/common.js?v=202611250036"></script>
+<script>
+requireLogin();
+let exams = [];
+const st = { q: '', grade: '' };
+const qInp = document.getElementById('q-inp');
+try { const u = new URL(location.href); st.q = u.searchParams.get('q') || ''; qInp.value = st.q; } catch (e) {}
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+    function parseExamTitle(ex) {
+      const t = String(ex.title || '').replace(/[‐‑–—]/g, '-');
+      const y = t.match(/(20\d\d)/), kind = (t.match(/중간|기말/) || [])[0] || '';
+      let gr = 0, sem = 0, m;
+      if ((m = t.match(/([1-3])\s*학년\s*([12])\s*학기/))) { gr = +m[1]; sem = +m[2]; }
+      else if ((m = t.match(/(?:^|[^\d])([1-3])\s*-\s*([12])\s*(?:학기)?(?![\d,.]|\s*단원)/))) { gr = +m[1]; sem = +m[2]; }
+      else {
+        if ((m = t.match(/([1-3])\s*학년/))) gr = +m[1];
+        if ((m = t.match(/([12])\s*학기/))) sem = +m[1];
+      }
+      if (!gr) { const g3 = t.match(/[중고]\s*([1-3])(?!\s*-\s*\d)/); if (g3) gr = +g3[1]; }
+      if (!gr) { const g2 = String((ex.meta && ex.meta.grade) || '').match(/[초중고]([1-3])/); if (g2) gr = +g2[1]; }
+      return { y: y ? +y[1] : 0, gr: gr, sem: sem, kind: kind };
+    }
+    function unreadHtml(list) { return '<details style="margin-top:4px;"><summary style="cursor:pointer;font-size:13px;">목록 보기</summary><div style="font-size:12px;line-height:1.7;margin-top:4px;">' + list.map(x => escapeHtml(x.t) + ' <span style="color:#C1392B;">(못 읽음: ' + x.why + ')</span>').join('<br>') + '</div></details>'; }
+    function drawCoverage() {
+      const box = document.getElementById('cov-card'), q = st.q.replace(/\s+/g, '').toLowerCase();
+      if (!q) { box.style.display = 'none'; return; }
+      const rows = [], unread = [];
+      exams.forEach(ex => {
+        const t = String(ex.title || ''); if (t.replace(/\s+/g, '').toLowerCase().indexOf(q) < 0) return;
+        const info = parseExamTitle(ex);
+        if (!info.kind || !info.sem || !info.gr || !info.y) { unread.push({ t: t, why: [!info.y ? '연도' : '', !info.gr ? '학년' : '', !info.sem ? '학기' : '', !info.kind ? '중간/기말' : ''].filter(Boolean).join('·') }); return; }
+        rows.push({ y: info.y, gr: info.gr, sem: info.sem, kind: info.kind });
+      });
+      const gsel = (st.grade && /[중고][1-3]/.test(st.grade)) ? +st.grade.slice(1) : 0, allRows = rows.slice();
+      if (gsel) { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].gr !== gsel) rows.splice(i, 1); }
+      box._unread = unread;
+      if (!allRows.length) { box.style.display = unread.length ? '' : 'none'; if (unread.length) box.innerHTML = '<div style="font-weight:800;">📋 연도·학기·중간/기말을 제목에서 못 읽은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread); return; }
+      const grades = gsel ? [gsel] : [1, 2, 3], ys = allRows.map(r => r.y), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+      const cols = []; grades.forEach(g => [1, 2].forEach(sm => ['중간', '기말'].forEach(k => cols.push({ g: g, sm: sm, k: k }))));
+      const cell = {}; rows.forEach(r => { cell[r.y + '|' + r.gr + '|' + r.sem + '|' + r.kind] = 1; });
+      const th = 'padding:5px 9px;border:1px solid #cbd5e1;background:#F1F5F9;font-size:13px;text-align:center;white-space:nowrap;', td = 'padding:5px 9px;border:1px solid #cbd5e1;text-align:center;font-weight:800;font-size:15px;';
+      const gMsg = (gsel && !rows.length) ? '<div style="margin:0 0 8px;padding:8px 12px;border-radius:8px;background:#FDECEA;color:#C1392B;font-weight:800;">❌ 「' + escapeHtml(qInp.value.trim()) + '」 ' + gsel + '학년 기출 시험지가 하나도 없어요</div>' : '';
+      let h = gMsg + '<div style="font-weight:800;margin-bottom:6px;">📋 「' + escapeHtml(qInp.value.trim()) + '」 기출 있는지 한눈에 보기 <span class="hint" style="font-weight:400;">(O 있음 · X 없음)</span></div><table style="border-collapse:collapse;"><tr><th style="' + th + '" rowspan="2">연도</th>' +
+        grades.map(g => '<th style="' + th + '" colspan="4">' + g + '학년</th>').join('') + '</tr><tr>' + cols.map(c => '<th style="' + th + '">' + c.g + '-' + c.sm + ' ' + c.k + '</th>').join('') + '</tr>';
+      for (let y = y1; y >= y0; y--) {
+        h += '<tr><td style="' + th + '">' + y + '</td>' + cols.map(c => {
+          return cell[y + '|' + c.g + '|' + c.sm + '|' + c.k]
+            ? '<td style="' + td + 'color:#1f6f4a;background:#E8F5EE;">O</td>'
+            : (c.g === 3 && c.sm === 2 && c.k === '중간')      // 3학년 2학기는 중간고사를 안 봐서 비활성 칸으로 둔다 (등록된 게 있으면 위에서 O로 보인다)
+              ? '<td style="' + td + 'color:#9CA3AF;background:#E5E7EB;font-weight:400;" title="3학년 2학기는 중간고사가 없어요">–</td>'
+              : '<td style="' + td + 'color:#C1392B;background:#FDECEA;">X</td>';
+        }).join('') + '</tr>';
+      }
+      box.innerHTML = h + '</table>' + (unread.length ? '<div style="margin-top:8px;font-size:13px;color:#B45309;font-weight:700;">⚠️ 제목에서 연도·학기·중간/기말을 못 읽어 표에 못 넣은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread) : ''); box.style.display = '';
+    }
+
+function drawChips() { document.getElementById('grade-chips').innerHTML = [['', '전체'], ['중1', '중1'], ['중2', '중2'], ['중3', '중3']].map(g => '<button type="button" class="btn ' + (st.grade === g[0] ? '' : 'outline') + ' gb" data-g="' + g[0] + '">' + g[1] + '</button>').join(''); }
+function render() { drawChips(); if (!st.q.trim()) { document.getElementById('cov-card').style.display = ''; document.getElementById('cov-card').innerHTML = '학교 이름을 입력하세요.'; return; } drawCoverage(); const box = document.getElementById('cov-card'); if (box.style.display === 'none') { box.style.display = ''; box.innerHTML = '검색한 이름의 시험지 중 연도·학기·중간/기말을 읽을 수 있는 것이 없어요.'; } }
+document.getElementById('grade-chips').addEventListener('click', e => { const b = e.target.closest('button[data-g]'); if (!b) return; st.grade = b.dataset.g; render(); });
+qInp.addEventListener('input', () => { st.q = qInp.value; render(); });
+async function load() {
+  try { const r = await callApi('listExams', { password: getTeacherPassword() }); if (r && r.ok) { exams = (r.exams || []).map(e => { e.meta = e.meta || {}; return e; }); document.getElementById('cov-msg').textContent = '시험지 ' + exams.length + '개 기준 · ' + new Date().toLocaleTimeString('ko-KR') + ' 갱신 (새 시험지를 등록하면 자동으로 바뀌어요)'; render(); } else document.getElementById('cov-msg').textContent = '불러오지 못했어요: ' + ((r && r.error) || ''); }
+  catch (e) { document.getElementById('cov-msg').textContent = '서버에 연결하지 못했어요'; }
+}
+load(); setInterval(load, 20000); window.addEventListener('focus', load);
+</script>
+</body>
+</html>
