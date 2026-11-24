@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250500">
+<link rel="stylesheet" href="css/style.css?v=202611250520">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250500"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250500"></script>
-<script src="js/printpdf.js?v=202611250500"></script>
-<script src="js/vendor/pdf.min.js?v=202611250500"></script>
-<script src="js/config.js?v=202611250500"></script>
-<script src="js/api.js?v=202611250500"></script>
-<script src="js/common.js?v=202611250500"></script>
-<script src="js/ocr.js?v=202611250500"></script>
-<script src="js/bankcore.js?v=202611250500"></script>
-<script src="js/pdfui.js?v=202611250500"></script>
-<script src="js/pdfview.js?v=202611250500"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250520"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250520"></script>
+<script src="js/printpdf.js?v=202611250520"></script>
+<script src="js/vendor/pdf.min.js?v=202611250520"></script>
+<script src="js/config.js?v=202611250520"></script>
+<script src="js/api.js?v=202611250520"></script>
+<script src="js/common.js?v=202611250520"></script>
+<script src="js/ocr.js?v=202611250520"></script>
+<script src="js/bankcore.js?v=202611250520"></script>
+<script src="js/pdfui.js?v=202611250520"></script>
+<script src="js/pdfview.js?v=202611250520"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1111,17 +1111,20 @@ async function registerHeld0(x, btn, msg, R, quiet) {
     msg.textContent = d.type === 'skip' ? '⏭ 등록하지 않았어요: ' + d.note + ' (이름을 바꾼 뒤 다시 OK)' : '⚠️ ' + (d.msg || '등록 실패'); try { w.__auto = false; } catch (e) {} btn.disabled = false;
   } catch (err) { msg.textContent = '⚠️ ' + err.message; btn.disabled = false; }
 }
-// 문항 영역 직접 조정 (OK 대기 시험지): 쪽 그림 위에서 문항 칸의 가장자리를 끌어서 옮긴다. 「적용」을 누르면 그 시험지의 문항 그림이 새로 만들어진다
+// 문항 영역 직접 조정 (OK 대기 시험지): 쪽 그림 위에서 문항 칸의 가장자리를 끌어서 옮기고, 다른 단·다른 쪽으로 이어지는 부분은 「이어지는 부분 추가」로 따로 그려서 붙인다
 async function openCropEditor(x, startNum, onDone) {
   const w = x.fr && x.fr.contentWindow; if (!w) { alert('이 시험지 창이 닫혔어요. 다시 올려 주세요.'); return; }
   let sc, info; try { sc = w.eval('scanned'); info = w.eval('pdfInfo'); } catch (e) { alert('시험지 정보를 불러오지 못했어요.'); return; }
   const qs = sc.questions.slice().sort((a, b) => a.num - b.num); if (!qs.length) return;
-  const SCALE = 1.4, chg = {}, rectOf = q => (chg[q.num] || q.rect);
-  let cur = qs.find(q => q.num === startNum) || qs[0];
+  const SCALE = 1.4, wr = {};      // wr[번호] = { rect, extra:[{page,rect}] } — 고친 문항만 복사본을 만든다
+  const get = q => wr[q.num] || { rect: q.rect, extra: q.extra || [] };
+  const edit = q => wr[q.num] || (wr[q.num] = { rect: q.rect.slice(), extra: (q.extra || []).map(e => ({ page: e.page, rect: e.rect.slice() })) });
+  let cur = qs.find(q => q.num === startNum) || qs[0], view = cur.page, drawing = false;
+  const nPages = info.doc.numPages;
   const ov = document.createElement('div'); ov.style.cssText = 'position:fixed; inset:0; z-index:10000; background:#fff; display:flex; flex-direction:column;';
-  ov.innerHTML = '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid #cbd5e1; background:#F1F5F9;"><b>✂ 문항 영역 조정</b><button type="button" class="btn outline cr-prev" style="padding:4px 12px;">◀ 이전 문항</button><b class="cr-n" style="min-width:56px; text-align:center;"></b><button type="button" class="btn outline cr-next" style="padding:4px 12px;">다음 문항 ▶</button><span class="hint" style="margin:0; flex:1 1 260px;">빨간 칸이 지금 문항이에요. 위·아래·왼쪽·오른쪽 가장자리의 굵은 선을 끌어서 문항이 딱 맞게 들어오게 하세요. 점선 칸은 다른 문항이에요(눌러서 고를 수 있어요).</span><span class="cr-msg hint" style="margin:0;"></span><button type="button" class="btn primary cr-ok" style="padding:6px 18px;">적용</button><button type="button" class="btn outline cr-close" style="padding:6px 16px;">닫기</button></div><div class="cr-body" style="flex:1; overflow:auto; background:#E2E8F0; padding:10px;"><div class="cr-wrap" style="position:relative; margin:0 auto; width:fit-content;"><canvas class="cr-cv" style="display:block; background:#fff;"></canvas><div class="cr-layer" style="position:absolute; left:0; top:0; right:0; bottom:0;"></div></div></div>';
+  ov.innerHTML = '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid #cbd5e1; background:#F1F5F9;"><b>✂ 문항 영역 조정</b><button type="button" class="btn outline cr-prev" style="padding:4px 12px;">◀ 이전 문항</button><b class="cr-n" style="min-width:56px; text-align:center;"></b><button type="button" class="btn outline cr-next" style="padding:4px 12px;">다음 문항 ▶</button><span style="border-left:1px solid #94A3B8; height:24px;"></span><button type="button" class="btn outline cr-pp" style="padding:4px 10px;">◀ 앞 쪽</button><b class="cr-pg" style="min-width:52px; text-align:center;"></b><button type="button" class="btn outline cr-pn" style="padding:4px 10px;">다음 쪽 ▶</button><button type="button" class="btn outline cr-add" style="padding:4px 12px; border-color:#EA580C; color:#C2410C;">＋ 이어지는 부분 추가</button><span class="cr-msg hint" style="margin:0;"></span><button type="button" class="btn primary cr-ok" style="padding:6px 18px;">적용</button><button type="button" class="btn outline cr-close" style="padding:6px 16px;">닫기</button></div><div class="hint cr-help" style="margin:0; padding:5px 12px; background:#FFFBEB; border-bottom:1px solid #FDE68A;"></div><div class="cr-body" style="flex:1; overflow:auto; background:#E2E8F0; padding:10px;"><div class="cr-wrap" style="position:relative; margin:0 auto; width:fit-content;"><canvas class="cr-cv" style="display:block; background:#fff;"></canvas><div class="cr-layer" style="position:absolute; left:0; top:0; right:0; bottom:0;"></div></div></div>';
   document.body.appendChild(ov); document.body.style.overflow = 'hidden';
-  const cv = ov.querySelector('.cr-cv'), layer = ov.querySelector('.cr-layer'), msg = ov.querySelector('.cr-msg'), body = ov.querySelector('.cr-body');
+  const cv = ov.querySelector('.cr-cv'), layer = ov.querySelector('.cr-layer'), msg = ov.querySelector('.cr-msg'), body = ov.querySelector('.cr-body'), help = ov.querySelector('.cr-help'), addb = ov.querySelector('.cr-add');
   let drawnPage = 0, pageH = 0, pageW = 0;
   const drawPage = async p => {
     if (drawnPage === p) return; drawnPage = p;
@@ -1133,42 +1136,73 @@ async function openCropEditor(x, startNum, onDone) {
     await pg.render({ canvasContext: tx, viewport: vp, canvas: tmp }).promise;
     const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(tmp, 0, 0);
   };
-  const paint = async () => {
-    await drawPage(cur.page);
-    ov.querySelector('.cr-n').textContent = cur.num + '번';
-    layer.innerHTML = '';
-    qs.filter(q => q.page === cur.page).forEach(q => {
-      const r = rectOf(q), d = document.createElement('div'), me = q === cur;
-      d.style.cssText = 'position:absolute; left:' + r[0] * SCALE + 'px; top:' + r[1] * SCALE + 'px; width:' + (r[2] - r[0]) * SCALE + 'px; height:' + (r[3] - r[1]) * SCALE + 'px; box-sizing:border-box; ' + (me ? 'z-index:5; border:2px solid #C1392B; background:rgba(193,57,43,.07);' : 'border:1px dashed #64748B; cursor:pointer;');
-      d.innerHTML = '<span style="position:absolute; left:2px; top:0; font:700 12px sans-serif; color:' + (me ? '#C1392B' : '#475569') + '; background:#fff9;">' + q.num + '번</span>';
-      if (!me) { d.addEventListener('click', () => { cur = q; paint(); }); }
-      else {
-        [['t', 'left:0; right:0; top:-5px; height:10px; cursor:ns-resize;'], ['b', 'left:0; right:0; bottom:-5px; height:10px; cursor:ns-resize;'], ['l', 'top:0; bottom:0; left:-5px; width:10px; cursor:ew-resize;'], ['r', 'top:0; bottom:0; right:-5px; width:10px; cursor:ew-resize;']].forEach(hd => {
-          const h = document.createElement('div'); h.style.cssText = 'position:absolute; background:#C1392B; opacity:.85; border-radius:3px; ' + hd[1]; d.appendChild(h);
-          h.addEventListener('mousedown', ev => {
-            ev.preventDefault(); const r0 = rectOf(q).slice(), sx = ev.clientX, sy = ev.clientY;
-            const mv = e2 => { const nr = r0.slice(), dx = (e2.clientX - sx) / SCALE, dy = (e2.clientY - sy) / SCALE;
-              if (hd[0] === 't') nr[1] = Math.max(0, Math.min(r0[3] - 20, r0[1] + dy)); if (hd[0] === 'b') nr[3] = Math.min(pageH, Math.max(r0[1] + 20, r0[3] + dy));
-              if (hd[0] === 'l') nr[0] = Math.max(0, Math.min(r0[2] - 20, r0[0] + dx)); if (hd[0] === 'r') nr[2] = Math.min(pageW, Math.max(r0[0] + 20, r0[2] + dx));
-              chg[q.num] = nr; d.style.left = nr[0] * SCALE + 'px'; d.style.top = nr[1] * SCALE + 'px'; d.style.width = (nr[2] - nr[0]) * SCALE + 'px'; d.style.height = (nr[3] - nr[1]) * SCALE + 'px'; msg.textContent = '수정됨 ' + Object.keys(chg).length + '개 (적용을 눌러야 반영돼요)'; };
-            const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
-            window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
-          });
-        });
-      }
-      layer.appendChild(d);
+  const touched = () => { msg.textContent = '수정됨 ' + Object.keys(wr).length + '개 문항 (적용을 눌러야 반영돼요)'; };
+  const px = (d, r) => { d.style.left = r[0] * SCALE + 'px'; d.style.top = r[1] * SCALE + 'px'; d.style.width = (r[2] - r[0]) * SCALE + 'px'; d.style.height = (r[3] - r[1]) * SCALE + 'px'; };
+  // 가장자리 끌기 손잡이. getR/setR 로 대상 칸(본문 또는 이어지는 부분)의 좌표를 읽고 쓴다
+  const handles = (d, getR, setR, color) => {
+    [['t', 'left:0; right:0; top:-5px; height:10px; cursor:ns-resize;'], ['b', 'left:0; right:0; bottom:-5px; height:10px; cursor:ns-resize;'], ['l', 'top:0; bottom:0; left:-5px; width:10px; cursor:ew-resize;'], ['r', 'top:0; bottom:0; right:-5px; width:10px; cursor:ew-resize;']].forEach(hd => {
+      const h = document.createElement('div'); h.style.cssText = 'position:absolute; opacity:.85; border-radius:3px; background:' + color + '; ' + hd[1]; d.appendChild(h);
+      h.addEventListener('mousedown', ev => {
+        ev.preventDefault(); ev.stopPropagation(); const r0 = getR().slice(), sx = ev.clientX, sy = ev.clientY;
+        const mv = e2 => { const nr = r0.slice(), dx = (e2.clientX - sx) / SCALE, dy = (e2.clientY - sy) / SCALE;
+          if (hd[0] === 't') nr[1] = Math.max(0, Math.min(r0[3] - 20, r0[1] + dy)); if (hd[0] === 'b') nr[3] = Math.min(pageH, Math.max(r0[1] + 20, r0[3] + dy));
+          if (hd[0] === 'l') nr[0] = Math.max(0, Math.min(r0[2] - 20, r0[0] + dx)); if (hd[0] === 'r') nr[2] = Math.min(pageW, Math.max(r0[0] + 20, r0[2] + dx));
+          setR(nr); px(d, nr); touched(); };
+        const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+        window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+      });
     });
-    const r = rectOf(cur); body.scrollTop = Math.max(0, r[1] * SCALE - 80);
   };
-  const go = d => { const i = qs.indexOf(cur) + d; if (i >= 0 && i < qs.length) { cur = qs[i]; paint(); } };
+  const box = (r, color, bg, label, z) => { const d = document.createElement('div'); d.style.cssText = 'position:absolute; box-sizing:border-box; z-index:' + z + '; border:2px solid ' + color + '; background:' + bg + ';'; px(d, r); d.innerHTML = '<span style="position:absolute; left:2px; top:0; font:700 12px sans-serif; color:' + color + '; background:#fff9;">' + label + '</span>'; return d; };
+  const paint = async () => {
+    await drawPage(view);
+    ov.querySelector('.cr-n').textContent = cur.num + '번'; ov.querySelector('.cr-pg').textContent = view + ' / ' + nPages + '쪽';
+    addb.style.background = drawing ? '#FFEDD5' : ''; layer.style.cursor = drawing ? 'crosshair' : '';
+    help.textContent = drawing ? '✏️ 지금은 「이어지는 부분」을 그리는 중이에요. 문항이 이어지는 쪽을 열어 두고, 그 부분을 마우스로 끌어서 네모를 그리세요. (다 그리면 자동으로 끝나요)' : '빨간 칸이 ' + cur.num + '번 문항 본문, 주황 칸은 ' + cur.num + '번에 이어 붙인 부분이에요. 굵은 가장자리 선을 끌어 맞추세요. 문항이 다른 단·다른 쪽으로 이어지면 「＋ 이어지는 부분 추가」를 누르고 이어지는 곳을 그리세요. 점선 칸은 다른 문항이에요(눌러서 고를 수 있어요).';
+    layer.innerHTML = '';
+    qs.forEach(q => {
+      if (q === cur) return;
+      const g = get(q); [{ page: q.page, rect: g.rect, main: 1 }].concat(g.extra).forEach(sg => {
+        if (sg.page !== view) return;
+        const d = document.createElement('div'); d.style.cssText = 'position:absolute; box-sizing:border-box; border:1px dashed #64748B; cursor:pointer;'; px(d, sg.rect);
+        d.innerHTML = '<span style="position:absolute; left:2px; top:0; font:700 12px sans-serif; color:#475569; background:#fff9;">' + q.num + '번' + (sg.main ? '' : ' (이어짐)') + '</span>';
+        d.addEventListener('click', () => { if (drawing) return; cur = q; view = q.page; paint(); }); layer.appendChild(d);
+      });
+    });
+    const g = get(cur);
+    if (cur.page === view) { const d = box(g.rect, '#C1392B', 'rgba(193,57,43,.07)', cur.num + '번', 5); handles(d, () => get(cur).rect, nr => { edit(cur).rect = nr; }, '#C1392B'); layer.appendChild(d); }
+    g.extra.forEach((ex, i) => {
+      if (ex.page !== view) return;
+      const d = box(ex.rect, '#EA580C', 'rgba(234,88,12,.08)', cur.num + '번 이어짐', 6); handles(d, () => get(cur).extra[i].rect, nr => { edit(cur).extra[i].rect = nr; }, '#EA580C');
+      const del = document.createElement('button'); del.type = 'button'; del.textContent = '✕ 이 부분 빼기'; del.style.cssText = 'position:absolute; right:4px; top:2px; font:700 12px sans-serif; padding:2px 8px; background:#fff; border:1px solid #EA580C; color:#C2410C; border-radius:5px; cursor:pointer;';
+      del.addEventListener('mousedown', e => e.stopPropagation()); del.addEventListener('click', () => { edit(cur).extra.splice(i, 1); touched(); paint(); }); d.appendChild(del); layer.appendChild(d);
+    });
+    if (!layer.dataset.dr) {      // 이어지는 부분 그리기
+      layer.dataset.dr = '1';
+      layer.addEventListener('mousedown', ev => {
+        if (!drawing) return; ev.preventDefault(); const lr = layer.getBoundingClientRect(), x0 = ev.clientX - lr.left, y0 = ev.clientY - lr.top;
+        const d = document.createElement('div'); d.style.cssText = 'position:absolute; border:2px dashed #EA580C; background:rgba(234,88,12,.1); pointer-events:none;'; layer.appendChild(d);
+        const mv = e2 => { const x1 = e2.clientX - lr.left, y1 = e2.clientY - lr.top; d.style.left = Math.min(x0, x1) + 'px'; d.style.top = Math.min(y0, y1) + 'px'; d.style.width = Math.abs(x1 - x0) + 'px'; d.style.height = Math.abs(y1 - y0) + 'px'; };
+        const up = e2 => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up);
+          const x1 = e2.clientX - lr.left, y1 = e2.clientY - lr.top, r = [Math.max(0, Math.min(x0, x1) / SCALE), Math.max(0, Math.min(y0, y1) / SCALE), Math.min(pageW, Math.max(x0, x1) / SCALE), Math.min(pageH, Math.max(y0, y1) / SCALE)];
+          drawing = false; if (r[2] - r[0] < 20 || r[3] - r[1] < 12) { paint(); return; }
+          edit(cur).extra.push({ page: view, rect: r }); touched(); paint(); };
+        window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+      });
+    }
+    const r = (cur.page === view ? g.rect : (g.extra.find(e => e.page === view) || { rect: [0, 0, 0, 0] }).rect); body.scrollTop = Math.max(0, r[1] * SCALE - 80);
+  };
+  const go = d => { const i = qs.indexOf(cur) + d; if (i >= 0 && i < qs.length) { cur = qs[i]; view = cur.page; drawing = false; paint(); } };
   ov.querySelector('.cr-prev').addEventListener('click', () => go(-1)); ov.querySelector('.cr-next').addEventListener('click', () => go(1));
+  ov.querySelector('.cr-pp').addEventListener('click', () => { if (view > 1) { view--; paint(); } }); ov.querySelector('.cr-pn').addEventListener('click', () => { if (view < nPages) { view++; paint(); } });
+  addb.addEventListener('click', () => { drawing = !drawing; paint(); });
   const close = () => { ov.remove(); document.body.style.overflow = ''; };
-  ov.querySelector('.cr-close').addEventListener('click', () => { if (!Object.keys(chg).length || confirm('조정한 내용을 버리고 닫을까요?')) close(); });
+  ov.querySelector('.cr-close').addEventListener('click', () => { if (!Object.keys(wr).length || confirm('조정한 내용을 버리고 닫을까요?')) close(); });
   ov.querySelector('.cr-ok').addEventListener('click', async () => {
-    const nums = Object.keys(chg).map(Number); if (!nums.length) { close(); return; }
+    const nums = Object.keys(wr).map(Number); if (!nums.length) { close(); return; }
     const okb = ov.querySelector('.cr-ok'); okb.disabled = true; msg.textContent = '문항 그림을 새로 만드는 중...';
     try {
-      nums.forEach(n => { const q = sc.questions.find(z => z.num === n); q.rect = chg[n].slice(); });
+      nums.forEach(n => { const q = sc.questions.find(z => z.num === n); q.rect = wr[n].rect.slice(); if (wr[n].extra.length) q.extra = wr[n].extra.map(e => ({ page: e.page, rect: e.rect.slice() })); else delete q.extra; });
       w.eval('rcClear()'); const rb = w.eval('rcBankQ');
       for (const n of nums) { const q = sc.questions.find(z => z.num === n); x.qthumb[n] = w.eval('thumbOf')(await rb(q)); }
       close(); if (onDone) onDone(nums);
