@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611240103">
+<link rel="stylesheet" href="css/style.css?v=202611240121">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -43,11 +43,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611240103"></script>
-<script src="js/api.js?v=202611240103"></script>
-<script src="js/common.js?v=202611240103"></script>
-<script src="js/bankcore.js?v=202611240103"></script>
-<script src="js/pdfui.js?v=202611240103"></script>
+<script src="js/config.js?v=202611240121"></script>
+<script src="js/api.js?v=202611240121"></script>
+<script src="js/common.js?v=202611240121"></script>
+<script src="js/bankcore.js?v=202611240121"></script>
+<script src="js/pdfui.js?v=202611240121"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -165,19 +165,36 @@ renderHeader();
       };
       return list.sort(by[st.sort] || by.new);
     }
+    // 시험지 제목에서 연도 · 학년 · 학기 · 중간/기말을 읽는다. 「2024학년도 1학년 2학기 중간고사」, 「2024-1-2 기말」, 「1-2 중간」, 「2학기 기말」 같은 여러 모양을 받는다
+    function parseExamTitle(ex) {
+      const t = String(ex.title || '').replace(/[‐‑–—]/g, '-');
+      const y = t.match(/(20\d\d)/), kind = (t.match(/중간|기말/) || [])[0] || '';
+      let gr = 0, sem = 0, m;
+      if ((m = t.match(/([1-3])\s*학년\s*([12])\s*학기/))) { gr = +m[1]; sem = +m[2]; }
+      else if ((m = t.match(/(?:^|[^\d])([1-3])\s*-\s*([12])\s*(?:학기)?(?![\d,.]|\s*단원)/))) { gr = +m[1]; sem = +m[2]; }
+      else {
+        if ((m = t.match(/([1-3])\s*학년/))) gr = +m[1];
+        if ((m = t.match(/([12])\s*학기/))) sem = +m[1];
+      }
+      if (!gr) { const g3 = t.match(/[중고]\s*([1-3])(?!\s*-\s*\d)/); if (g3) gr = +g3[1]; }
+      if (!gr) { const g2 = String((ex.meta && ex.meta.grade) || '').match(/[초중고]([1-3])/); if (g2) gr = +g2[1]; }
+      return { y: y ? +y[1] : 0, gr: gr, sem: sem, kind: kind };
+    }
+    function unreadHtml(list) { return '<details style="margin-top:4px;"><summary style="cursor:pointer;font-size:13px;">목록 보기</summary><div style="font-size:12px;line-height:1.7;margin-top:4px;">' + list.map(x => escapeHtml(x.t) + ' <span style="color:#C1392B;">(못 읽음: ' + x.why + ')</span>').join('<br>') + '</div></details>'; }
     // 학교 이름을 검색하면 연도 × (학년-학기 중간/기말) 로 어떤 기출이 있는지 O/X 표로 보여 준다
     function drawCoverage() {
       const box = document.getElementById('cov-card'), q = st.q.replace(/\s+/g, '').toLowerCase();
       if (!q) { box.style.display = 'none'; return; }
-      const rows = [];
+      const rows = [], unread = [];
       exams.forEach(ex => {
         const t = String(ex.title || ''); if (t.replace(/\s+/g, '').toLowerCase().indexOf(q) < 0) return;
-        const y = t.match(/(20\d\d)\s*(?:년|학년도)?/), g = t.match(/([1-3])\s*-\s*([12])\s*(?:학기)?\s*(중간|기말)/);
-        if (!y || !g) return;
-        if (st.grade && ('중' + g[1]) !== st.grade && ('고' + g[1]) !== st.grade) return;
-        rows.push({ y: +y[1], gr: +g[1], sem: +g[2], kind: g[3], essay: /서술형|서답형|평가기준표|기준표/.test(t) });
+        const info = parseExamTitle(ex);
+        if (st.grade && info.gr && ('중' + info.gr) !== st.grade && ('고' + info.gr) !== st.grade) return;
+        if (!info.kind || !info.sem || !info.gr || !info.y) { unread.push({ t: t, why: [!info.y ? '연도' : '', !info.gr ? '학년' : '', !info.sem ? '학기' : '', !info.kind ? '중간/기말' : ''].filter(Boolean).join('·') }); return; }
+        rows.push({ y: info.y, gr: info.gr, sem: info.sem, kind: info.kind, essay: /서술형|서답형|평가기준표|기준표/.test(t) });
       });
-      if (!rows.length) { box.style.display = 'none'; return; }
+      box._unread = unread;
+      if (!rows.length) { box.style.display = unread.length ? '' : 'none'; if (unread.length) box.innerHTML = '<div style="font-weight:800;">📋 연도·학기·중간/기말을 제목에서 못 읽은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread); return; }
       const grades = Array.from(new Set(rows.map(r => r.gr))).sort(), ys = rows.map(r => r.y), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
       const cols = []; grades.forEach(g => [1, 2].forEach(sm => ['중간', '기말'].forEach(k => cols.push({ g: g, sm: sm, k: k }))));
       const cell = {}; rows.forEach(r => { const key = r.y + '|' + r.gr + '|' + r.sem + '|' + r.kind, c = cell[key] || (cell[key] = { main: 0, essay: 0 }); if (r.essay) c.essay++; else c.main++; });
@@ -192,7 +209,7 @@ renderHeader();
           return '<td style="' + td + 'color:#C1392B;background:#FDECEA;">X</td>';
         }).join('') + '</tr>';
       }
-      box.innerHTML = h + '</table>'; box.style.display = '';
+      box.innerHTML = h + '</table>' + (unread.length ? '<div style="margin-top:8px;font-size:13px;color:#B45309;font-weight:700;">⚠️ 제목에서 연도·학기·중간/기말을 못 읽어 표에 못 넣은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread) : ''); box.style.display = '';
     }
     function render() {
       try { sessionStorage.setItem('list_filter', JSON.stringify(st)); } catch (e) {}
