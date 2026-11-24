@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250215">
+<link rel="stylesheet" href="css/style.css?v=202611250225">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250215"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250215"></script>
-<script src="js/printpdf.js?v=202611250215"></script>
-<script src="js/vendor/pdf.min.js?v=202611250215"></script>
-<script src="js/config.js?v=202611250215"></script>
-<script src="js/api.js?v=202611250215"></script>
-<script src="js/common.js?v=202611250215"></script>
-<script src="js/ocr.js?v=202611250215"></script>
-<script src="js/bankcore.js?v=202611250215"></script>
-<script src="js/pdfui.js?v=202611250215"></script>
-<script src="js/pdfview.js?v=202611250215"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250225"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250225"></script>
+<script src="js/printpdf.js?v=202611250225"></script>
+<script src="js/vendor/pdf.min.js?v=202611250225"></script>
+<script src="js/config.js?v=202611250225"></script>
+<script src="js/api.js?v=202611250225"></script>
+<script src="js/common.js?v=202611250225"></script>
+<script src="js/ocr.js?v=202611250225"></script>
+<script src="js/bankcore.js?v=202611250225"></script>
+<script src="js/pdfui.js?v=202611250225"></script>
+<script src="js/pdfview.js?v=202611250225"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -861,10 +861,26 @@ async function heldInfo(reason) {
   for (const q of (scanned && scanned.questions || []).slice(0, 60)) { try { qthumb[q.num] = thumbOf(await rcBankQ(q)); } catch (e) {} }
   return { qthumb: qthumb, type: 'stuck', hold: true, title: $('title').value, reason: reason, answers: answers, unread: unread, unreadImg: unreadImg, dash: (window.__dash || []).slice(), dashImg: window.__dashImg || {}, cls: kind, qinfo: Array.from(document.querySelectorAll('.qunit-sel')).map(el => { const v = unitSelectValue(el), sb = document.querySelector('.qsub-sel[data-n="' + el.dataset.n + '"]'); return { n: +el.dataset.n, unit: v.unit, grade: v.grade, sub: sb ? sb.value : '' }; }) };
 }
+// 이미 문제은행에 있는 문항(같은 글자)이면, 그때 저장해 둔 단원·소단원을 그대로 가져온다 (다시 등록해도 소단원이 새로 추정되지 않게)
+async function prefillFromExisting() {
+  const keys = await existingPreviewKeys(); if (!keys.q || !keys.q.size) return 0;
+  await ensureToc();
+  let n = 0;
+  for (const q of scanned.questions) {
+    let t = ''; try { t = await BankCore.textPreview(pdfInfo.doc, q.page, q.rect, 120); } catch (e) {}
+    const ex = keys.q.get(dupKey(t)); if (!ex || !ex.unit || ex.unit === '(단원 미지정)') continue;
+    const us = document.querySelector('.qunit-sel[data-n="' + q.num + '"]'), ss = document.querySelector('.qsub-sel[data-n="' + q.num + '"]'); if (!us) continue;
+    setUnitSelect(us, ex.unit, ex.grade || ''); us.dataset.auto = '0'; us.classList.remove('low');
+    if (ss) { try { refreshSubSelect(ss, tocEntryFor(ex.grade || '', ex.unit), ex.sub || ''); } catch (e) {} if (ex.sub) ss.value = ex.sub; }
+    n++;
+  }
+  return n;
+}
 async function autoRegisterMaybe(stale) {
   if (!IS_CHILD || !autoOn() || !scanned) return;
   for (let i = 0; i < 180 && $('bank-guess-btn').disabled; i++) await new Promise(r => setTimeout(r, 500));   // 단원 추정이 끝날 때까지
   if (stale()) return;
+  try { window.__prefilled = await prefillFromExisting(); } catch (e) { console.warn('기존 단원 가져오기 실패', e); }
   try { await autoSubsNew(); } catch (e) {}
   const missing = answerInputs.map((a, i) => (a.value ? null : i + 1)).filter(Boolean);
   // (예전에는 여기서 못 읽은 정답을 「-」로 채워 그대로 등록했지만, 정답이 덜 채워진 시험지는 등록하지 않고 「직접 확인이 필요한 시험지」로 넘긴다)
