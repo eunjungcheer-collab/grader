@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250425">
+<link rel="stylesheet" href="css/style.css?v=202611250435">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250425"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250425"></script>
-<script src="js/printpdf.js?v=202611250425"></script>
-<script src="js/vendor/pdf.min.js?v=202611250425"></script>
-<script src="js/config.js?v=202611250425"></script>
-<script src="js/api.js?v=202611250425"></script>
-<script src="js/common.js?v=202611250425"></script>
-<script src="js/ocr.js?v=202611250425"></script>
-<script src="js/bankcore.js?v=202611250425"></script>
-<script src="js/pdfui.js?v=202611250425"></script>
-<script src="js/pdfview.js?v=202611250425"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250435"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250435"></script>
+<script src="js/printpdf.js?v=202611250435"></script>
+<script src="js/vendor/pdf.min.js?v=202611250435"></script>
+<script src="js/config.js?v=202611250435"></script>
+<script src="js/api.js?v=202611250435"></script>
+<script src="js/common.js?v=202611250435"></script>
+<script src="js/ocr.js?v=202611250435"></script>
+<script src="js/bankcore.js?v=202611250435"></script>
+<script src="js/pdfui.js?v=202611250435"></script>
+<script src="js/pdfview.js?v=202611250435"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1319,7 +1319,7 @@ function showAutoReview(R) {
       const g0 = (q[0] && q[0].grade) || '';
       body.className = 'rv-ubody'; body.innerHTML = '<div class="hint" style="margin:0 0 6px; font-weight:700; color:#0F766E;">' + (x.pending ? '💾 단원·소단원은 고르면 바로 적용되고, 맨 아래 「OK — 이 시험지 등록」을 누를 때 시험지와 함께 저장돼요.' : '💾 단원·소단원은 고르는 즉시 자동 저장돼요 (저장 버튼을 누를 필요 없어요). 번호 옆에 ✅ 저장됨이 보이면 끝난 거예요.') + '</div><div class="qunit-row" style="flex-wrap:wrap;"><b>전체</b><select class="rv-allu" style="width:auto; max-width:100%;">' + unitSelectOptions(g0, '', '') + '</select><span class="sub-wrap"><select class="rv-alls" style="width:auto; max-width:100%;"></select></span><button type="button" class="btn outline rv-allbtn" style="padding:4px 10px;">이 시험지 전체에 적용</button><span class="hint rv-umsg" style="margin:0; position:sticky; top:0; background:#fff; font-weight:700;"></span></div>' +
         '<div class="qunit-row" style="flex-wrap:wrap;"><b>📏 구간</b><input type="number" class="rv-rf" min="1" placeholder="시작" style="width:64px;"> <span>번 ~</span> <input type="number" class="rv-rt" min="1" placeholder="끝" style="width:64px;"> <span>번</span><button type="button" class="btn outline rv-rangebtn" style="padding:4px 10px;">위에서 고른 단원·소단원을 이 구간에 적용</button></div><div class="hint rv-rsum" style="margin:2px 0 6px; font-weight:700;"></div>' +
-        q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b title="' + o.n + '번">' + numNameOf(x.answers, o.n) + '</b>' + (x.pending ? '<button type="button" class="btn outline rv-crop" data-n="' + o.n + '" style="padding:2px 8px; font-size:12px;">✂ 영역 조정</button>' : '') + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" data-n="' + o.n + '" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span></div>').join('');
+        q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b title="' + o.n + '번">' + numNameOf(x.answers, o.n) + '</b>' + (x.pending ? '<span style="display:flex; flex-direction:column; gap:3px; align-items:flex-start;"><button type="button" class="btn outline rv-crop" data-n="' + o.n + '" style="padding:2px 8px; font-size:12px;">✂ 영역 조정</button><span class="hint" style="margin:0; font-size:11px;">' + (() => { try { const sq = x.fr.contentWindow.eval('scanned').questions.filter(z => z.num === o.n); if (!sq.length) return 'PDF에서 이 번호를 못 찾았어요'; return sq.map(z => 'PDF ' + z.page + '쪽 · ' + (z.rect[0] > 250 ? '오른쪽' : '왼쪽') + ' 단 · 위에서 ' + Math.round(z.rect[1] / 8.42) + '%').join(' / '); } catch (e) { return ''; } })() + '</span></span>' : '') + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" data-n="' + o.n + '" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span></div>').join('');
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
       { const hd = document.createElement('div'); hd.className = 'rv-uhead'; hd.style.cssText = 'position:sticky; top:0; z-index:6; background:#fff; padding:6px 0 4px; border-bottom:2px solid var(--line); box-shadow:0 4px 6px -4px rgba(0,0,0,.15);';
         const kids = Array.from(body.children).slice(0, 4); body.insertBefore(hd, kids[0]); kids.forEach(k => hd.appendChild(k)); }       // 전체·구간 지정 줄을 맨 위에 고정해서, 아래로 내려가도 구간 버튼이 보이게 한다
