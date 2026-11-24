@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611241900">
+<link rel="stylesheet" href="css/style.css?v=202611241920">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -57,7 +57,7 @@
     </div>
     <div class="card" id="kp-card">
       <b>⚡ 인쇄 창 없이 바로 인쇄 (시작 파일 받기)</b>
-      <p class="hint" style="margin:6px 0 8px;">웹 화면은 보안 때문에 스스로 「인쇄 창 건너뛰기」를 켤 수 없어요. 대신 이 파일을 더블클릭해서 열면 Edge(없으면 Chrome)가 「바로 인쇄」 설정으로 시작하고, 이 사이트가 바로 열려요. 그 창에서 🖨️ 인쇄를 누르면 기본 프린터로 바로 나가요. 바탕화면에 바로가기를 못 만드는 컴퓨터는 문서·다운로드 폴더에 이 파일을 두고 쓰세요. 컴퓨터마다 한 번만 받으면 돼요.</p>
+      <p class="hint" style="margin:6px 0 8px;">웹 화면은 보안 때문에 스스로 「인쇄 창 건너뛰기」를 켤 수 없어요. 대신 이 파일을 더블클릭해서 열면 아이콘이 붙은 바로가기(문서 폴더, 되면 바탕화면)도 만들고, Edge(없으면 Chrome)가 「바로 인쇄」 설정으로 시작하고, 이 사이트가 바로 열려요. 그 창에서 🖨️ 인쇄를 누르면 기본 프린터로 바로 나가요. 바탕화면에 바로가기를 못 만드는 컴퓨터는 문서·다운로드 폴더에 이 파일을 두고 쓰세요. 컴퓨터마다 한 번만 받으면 돼요.</p>
       <button type="button" class="btn outline" id="kp-get" style="padding:8px 14px;">⬇️ 바로인쇄 시작 파일 받기 (.bat)</button>
       <p class="hint" style="margin:8px 0 0;">쓰기 전에 윈도우 설정에서 이 프린터를 「기본 프린터」로, 양면·용지(A4)를 미리 정해 두세요. 바로 인쇄 창에서는 로그인을 한 번 더 해야 하고, 끝나면 로그아웃하세요.</p>
     </div>
@@ -86,10 +86,10 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611241900"></script>
-<script src="js/api.js?v=202611241900"></script>
-<script src="js/common.js?v=202611241900"></script>
-<script src="js/pdfui.js?v=202611241900"></script>
+<script src="js/config.js?v=202611241920"></script>
+<script src="js/api.js?v=202611241920"></script>
+<script src="js/common.js?v=202611241920"></script>
+<script src="js/pdfui.js?v=202611241920"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -153,15 +153,21 @@ document.getElementById('hc-run').addEventListener('click', async () => {
   } catch (e) { o.innerHTML = '<span style="color:#B91C1C;">' + escapeHtml(e.message || e) + '</span>'; }
   b.disabled = false;
 });
+const KP_ICO = ['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'];
 document.getElementById('kp-get').addEventListener('click', () => {
   const url = new URL('./', location.href).href.replace(/"/g, '');
-  const L = ['@echo off', 'chcp 65001 >nul', 'set "URL=' + url + '"',
+  const L = ['@echo off', 'chcp 65001 >nul', 'setlocal', 'set "URL=' + url + '"', 'set "DIR=%LOCALAPPDATA%\\grader-print"', 'if not exist "%DIR%" mkdir "%DIR%"',
     'set "EXE=%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe"',
     'if not exist "%EXE%" set "EXE=%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe"',
     'if not exist "%EXE%" set "EXE=%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe"',
     'if not exist "%EXE%" set "EXE=%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe"',
-    'if not exist "%EXE%" echo Edge or Chrome was not found. & pause & exit /b 1',
-    'start "" "%EXE%" --kiosk-printing --user-data-dir="%LOCALAPPDATA%\\grader-print" "%URL%"', ''];
+    'if not exist "%EXE%" echo Edge or Chrome was not found. & pause & exit /b 1'];
+  // 아이콘 그림을 이 파일 안에서 꺼내 놓고, 같은 모양의 바로가기(.lnk)를 문서 폴더(와 되면 바탕화면)에 만든다
+  L.push('set "B64=%DIR%\\ico.b64"', 'if exist "%B64%" del "%B64%"');
+  KP_ICO.forEach(c => L.push('>>"%B64%" echo ' + c));
+  L.push('certutil -f -decode "%B64%" "%DIR%\\print.ico" >nul', 'del "%B64%"');
+  L.push('powershell -NoProfile -ExecutionPolicy Bypass -Command "$w=New-Object -ComObject WScript.Shell; foreach($d in @([Environment]::GetFolderPath(\'MyDocuments\'),[Environment]::GetFolderPath(\'Desktop\'))){ if($d -and (Test-Path $d)){ try{ $s=$w.CreateShortcut((Join-Path $d \'Grader-Quick-Print.lnk\')); $s.TargetPath=$env:EXE; $q=[char]34; $s.Arguments=\'--kiosk-printing --user-data-dir=\'+$q+$env:DIR+$q+\' \'+$q+$env:URL+$q; $s.IconLocation=(Join-Path $env:DIR \'print.ico\'); $s.Save() }catch{} } }" 2>nul');
+  L.push('start "" "%EXE%" --kiosk-printing --user-data-dir="%DIR%" "%URL%"', '');
   const blob = new Blob([L.join('\r\n')], { type: 'application/octet-stream' }), a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'grader-quick-print.bat'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 });
