@@ -2745,6 +2745,28 @@
     return true;
   }
   // 제목칸을 못 찾았을 때: 첫 쪽 맨 위에 제목 배지를 그냥 붙인다. 위쪽 여백이 모자라면 첫 쪽 내용을 조금 줄여서 자리를 만든다.
+  // 첫 쪽 맨 위 머리 장식(연필·초록 잎 배경 같은 그림)을 흰색으로 덮어 지운다. 첫 문항 위쪽에 완전히 들어 있는 그림만 대상이라 문제 그림은 건드리지 않는다.
+  async function clearHeaderDecor(PDFLib, pdfDoc, doc, qTop) {
+    try {
+      const pd = await pageItems(doc, 1), pg = await doc.getPage(1), vp = pg.getViewport({ scale: 1 });
+      const rects = await pageImageRects(pg, vp), page = pdfDoc.getPages()[0], k = page.getWidth() / pd.W, PH = page.getHeight();
+      const lim = (qTop && qTop > 30 ? qTop : pd.H * 0.2) - 3;
+      let n = 0;
+      (rects || []).forEach(r => {
+        if (r[4]) return;                                           // 표시 있는 그림(마스크 등)은 제외
+        const w = r[2] - r[0], h = r[3] - r[1];
+        if (w < 8 || h < 8 || r[1] < -2) return;
+        let bot = r[3];
+        if (bot > lim) {                                            // 쪽 맨 위에 깔린 폭 넓은 머리 장식 그림은 아래 끝이 첫 문항 위로 조금 넘어와도 첫 문항 위까지만 덮는다
+          if (!(r[1] <= 12 && w >= pd.W * 0.5 && bot <= lim + 25)) return;
+          bot = lim;
+        }
+        page.drawRectangle({ x: (r[0] - 1) * k, y: PH - (bot + 1) * k, width: (w + 2) * k, height: (bot - r[1] + 2) * k, color: PDFLib.rgb(1, 1, 1) });
+        n++;
+      });
+      return n;
+    } catch (e) { console.warn('머리 장식 지우기 실패', e); return 0; }
+  }
   async function stampTitleHeader(PDFLib, pdfDoc, doc, title, qr) {
     if (!title) return false;
     const pd = await pageItems(doc, 1);
@@ -4464,6 +4486,7 @@
 
   root.BankCore = {
     fitNumRect: fitNumRect,
+    clearHeaderDecor: clearHeaderDecor,
     scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, extendCutQuestions: extendCutQuestions, parseBookToc: parseBookToc, coverTitleSpotByPixels: coverTitleSpotByPixels, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
