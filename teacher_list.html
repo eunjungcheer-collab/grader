@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611242012">
+<link rel="stylesheet" href="css/style.css?v=202611240018">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -39,14 +39,15 @@
     <button type="button" class="btn primary" id="bulk-edit" style="padding:8px 14px;" disabled>✏️ 선택한 시험지 단원·정답 수정</button>
     <button type="button" class="btn danger" id="bulk-del" style="padding:8px 14px;" disabled>선택 삭제</button>
   </div>
+  <div id="cov-card" class="card" style="display:none; padding:12px 14px; margin-bottom:10px; overflow-x:auto;"></div>
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611242012"></script>
-<script src="js/api.js?v=202611242012"></script>
-<script src="js/common.js?v=202611242012"></script>
-<script src="js/bankcore.js?v=202611242012"></script>
-<script src="js/pdfui.js?v=202611242012"></script>
+<script src="js/config.js?v=202611240018"></script>
+<script src="js/api.js?v=202611240018"></script>
+<script src="js/common.js?v=202611240018"></script>
+<script src="js/bankcore.js?v=202611240018"></script>
+<script src="js/pdfui.js?v=202611240018"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -164,10 +165,39 @@ renderHeader();
       };
       return list.sort(by[st.sort] || by.new);
     }
+    // 학교 이름을 검색하면 연도 × (학년-학기 중간/기말) 로 어떤 기출이 있는지 O/X 표로 보여 준다
+    function drawCoverage() {
+      const box = document.getElementById('cov-card'), q = st.q.replace(/\s+/g, '').toLowerCase();
+      if (!q) { box.style.display = 'none'; return; }
+      const rows = [];
+      exams.forEach(ex => {
+        const t = String(ex.title || ''); if (t.replace(/\s+/g, '').toLowerCase().indexOf(q) < 0) return;
+        const y = t.match(/(20\d\d)\s*(?:년|학년도)?/), g = t.match(/([1-3])\s*-\s*([12])\s*(?:학기)?\s*(중간|기말)/);
+        if (!y || !g) return;
+        if (st.grade && ('중' + g[1]) !== st.grade && ('고' + g[1]) !== st.grade) return;
+        rows.push({ y: +y[1], gr: +g[1], sem: +g[2], kind: g[3], essay: /서술형|서답형|평가기준표|기준표/.test(t) });
+      });
+      if (!rows.length) { box.style.display = 'none'; return; }
+      const grades = Array.from(new Set(rows.map(r => r.gr))).sort(), ys = rows.map(r => r.y), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+      const cols = []; grades.forEach(g => [1, 2].forEach(sm => ['중간', '기말'].forEach(k => cols.push({ g: g, sm: sm, k: k }))));
+      const cell = {}; rows.forEach(r => { const key = r.y + '|' + r.gr + '|' + r.sem + '|' + r.kind, c = cell[key] || (cell[key] = { main: 0, essay: 0 }); if (r.essay) c.essay++; else c.main++; });
+      const th = 'padding:5px 9px;border:1px solid #cbd5e1;background:#F1F5F9;font-size:13px;text-align:center;white-space:nowrap;', td = 'padding:5px 9px;border:1px solid #cbd5e1;text-align:center;font-weight:800;font-size:15px;';
+      let h = '<div style="font-weight:800;margin-bottom:6px;">📋 「' + escapeHtml(qInp.value.trim()) + '」 기출 있는지 한눈에 보기 <span class="hint" style="font-weight:400;">(O 있음 · X 없음 · 서 = 서술형 기준표만 있음)</span></div><table style="border-collapse:collapse;"><tr><th style="' + th + '" rowspan="2">연도</th>' +
+        grades.map(g => '<th style="' + th + '" colspan="4">' + g + '학년</th>').join('') + '</tr><tr>' + cols.map(c => '<th style="' + th + '">' + c.g + '-' + c.sm + ' ' + c.k + '</th>').join('') + '</tr>';
+      for (let y = y1; y >= y0; y--) {
+        h += '<tr><td style="' + th + '">' + y + '</td>' + cols.map(c => {
+          const v = cell[y + '|' + c.g + '|' + c.sm + '|' + c.k];
+          if (v && v.main) return '<td style="' + td + 'color:#1f6f4a;background:#E8F5EE;">O' + (v.main > 1 ? '<span style="font-size:11px;"> ×' + v.main + '</span>' : '') + (v.essay ? '<span style="font-size:11px;color:#1D4ED8;"> +서</span>' : '') + '</td>';
+          if (v && v.essay) return '<td style="' + td + 'color:#1D4ED8;background:#EEF2FF;">서</td>';
+          return '<td style="' + td + 'color:#C1392B;background:#FDECEA;">X</td>';
+        }).join('') + '</tr>';
+      }
+      box.innerHTML = h + '</table>'; box.style.display = '';
+    }
     function render() {
       try { sessionStorage.setItem('list_filter', JSON.stringify(st)); } catch (e) {}
       drawKinds(); drawChips(); drawUnitOptions(); sortSel.value = st.sort; qInp.value = st.q;
-      const list = visible();
+      const list = visible(); try { drawCoverage(); } catch (e) {}
       document.getElementById('filter-msg').textContent = list.length + '개 시험지' + (list.length !== exams.length ? ' (전체 ' + exams.length + '개 중)' : '');
       const badges = ex => ex.meta.units.length
         ? ex.meta.units.map(u => '<span class="chip" style="display:inline-block; background:#EEF2FF; color:#3730A3; border-radius:10px; padding:1px 8px; font-size:12px; margin:0 4px 4px 0;">' + u.grade + ' ' + escapeHtml(unitName(u.grade, u.no)) + '</span>').join('')
@@ -284,13 +314,14 @@ renderHeader();
       const ch = await askDeleteExams([exams.find(x => String(x.id) === String(id))].filter(Boolean), exams);
       if (!ch) return;
       const alsoScores = ch.scores, bankDel = ch.bankDel;
-      b.disabled = true; b.textContent = '삭제 중...';
+      b.disabled = true; b.textContent = '삭제 중...'; busyStart('시험지 삭제 중...');
       try {
         const res = await callApi('deleteExam', { password: getTeacherPassword(), id: id, deleteSubmissions: alsoScores });
         if (!res.ok) throw new Error(res.error || '삭제 실패');
         if (bankDel) { b.textContent = '문제은행 정리 중...'; try { await bankDel(); } catch (e) { alert('시험지는 지웠지만 문제은행 삭제 중 오류가 났어요: ' + e.message); } }
         const k = exams.findIndex(x => String(x.id) === String(id)); if (k >= 0) exams.splice(k, 1); render();
-      } catch (err) { alert('삭제 중 오류: ' + err.message); b.disabled = false; b.textContent = '삭제'; }
+      } catch (err) { busyEnd(); alert('삭제 중 오류: ' + err.message); b.disabled = false; b.textContent = '삭제'; return; }
+      busyEnd();
     })); }
     render();
     freshP.then(f => {      // 지난번 목록을 먼저 보여 줬다면, 최신 목록이 다르면 갈아끼운다

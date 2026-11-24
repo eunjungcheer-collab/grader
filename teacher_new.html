@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611242012">
+<link rel="stylesheet" href="css/style.css?v=202611240018">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611242012"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611242012"></script>
-<script src="js/printpdf.js?v=202611242012"></script>
-<script src="js/vendor/pdf.min.js?v=202611242012"></script>
-<script src="js/config.js?v=202611242012"></script>
-<script src="js/api.js?v=202611242012"></script>
-<script src="js/common.js?v=202611242012"></script>
-<script src="js/ocr.js?v=202611242012"></script>
-<script src="js/bankcore.js?v=202611242012"></script>
-<script src="js/pdfui.js?v=202611242012"></script>
-<script src="js/pdfview.js?v=202611242012"></script>
+<script src="js/vendor/qrcode.min.js?v=202611240018"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611240018"></script>
+<script src="js/printpdf.js?v=202611240018"></script>
+<script src="js/vendor/pdf.min.js?v=202611240018"></script>
+<script src="js/config.js?v=202611240018"></script>
+<script src="js/api.js?v=202611240018"></script>
+<script src="js/common.js?v=202611240018"></script>
+<script src="js/ocr.js?v=202611240018"></script>
+<script src="js/bankcore.js?v=202611240018"></script>
+<script src="js/pdfui.js?v=202611240018"></script>
+<script src="js/pdfview.js?v=202611240018"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1225,7 +1225,7 @@ async function autoFinishQueue() {
 async function skipToNext(note) {
   queueSkipped.push(note);
   if (fileQueue.length) { const nx = fileQueue.shift(); $('submit-btn').disabled = false; window.scrollTo(0, 0); await loadExamFile(nx.file, nx.ans); }
-  else { alert('마지막 시험지까지 확인했어요.' + (queueDoneIds.length ? ' ' + queueDoneIds.length + '개를 등록했고 ' : ' ') + queueSkipped.length + '개는 이미 있어서 건너뛰었어요.'); location.href = 'teacher_list.html'; }
+  else { alert('마지막 시험지까지 확인했어요.' + (queueDoneIds.length ? ' ' + queueDoneIds.length + '개를 등록했고 ' : ' ') + queueSkipped.length + '개는 건너뛰었어요 (중복이거나 정답·대단원이 비어 있어요):\n' + queueSkipped.join('\n')); location.href = 'teacher_list.html'; }
 }
 async function autoSkip(note) {
   if (IS_CHILD) { childReport({ type: 'skip', note: note }); return; }
@@ -1517,7 +1517,7 @@ async function buildBoxes() {
     const a = scanned && scanned.answers[n];
     const cell = document.createElement('div');
     cell.className = 'abox';
-    cell.innerHTML = '<span>' + n + '</span><input type="text" class="ans-input" inputmode="numeric" data-n="' + n + '" value="' + (a && a.text ? a.text : '') + '"><div class="abox-btns"><button type="button" class="sub-tog" title="주관식(자동 채점 제외)">주</button><button type="button" class="multi-tog" title="복수정답: 정답이 2개 이상일 때(예: 3번과 5번 모두)">복</button></div>';
+    cell.innerHTML = '<span>' + n + '</span><input type="text" class="ans-input" inputmode="numeric" data-n="' + n + '" value="' + (a && a.text ? a.text : '') + '"><div class="abox-btns"><button type="button" class="sub-tog" title="주관식(자동 채점 제외)">주</button><button type="button" class="multi-tog" title="복수정답: 정답이 2개 이상일 때(예: 3번과 5번 모두)">복</button><button type="button" class="essay-tog" title="서술형: 서술형 문항으로 표시 (주관식으로 바뀌고, 「서술형 1번」처럼 부르게 돼요)">서</button></div>';
     wrap.appendChild(cell);
   }
   answerInputs = attachAnswerAdvance(wrap);
@@ -1546,6 +1546,15 @@ async function buildBoxes() {
       if (on) { const k = inp.value.length; try { inp.setSelectionRange(k, k); } catch (e) {} }
       updateSubNote();
     });
+    // 「서」: 서술형으로 표시 (주관식과 같이 자동 채점에서 빠지고, 이름이 「서술형 N번」이 된다)
+    cell.querySelector('.essay-tog').addEventListener('click', () => {
+      if (!window.__essayTouched) { window.__essayTouched = true; markTrailingEssay(); }      // 처음 누를 때 지금까지 서술형으로 보이던 것(맨 뒤 주관식)을 먼저 표시해 둔다
+      const on = inp.dataset.essay !== '1';
+      if (on && !inp.disabled) setSubjective(inp, true, cell);
+      inp.dataset.essay = on ? '1' : '0'; cell.querySelector('.essay-tog').classList.toggle('on', on);
+      updateSubNote();
+    });
+    cell.querySelector('.sub-tog').addEventListener('click', () => { if (inp.disabled && window.__essayTouched) { inp.dataset.essay = '0'; const b = cell.querySelector('.essay-tog'); if (b) b.classList.remove('on'); } else if (!inp.disabled && inp.dataset.essay === '1') { inp.dataset.essay = '0'; const b = cell.querySelector('.essay-tog'); if (b) b.classList.remove('on'); } updateSubNote(); });
     inp.classList.toggle('filled', !!inp.value);
     if (scanned && scanned.answers[n] && (scanned.answers[n].multi || /^[1-5]{2,}$/.test(String(inp.value))) && String(inp.value).length > 1) setMulti(inp, true, cell);   // 정답표에 두 개 모두(AND)로 적힌 문항
     if (scanned && scanned.subj && scanned.subj[n]) setSubjective(inp, true, cell);   // 문제 글자로 추정한 주관식
@@ -1573,10 +1582,20 @@ async function buildBoxes() {
 $('regen-btn').addEventListener('click', buildBoxes);
 
 // 맨 뒤에 연속으로 이어지는 주관식은 「서술형 1번, 2번…」으로 부른다 (시험지에 적힌 이름과 같게). 중간에 섞인 주관식은 그냥 번호
+function markTrailingEssay() {
+  const ins = answerInputs || []; let k = ins.length; while (k > 0 && ins[k - 1].disabled) k--;
+  ins.forEach((inp, i) => { const on = i >= k && k < ins.length; inp.dataset.essay = on ? '1' : '0'; const b = inp.closest('.abox').querySelector('.essay-tog'); if (b) b.classList.toggle('on', on); });
+}
+// 서술형으로 표시한 문항 번호들 (표시를 한 번도 안 만졌으면 null → 서버가 맨 뒤 주관식을 서술형으로 본다)
+function essayNumsOrNull() {
+  if (!window.__essayTouched) return null;
+  return (answerInputs || []).filter(i => i.disabled && i.dataset.essay === '1').map(i => parseInt(i.dataset.n, 10));
+}
 function relabelSubj() {
   const ins = answerInputs || []; if (!ins.length) return;
-  let k = ins.length; while (k > 0 && ins[k - 1].disabled) k--;
-  const m = {}; if (k < ins.length) for (let i = k; i < ins.length; i++) m[ins[i].dataset.n] = i - k + 1;
+  const m = {};
+  if (window.__essayTouched) { let c = 0; ins.forEach(i => { if (i.disabled && i.dataset.essay === '1') m[i.dataset.n] = ++c; }); }
+  else { let k = ins.length; while (k > 0 && ins[k - 1].disabled) k--; if (k < ins.length) for (let i = k; i < ins.length; i++) m[ins[i].dataset.n] = i - k + 1; }
   ins.forEach(inp => { const c = inp.closest('.abox'), sp = c && c.firstElementChild; if (sp && sp.tagName === 'SPAN') { sp.textContent = m[inp.dataset.n] ? '서술' + m[inp.dataset.n] : inp.dataset.n; sp.title = inp.dataset.n + '번'; } });
   document.querySelectorAll('#bank-qunits .qunit-row').forEach(r => { const sel = r.querySelector('.qunit-sel'), b = r.querySelector('b'); if (!sel || !b) return; const n = sel.dataset.n; b.textContent = m[n] ? '서술형 ' + m[n] + '번' : n + '번'; b.title = n + '번'; });
 }
@@ -1585,7 +1604,8 @@ function updateSubNote(guessed) {
   const subs = answerInputs.filter(i => i.disabled).map(i => i.dataset.n);
   const multis = answerInputs.filter(i => !i.disabled && i.dataset.multi === '1').map(i => i.dataset.n);
   const obj = answerInputs.length - subs.length;
-  let t = '객관식 ' + obj + '문항 · 주관식 ' + subs.length + '문항' + (subs.length ? ' (' + subs.slice(0, 20).join(', ') + '번)' : '');
+  const essayN = window.__essayTouched ? answerInputs.filter(i => i.disabled && i.dataset.essay === '1').length : 0;
+  let t = '객관식 ' + obj + '문항 · 주관식 ' + subs.length + '문항' + (subs.length ? ' (' + subs.slice(0, 20).join(', ') + '번)' : '') + (window.__essayTouched ? ' · 그중 서술형 ' + essayN + '문항' : '');
   if (multis.length) t += ' · 복수정답 ' + multis.length + '문항 (' + multis.slice(0, 20).join(', ') + '번)';
   if (guessed) t += ' — 문제 글자("쓰시오" 등)를 보고 주관식 ' + guessed + '개를 미리 회색으로 표시했어요. 아니면 「주」를 눌러 되돌리세요.';
   $('sub-note').textContent = t;
@@ -1810,6 +1830,14 @@ $('new-exam-form').addEventListener('submit', async function (e) {
   const answers = answerInputs.map(i => i.value);
   const missing = answers.map((a, i) => a ? null : i + 1).filter(Boolean);
   if (!answers.length) { errorBox.innerHTML = '<div class="banner error">정답 칸이 없어요. PDF를 먼저 올려주세요.</div>'; return; }
+  // 여러 시험지를 한꺼번에 등록할 때: 정답이나 대단원이 덜 채워진 시험지는 등록하지 않고 건너뛴다 (소단원이 비어 있는 것은 괜찮다)
+  if (queueTotal > 1) {
+    const noUnit = Array.from(document.querySelectorAll('.qunit-sel')).filter(s => { const v = unitSelectValue(s).unit; return !v || v === '(단원 미지정)'; }).map(s => s.dataset.n);
+    if (missing.length || noUnit.length) {
+      const why = [missing.length ? '정답이 비었어요: ' + missing.slice(0, 8).join(',') + (missing.length > 8 ? ' 외' : '') + '번' : '', noUnit.length ? '대단원이 비었어요: ' + noUnit.slice(0, 8).join(',') + (noUnit.length > 8 ? ' 외' : '') + '번' : ''].filter(Boolean).join(' / ');
+      await (window.__auto ? autoSkip : skipToNext)((title || curFileName) + ' (등록 안 함 — ' + why + ')'); return;
+    }
+  }
   if (missing.length) {
     errorBox.innerHTML = '<div class="banner error">정답이 비어있는 문항이 있어요: ' + missing.slice(0, 15).join(', ') + (missing.length > 15 ? ' ...' : '') + '번</div>';
     window.scrollTo(0, 0);
@@ -1906,6 +1934,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
     const res = await callApi('createExam', {
       password: getTeacherPassword(), id: examId, title: title, answers: answers,
       pdfBase64: pdfBase64, filename: title, questionTexts: questionTexts, replaceId: replacing,
+      essayNums: essayNumsOrNull() === null ? undefined : essayNumsOrNull(),
     });
     if (replacing && res.ok) {      // 정답 점검에서 다시 올린 시험지는 정답 점검 목록에서 「수정함」+「확인함」으로 표시한다
       try { const d = new Date().toISOString().slice(0, 10), a = JSON.parse(localStorage.getItem('ac_done') || '{}') || {}, k = JSON.parse(localStorage.getItem('ac_ok') || '{}') || {}; a[String(replacing)] = d; k[String(replacing)] = d; localStorage.setItem('ac_done', JSON.stringify(a)); localStorage.setItem('ac_ok', JSON.stringify(k)); callApi('markExam', { password: getTeacherPassword(), id: String(replacing), ok: d, done: d }).catch(() => {}); } catch (e) {}

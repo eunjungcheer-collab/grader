@@ -63,8 +63,49 @@ window.callApiSWR = callApiSWR;
 // 저장이 끝나기 전에 창을 닫거나 다른 화면으로 나가면 방금 고른 값이 사라진다 → 저장 중인 요청이 있으면 나가기 전에 경고한다
 const _SAVE_GUARD_RE = /^(updateQuestions?|updateExamAnswers|updateExamTitle|saveQuestions|deleteQuestions?|deleteExams?|saveRedoUnits)$/;
 window.__savePending = 0; window.__saveDirty = 0;
-window.savePendingCount = function () { return (window.__savePending || 0) + (window.__saveDirty || 0); };
-window.addEventListener('beforeunload', function (e) { if (window.savePendingCount() > 0) { e.preventDefault(); e.returnValue = '아직 저장이 되지 않았어요'; return e.returnValue; } });
+// 저장 요청을 하나씩 기록한다: 진행 중인 것(너무 오래 멈춘 것은 제외)과 실패한 것. 「나갈까요?」 경고는 정말 저장 중이거나 실패한 게 있을 때만 뜬다
+const _pend = {}; let _pendId = 0; window.__saveFails = {};
+function _pendLive() { const now = Date.now(); let n = 0; Object.keys(_pend).forEach(function (k) { if (now - _pend[k] < 150000) n++; }); return n; }
+window.savePendingCount = function () { return _pendLive() + (window.__saveDirty || 0); };
+window.saveFailCount = function () { return Object.keys(window.__saveFails).length; };
+function _chip(kind, text) {
+  try {
+    let c = document.getElementById('save-chip');
+    if (!c) { if (!document.body) return; c = document.createElement('div'); c.id = 'save-chip'; c.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:99999;padding:8px 14px;border-radius:999px;font:700 14px/1.3 sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.25);display:none;cursor:default;'; c.addEventListener('click', function () { if (!_pendLive()) c.style.display = 'none'; }); document.body.appendChild(c); }
+    c.style.display = ''; c.textContent = text;
+    c.style.background = kind === 'bad' ? '#C1392B' : kind === 'ok' ? '#1f6f4a' : '#1D4ED8'; c.style.color = '#fff';
+    clearTimeout(c._t); if (kind === 'ok') c._t = setTimeout(function () { c.style.display = 'none'; }, 2500);
+  } catch (e) {}
+}
+function _chipRefresh() {
+  const n = _pendLive(), f = window.saveFailCount();
+  if (n) _chip('wait', '💾 저장 중... (' + n + ')'); else if (f) _chip('bad', '⚠️ 저장이 안 된 게 있어요 — 다시 시도해 주세요'); else _chip('ok', '✅ 모두 저장됨');
+}
+window.addEventListener('beforeunload', function (e) { if (window.savePendingCount() > 0 || window.saveFailCount() > 0) { e.preventDefault(); e.returnValue = '아직 저장이 되지 않았어요'; return e.returnValue; } });
+// 저장 중에 같은 앱 안의 다른 화면으로 가려 하면, 브라우저 경고 대신 앱이 저장이 끝나기를 기다렸다가 결과를 알려 주고 이동한다
+let _navWaiting = false;
+async function _waitSavedThen(go) {
+  if (_navWaiting) return; _navWaiting = true;
+  _chip('wait', '💾 저장을 마무리하는 중... 끝나면 자동으로 이동해요');
+  const t0 = Date.now(); while (_pendLive() > 0 && Date.now() - t0 < 120000) await new Promise(function (r) { setTimeout(r, 200); });
+  _navWaiting = false;
+  if (window.saveFailCount() > 0 || _pendLive() > 0) {
+    const why = window.saveFailCount() ? Object.keys(window.__saveFails).map(function (k) { return window.__saveFails[k]; }).join('\n') : '서버가 오래 응답하지 않아요.';
+    _chipRefresh();
+    if (!confirm('⚠️ 저장이 끝나지 않은 게 있어요.\n' + why + '\n\n그래도 이 화면에서 나갈까요? (취소하면 그대로 있어요)')) return;
+    window.__saveFails = {}; _pendId = 0; Object.keys(_pend).forEach(function (k) { delete _pend[k]; });
+  } else _chip('ok', '✅ 저장 확인 완료');
+  go();
+}
+document.addEventListener('click', function (ev) {
+  if (ev.defaultPrevented || ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+  const a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+  if (!a || (a.target && a.target !== '_self') || a.hasAttribute('download')) return;
+  const h = a.getAttribute('href') || ''; if (!h || h[0] === '#' || /^(javascript|mailto|tel):/i.test(h)) return;
+  if (!(window.savePendingCount() > 0)) return;
+  ev.preventDefault(); _waitSavedThen(function () { location.href = a.href; });
+}, true);
+try { const _hb = history.back.bind(history); history.back = function () { if (window.savePendingCount() > 0) _waitSavedThen(_hb); else _hb(); }; } catch (e) {}
 window.warnIfSaving = function () { if (window.savePendingCount() > 0) { alert('⏳ 아직 저장이 되지 않았어요.\n\n「✅ 저장됨」 표시가 뜰 때까지 잠깐만 기다린 뒤에 나가 주세요.'); return true; } return false; };
 // 서버가 바빠서(잠금 시간초과 등) 실패하면 잠시 뒤 자동으로 다시 보낸다 (저장처럼 한 번 더 보내도 안전한 요청에만 쓴다)
 async function callApiRetry(action, params, tries, onWait) {
@@ -86,8 +127,10 @@ async function callApi(action, params) {
     if (c) return { ok: true, questions: c.slice(), cached: true };
   }
   if (_QC_WRITE_RE.test(action)) _qcClear();
-  const _wr = _SAVE_GUARD_RE.test(action); if (_wr) window.__savePending = (window.__savePending || 0) + 1;
-  let out; try { out = await _callApiRaw(action, params); } finally { if (_wr) window.__savePending = Math.max(0, (window.__savePending || 1) - 1); }
+  const _wr = _SAVE_GUARD_RE.test(action), _id = ++_pendId; if (_wr) { _pend[_id] = Date.now(); _chipRefresh(); }
+  let out, _err = null; try { out = await _callApiRaw(action, params); } catch (e) { _err = e; } finally { if (_wr) delete _pend[_id]; }
+  if (_wr) { if (_err || !out || out.ok === false) window.__saveFails[action] = (_err && _err.message) || (out && out.error) || '저장 실패'; else delete window.__saveFails[action]; _chipRefresh(); }
+  if (_err) throw _err;
   if (action === 'listQuestions' && out && out.ok && Array.isArray(out.questions)) _qcSet(out.questions);
   if (_QC_WRITE_RE.test(action)) _qcClear();
   return out;
@@ -321,8 +364,40 @@ async function offerDeleteBookExams(names) {
 // 오래 걸리는 삭제·변경 중에 창을 닫거나 이동하면 중간에 멈추므로, 그동안 나가려 하면 브라우저가 한 번 물어보게 한다
 let _busyN = 0;
 function _busyGuard(e) { e.preventDefault(); e.returnValue = ''; return ''; }
-function busyStart() { if (!_busyN++) window.addEventListener('beforeunload', _busyGuard); }
-function busyEnd() { if (_busyN > 0 && !--_busyN) window.removeEventListener('beforeunload', _busyGuard); }
+// 오래 걸리는 삭제·변경 중에는 화면 한가운데에 진행 상황 창을 띄운다 (버튼 글자가 「삭제 중... 3/20」처럼 바뀌면 그대로 따라 보여 준다)
+let _busyBox = null, _busyObs = null;
+function _busyShow(text) {
+  try {
+    if (!_busyBox) {
+      _busyBox = document.createElement('div'); _busyBox.id = 'busy-box';
+      _busyBox.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+      _busyBox.innerHTML = '<div style="background:#fff;border-radius:16px;padding:26px 30px;max-width:420px;width:100%;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.35);"><div class="busy-spin" style="width:42px;height:42px;margin:0 auto 14px;border:5px solid #dbe4ff;border-top-color:#1D4ED8;border-radius:50%;animation:busyspin 0.9s linear infinite;"></div><div id="busy-msg" style="font-size:20px;font-weight:800;color:#0B1F5C;word-break:keep-all;"></div><div style="margin-top:10px;font-size:14px;color:#6B7280;">끝날 때까지 창을 닫거나 다른 화면으로 이동하지 마세요.</div></div>';
+      if (!document.getElementById('busy-style')) { const st = document.createElement('style'); st.id = 'busy-style'; st.textContent = '@keyframes busyspin{to{transform:rotate(360deg)}}'; document.head.appendChild(st); }
+      document.body.appendChild(_busyBox);
+    }
+    document.getElementById('busy-msg').textContent = text || '처리 중...';
+  } catch (e) {}
+}
+function busyMsg(text) { if (_busyN > 0) _busyShow(text); }
+function busyStart(text) {
+  if (!_busyN++) {
+    window.addEventListener('beforeunload', _busyGuard);
+    _busyShow(text || '삭제 중...');
+    try {
+      _busyObs = new MutationObserver(function (muts) {
+        for (const m of muts) { const el = m.target && (m.target.nodeType === 1 ? m.target : m.target.parentElement); if (!el || (_busyBox && _busyBox.contains(el))) continue;
+          const t = (el.textContent || '').trim(); if (t.length < 80 && /삭제 중|정리 중|삭제하는 중|\d+\s*\/\s*\d+/.test(t)) { _busyShow(t.replace(/\(창을 닫지 마세요\)/, '').trim()); } }
+      });
+      _busyObs.observe(document.body, { childList: true, characterData: true, subtree: true });
+    } catch (e) {}
+  }
+}
+function busyEnd() {
+  if (_busyN > 0 && !--_busyN) {
+    window.removeEventListener('beforeunload', _busyGuard);
+    try { if (_busyObs) _busyObs.disconnect(); _busyObs = null; if (_busyBox) { _busyBox.remove(); _busyBox = null; } } catch (e) {}
+  }
+}
 function isBookQ(q) { return q && q.kind === '교재'; }
 // 교재 문제의 교재 이름: 출처 「교재이름 4-1. 단원이름 최다빈출공략」에서 소단원 번호 앞부분
 function bookNameOf(q) { const s = String(q.source || ''), m = s.match(/^(.*?)\s*\d{1,2}(?:\s*-\s*\d{1,2}){0,2}\s*\.(?!\d)/); return ((m ? m[1] : s) || '').trim() || '(교재 이름 없음)'; }

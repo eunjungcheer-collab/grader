@@ -456,10 +456,11 @@ details:not([open]) .month-summary::before{transform:rotate(-90deg);}
 
 /* ── 주관식(회색 비활성화) ── */
 .abox-btns{display:flex; width:54px; margin:0 -1px 0 0;}
-.abox .sub-tog, .abox .multi-tog{flex:1; width:auto; padding:2px 0; font-size:11px; font-weight:800; border:1.5px solid var(--line); border-top:none; background:#fff; color:var(--muted); cursor:pointer; font-family:inherit; margin:0;}
+.abox .sub-tog, .abox .multi-tog, .abox .essay-tog{flex:1; width:auto; padding:2px 0; font-size:11px; font-weight:800; border:1.5px solid var(--line); border-top:none; background:#fff; color:var(--muted); cursor:pointer; font-family:inherit; margin:0;}
 .abox .multi-tog.on{background:#1D4ED8; color:#fff; border-color:#1D4ED8;}
 .abox.is-multi input{font-size:18px; letter-spacing:1px; background:#EFF6FF; border-color:#1D4ED8;}
 .abox.is-multi input.filled{background:#DBEAFE;}
+.abox .essay-tog.on{background:#B45309; color:#fff; border-color:#B45309;}
 .abox.is-sub .sub-tog{background:#6B7280; color:#fff; border-color:#6B7280;}
 .abox.is-sub input{background:#E5E7EB !important; color:#9CA3AF; border-color:#9CA3AF; cursor:not-allowed;}
 .abox.is-sub span{color:#9CA3AF;}

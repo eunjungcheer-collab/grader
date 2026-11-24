@@ -49,6 +49,7 @@ function setup() {
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 8).setValue('sourceQuestionIds');
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 9).setValue('composeRecipe');
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 10).setValue('questionTexts');
+  ss.getSheetByName(SHEET_EXAMS).getRange(1, 11).setValue('essay');      // 서술형으로 표시한 문항 번호 (예: 24,25,26). 비어 있으면 맨 뒤에 이어진 주관식을 서술형으로 본다. 0 = 서술형 없음
   assignSheet_();
   Logger.log('설정 완료. (이미 있던 데이터는 그대로 유지돼요)');
 }
@@ -319,6 +320,7 @@ function replaceExamFromRegistration_(p) {
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   const url = 'https://drive.google.com/uc?export=download&id=' + file.getId(), oldPdf = String(found.row[4] || '');
   exams.getRange(found.rowIndex, 5, 1, 2).setValues([[file.getId(), url]]);
+  if (p.essayNums !== undefined) exams.getRange(found.rowIndex, 11).setValue(essayCell_(p.essayNums));
   if (p.questionTexts) exams.getRange(found.rowIndex, 10).setValue(JSON.stringify(p.questionTexts));
   if (oldPdf) { try { DriveApp.getFileById(oldPdf).setTrashed(true); } catch (e) {} }
   if (next.length === old.length) {
@@ -347,10 +349,17 @@ function actionCreateExam_(p) {
   sheet.appendRow([p.id, p.title, answersCell, new Date().toISOString(), fileId, pdfUrl, '',
     p.sourceQuestionIds ? JSON.stringify(p.sourceQuestionIds) : '',
     p.composeRecipe ? JSON.stringify(p.composeRecipe) : '',
-    p.questionTexts ? JSON.stringify(p.questionTexts) : '']);
+    p.questionTexts ? JSON.stringify(p.questionTexts) : '',
+    essayCell_(p.essayNums)]);
   return { ok: true, id: p.id, pdfUrl: pdfUrl };
 }
 
+// 서술형으로 표시한 문항 번호 → 시트 칸 값 (표시를 안 했으면 빈 칸, 표시했는데 하나도 없으면 0)
+function essayCell_(v) {
+  if (v === undefined || v === null || v === '') return '';
+  const a = (Array.isArray(v) ? v : String(v).split(',')).map(Number).filter(function (n) { return n > 0 && n < 200; });
+  return a.length ? a.sort(function (x, y) { return x - y; }).join(',') : '0';
+}
 // 시험의 정답 배열 (주관식 문항은 '-'로 표시되어 있고, 자동 채점에서 빠진다)
 // 시트 칸에 남은 값이 JSON이 아니어도(예전 버전 흔적 등) 죽지 않고 안전하게 읽는다
 function safeJson_(v, fallback) {
@@ -479,6 +488,7 @@ function listExamsBuild_() {
       bookTitle: (rc && rc.bookTitle) || '',
       recipeLabel: (rc && rc.book && rc.label) || '',      // 교재 합본 등록 시 단원 이름+태그 (교재 이름이 달라도 같은 단원을 알아보려고)
       ansSig: String(row[2] || ''),
+      essay: (row[10] === '' || row[10] === undefined) ? null : String(row[10]).split(',').map(Number).filter(function (n) { return n > 0; }),
       submissionCount: countByExam[String(row[0])] || 0,
     });
   }
@@ -1417,6 +1427,7 @@ function actionUpdateExamAnswers_(p) {
   lock.waitLock(30000);
   try {
     exams.getRange(found.rowIndex, 3).setValue(next.join(','));
+    if (p.essayNums !== undefined) exams.getRange(found.rowIndex, 11).setValue(essayCell_(p.essayNums));
     const sheet = ss.getSheetByName(SHEET_SCORES);
     const last = sheet.getLastRow();
     let regraded = 0;
