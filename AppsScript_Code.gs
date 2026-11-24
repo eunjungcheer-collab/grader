@@ -49,6 +49,7 @@ function setup() {
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 8).setValue('sourceQuestionIds');
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 9).setValue('composeRecipe');
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 10).setValue('questionTexts');
+  ss.getSheetByName(SHEET_EXAMS).getRange(1, 12).setValue('aliasIds');      // 삭제 후 같은 이름으로 다시 올린 시험지가 이어받은 예전 시험 번호들 (예전 QR이 이 시험지로 열리게)
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 11).setValue('essay');      // 서술형으로 표시한 문항 번호 (예: 24,25,26). 비어 있으면 맨 뒤에 이어진 주관식을 서술형으로 본다. 0 = 서술형 없음
   assignSheet_();
   Logger.log('설정 완료. (이미 있던 데이터는 그대로 유지돼요)');
@@ -351,7 +352,8 @@ function actionCreateExam_(p) {
     p.composeRecipe ? JSON.stringify(p.composeRecipe) : '',
     p.questionTexts ? JSON.stringify(p.questionTexts) : '',
     essayCell_(p.essayNums)]);
-  return { ok: true, id: p.id, pdfUrl: pdfUrl };
+  const relinked = linkDeletedExamIds_(ss, sheet, p.id, p.title);
+  return { ok: true, id: p.id, pdfUrl: pdfUrl, relinkedOldQr: relinked };
 }
 
 // 서술형으로 표시한 문항 번호 → 시트 칸 값 (표시를 안 했으면 빈 칸, 표시했는데 하나도 없으면 0)
@@ -416,6 +418,39 @@ function subjectiveNumbers_(answers) {
   return out;
 }
 
+// 삭제한 시험지의 (이름, 시험 번호)를 기억해 두었다가, 같은 이름으로 다시 올리면 예전 QR이 새 시험지로 열리게 한다
+const DELEXAM_HEADERS_ = ['title', 'oldId', 'at'];
+function titleKey_(t) { return String(t === undefined || t === null ? '' : t).replace(/\s+/g, '').toLowerCase(); }
+function rememberDeletedExams_(ss, rows) {      // rows: 지워지는 Exams 행들
+  try {
+    const out = [], now = new Date().toISOString();
+    rows.forEach(function (r) {
+      const ids = [String(r[0])].concat(String(r[11] || '').split(',').filter(String));      // 자기 번호 + 이미 이어받은 예전 번호 (두 번 지워도 이어진다)
+      ids.forEach(function (id) { out.push([String(r[1]), id, now]); });
+    });
+    if (!out.length) return;
+    const sh = ensureSheet_(ss, 'DeletedExams', DELEXAM_HEADERS_);
+    sh.getRange(sh.getLastRow() + 1, 1, out.length, 3).setValues(out);
+  } catch (e) {}
+}
+function linkDeletedExamIds_(ss, examsSheet, newId, title) {
+  try {
+    const sh = ss.getSheetByName('DeletedExams'); if (!sh || sh.getLastRow() < 2) return 0;
+    const key = titleKey_(title); if (!key) return 0;
+    const live = {}; const last = examsSheet.getLastRow();
+    examsSheet.getRange(2, 1, Math.max(0, last - 1), 1).getValues().forEach(function (r) { live[String(r[0])] = 1; });
+    const ids = [];
+    sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach(function (r) {
+      if (titleKey_(r[0]) === key && !live[String(r[1])] && ids.indexOf(String(r[1])) < 0) ids.push(String(r[1]));
+    });
+    if (!ids.length) return 0;
+    for (let i = last; i >= 2; i--) {      // 방금 추가한 줄은 맨 아래쪽에 있다
+      if (String(examsSheet.getRange(i, 1).getValue()) === String(newId)) { examsSheet.getRange(i, 12).setValue(ids.join(',')); return ids.length; }
+      if (last - i > 30) break;
+    }
+  } catch (e) {}
+  return 0;
+}
 function findExamRow_(sheet, examId) {
   // 시험지가 수백 개로 늘어도 빠르도록: 먼저 ID 열만 읽어 줄을 찾고, 그 한 줄만 전체를 읽는다 (예전에는 매번 시트 전체를 읽었다)
   const last = sheet.getLastRow(), lc = sheet.getLastColumn();
@@ -431,6 +466,13 @@ function findExamRow_(sheet, examId) {
       const t = String(rec[i][0] || ''); if (t.indexOf('"aliases"') < 0) continue;
       const rc = safeJson_(t, null);
       if (rc && (rc.aliases || []).map(String).indexOf(want) >= 0) return { rowIndex: i + 2, row: sheet.getRange(i + 2, 1, 1, lc).getValues()[0] };
+    }
+  }
+  if (lc >= 12) {      // 삭제 후 같은 이름으로 다시 올릴 때 자동으로 이어 둔 예전 시험 번호
+    const al = sheet.getRange(2, 12, last - 1, 1).getValues();
+    for (let i = 0; i < al.length; i++) {
+      const t = String(al[i][0] || ''); if (!t) continue;
+      if (t.split(',').indexOf(want) >= 0) return { rowIndex: i + 2, row: sheet.getRange(i + 2, 1, 1, lc).getValues()[0] };
     }
   }
   return null;
@@ -1524,15 +1566,16 @@ function actionDeleteExams_(p) {
     const examsSheet = ss.getSheetByName(SHEET_EXAMS);
     const want = {}; ids.forEach(function (id) { want[String(id)] = true; });
     const data = examsSheet.getDataRange().getValues();
-    const rows = [], gidE = Utilities.getUuid();
+    const rows = [], gidE = Utilities.getUuid(), goneRows = [];
     for (let i = 1; i < data.length; i++) {
       if (!want[String(data[i][0])]) continue;
-      rows.push(i + 1);
+      rows.push(i + 1); goneRows.push(data[i]);
       try { trashPut_(ss, gidE, 'exam', String(data[i][1]), data[i]); } catch (e) {}
       const pdfId = data[i][4], explId = fileIdFromUrl_(data[i][6]);
       if (pdfId) { try { DriveApp.getFileById(pdfId).setTrashed(true); } catch (e) {} }
       if (explId) { try { DriveApp.getFileById(explId).setTrashed(true); } catch (e) {} }
     }
+    rememberDeletedExams_(ss, goneRows);
     rows.sort(function (a, b) { return b - a; }).forEach(function (r) { examsSheet.deleteRow(r); });
     let removedScores = 0;
     if (p.deleteSubmissions) {
@@ -1559,6 +1602,7 @@ function actionDeleteExam_(p) {
   if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
   const fileId = found.row[4], explId1 = fileIdFromUrl_(found.row[6]), gid1 = Utilities.getUuid();
   try { trashPut_(ss, gid1, 'exam', String(found.row[1]), found.row); } catch (e) {}
+  rememberDeletedExams_(ss, [found.row]);
   if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {} }
   if (explId1) { try { DriveApp.getFileById(explId1).setTrashed(true); } catch (e) {} }
   examsSheet.deleteRow(found.rowIndex);
