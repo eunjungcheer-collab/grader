@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250235">
+<link rel="stylesheet" href="css/style.css?v=202611250247">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250235"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250235"></script>
-<script src="js/printpdf.js?v=202611250235"></script>
-<script src="js/vendor/pdf.min.js?v=202611250235"></script>
-<script src="js/config.js?v=202611250235"></script>
-<script src="js/api.js?v=202611250235"></script>
-<script src="js/common.js?v=202611250235"></script>
-<script src="js/ocr.js?v=202611250235"></script>
-<script src="js/bankcore.js?v=202611250235"></script>
-<script src="js/pdfui.js?v=202611250235"></script>
-<script src="js/pdfview.js?v=202611250235"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250247"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250247"></script>
+<script src="js/printpdf.js?v=202611250247"></script>
+<script src="js/vendor/pdf.min.js?v=202611250247"></script>
+<script src="js/config.js?v=202611250247"></script>
+<script src="js/api.js?v=202611250247"></script>
+<script src="js/common.js?v=202611250247"></script>
+<script src="js/ocr.js?v=202611250247"></script>
+<script src="js/bankcore.js?v=202611250247"></script>
+<script src="js/pdfui.js?v=202611250247"></script>
+<script src="js/pdfview.js?v=202611250247"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -867,7 +867,7 @@ async function prefillFromExisting() {
   await ensureToc();
   let n = 0;
   for (const q of scanned.questions) {
-    let t = ''; try { t = await BankCore.textPreview(pdfInfo.doc, q.page, q.rect, 120); } catch (e) {}
+    let t = ''; try { t = await BankCore.textPreviewQ(pdfInfo.doc, q, 240); } catch (e) {}      // 문제은행에 저장할 때와 같은 방법으로 글자를 읽어야 같은 문항으로 맞는다
     const ex = keys.q.get(dupKey(t)); if (!ex || !ex.unit || ex.unit === '(단원 미지정)') continue;
     const us = document.querySelector('.qunit-sel[data-n="' + q.num + '"]'), ss = document.querySelector('.qsub-sel[data-n="' + q.num + '"]'); if (!us) continue;
     setUnitSelect(us, ex.unit, ex.grade || ''); us.dataset.auto = '0'; us.classList.remove('low');
