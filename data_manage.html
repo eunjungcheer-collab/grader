@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611241935">
+<link rel="stylesheet" href="css/style.css?v=202611241958">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -19,7 +19,7 @@
     <div id="bk-badge"></div><div id="bk-info" class="hint" style="margin-top:8px;">불러오는 중...</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
       <button type="button" class="btn primary" id="bk-now" style="padding:8px 14px;">지금 백업하기</button>
-      <button type="button" class="btn outline" id="bk-auto" style="padding:8px 14px;">자동 백업 켜기 (매주 일요일 새벽)</button>
+      <button type="button" class="btn outline" id="bk-auto" style="padding:8px 14px;">자동 백업 켜기 (매일 새벽)</button>
       <button type="button" class="btn outline" id="bk-trim" style="padding:8px 14px;">자동 백업 최근 4개만 남기기</button>
     </div>
     <div id="bk-msg" class="hint" style="margin-top:6px;"></div>
@@ -86,10 +86,10 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611241935"></script>
-<script src="js/api.js?v=202611241935"></script>
-<script src="js/common.js?v=202611241935"></script>
-<script src="js/pdfui.js?v=202611241935"></script>
+<script src="js/config.js?v=202611241958"></script>
+<script src="js/api.js?v=202611241958"></script>
+<script src="js/common.js?v=202611241958"></script>
+<script src="js/pdfui.js?v=202611241958"></script>
 <script>
 requireLogin();
 renderHeader({});

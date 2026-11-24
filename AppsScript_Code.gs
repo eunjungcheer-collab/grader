@@ -1004,6 +1004,7 @@ function actionUpdateQuestions_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const updates = p.updates || [];
   if (!updates.length) return { ok: true, updated: 0 };
+  if (updates.length >= 30) preBackup_('단원 일괄저장');
   const lock = LockService.getScriptLock();
   lock.waitLock(55000);
   try {
@@ -1455,6 +1456,7 @@ function actionDeleteQuestions_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const ids = p.ids || [];
   if (!ids.length) return { ok: true, deleted: 0 };
+  if (ids.length >= 3) preBackup_('문항 삭제');
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -1495,6 +1497,7 @@ function actionDeleteExams_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const ids = p.ids || [];
   if (!ids.length) return { ok: true, deleted: 0, removedScores: 0 };
+  preBackup_('시험지 삭제');
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -2504,20 +2507,35 @@ function actionApproveStudent_(p) {
 function hasTrigger_(fn) {
   try { return ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === fn; }); } catch (e) { return false; }
 }
-// 매주 일요일 새벽에 시트를 통째로 복사해 두고, 자동 백업은 최근 8개만 남긴다
-function autoBackup_() {
-  makeBackup_('자동');
+// 매일 새벽에 시트를 통째로 복사해 두고, 자동 백업은 최근 14개만 남긴다
+function trimBackups_(pattern, keep) {
   const it = DriveApp.getFoldersByName('자동채점 백업');
   if (!it.hasNext()) return;
   const files = [], fi = it.next().getFiles();
-  while (fi.hasNext()) { const f = fi.next(); if (/ 자동$/.test(f.getName())) files.push(f); }
+  while (fi.hasNext()) { const f = fi.next(); if (pattern.test(f.getName())) files.push(f); }
   files.sort(function (a, b) { return b.getDateCreated() - a.getDateCreated(); });
-  files.slice(8).forEach(function (f) { f.setTrashed(true); });
+  files.slice(keep).forEach(function (f) { f.setTrashed(true); });
+}
+function autoBackup_() {
+  makeBackup_('자동');
+  trimBackups_(/ 자동$/, 14);
+}
+// 되돌리기 어려운 큰 작업(문항 여러 개 삭제, 시험지 삭제, 이름 합치기, 단원 일괄 저장)을 하기 직전에 한 번 백업한다.
+// 20분 안에 이미 백업했으면 건너뛴다 (연달아 눌러도 백업이 쌓이지 않게). 백업이 실패해도 작업은 막지 않는다. 「작업전」 백업은 최근 6개만 남긴다.
+function preBackup_(why) {
+  try {
+    const props = PropertiesService.getScriptProperties(), last = Number(props.getProperty('preBackupAt')) || 0;
+    if (Date.now() - last < 20 * 60 * 1000) return;
+    props.setProperty('preBackupAt', String(Date.now()));
+    makeBackup_('작업전 ' + String(why || '').slice(0, 12));
+    trimBackups_(/ 작업전/, 6);
+  } catch (e) {}
 }
 function actionInstallBackup_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   try {
-    if (!hasTrigger_('autoBackup_')) ScriptApp.newTrigger('autoBackup_').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
+    ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'autoBackup_') ScriptApp.deleteTrigger(t); });      // 예전 「매주」 예약은 지우고 「매일」로 다시 만든다
+    ScriptApp.newTrigger('autoBackup_').timeBased().everyDays(1).atHour(3).create();
     return { ok: true };
   } catch (e) { return { ok: false, error: '자동 백업을 켜지 못했어요: ' + e.message + ' (편집기에서 setupAlerts를 한 번 실행해 권한을 허용해 주세요)' }; }
 }
@@ -2538,6 +2556,7 @@ function actionMergeNames_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const to = String(p.to || '').trim(), from = (Array.isArray(p.from) ? p.from : []).map(function (x) { return String(x).trim(); }).filter(function (x) { return x && x !== to; });
   if (!to || !from.length) return { ok: false, error: '합칠 이름을 고르고, 통일할 이름을 정해 주세요.' };
+  preBackup_('이름 합치기');
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     try { makeBackup_('이름합치기 전'); } catch (e) {}

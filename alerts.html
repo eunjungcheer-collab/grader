@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 예약·알림 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611241935">
+<link rel="stylesheet" href="css/style.css?v=202611241958">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -62,18 +62,18 @@
     <div class="hint" style="margin-top:6px;">※ 구글 계정은 하루에 보낼 수 있는 메일 수가 정해져 있어요(보통 100통). 학생이 아주 많이 제출하는 날은 일부 메일이 안 갈 수 있어요. 앱 안 알림은 그대로 보여요.</div>
   </div>
 </template>
-<script src="js/config.js?v=202611241935"></script>
-<script src="js/api.js?v=202611241935"></script>
-<script src="js/common.js?v=202611241935"></script>
-<script src="js/vendor/pdf.min.js?v=202611241935"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611241935"></script>
-<script src="js/vendor/qrcode.min.js?v=202611241935"></script>
-<script src="js/bankcore.js?v=202611241935"></script>
-<script src="js/wrongnote.js?v=202611241935"></script>
-<script src="js/printpdf.js?v=202611241935"></script>
-<script src="js/wnpanel.js?v=202611241935"></script>
-<script src="js/pdfui.js?v=202611241935"></script>
-<script src="js/clockpicker.js?v=202611241935"></script>
+<script src="js/config.js?v=202611241958"></script>
+<script src="js/api.js?v=202611241958"></script>
+<script src="js/common.js?v=202611241958"></script>
+<script src="js/vendor/pdf.min.js?v=202611241958"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611241958"></script>
+<script src="js/vendor/qrcode.min.js?v=202611241958"></script>
+<script src="js/bankcore.js?v=202611241958"></script>
+<script src="js/wrongnote.js?v=202611241958"></script>
+<script src="js/printpdf.js?v=202611241958"></script>
+<script src="js/wnpanel.js?v=202611241958"></script>
+<script src="js/pdfui.js?v=202611241958"></script>
+<script src="js/clockpicker.js?v=202611241958"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -237,7 +237,7 @@ async function loadSettings() {
     if (!r.ok) throw new Error(r.error);
     $('st-email').value = r.email || ''; $('st-sub').checked = !!r.notifySubmit; $('st-miss').checked = !!r.notifyMiss;
     $('st-trig').innerHTML = r.triggerOn ? '✅ 기한 자동 확인이 켜져 있어요 (10분마다).' : '⚠️ 기한 자동 확인이 꺼져 있어요. 꺼져 있으면 <b>이 화면을 열 때만</b> 미제출이 반영돼요. <button type="button" class="btn outline" id="st-trigbtn" style="padding:4px 10px;">자동 확인 켜기</button>';
-    $('st-bk').innerHTML = r.backupOn ? '✅ 매주 일요일 새벽에 시트를 자동으로 백업해요 (최근 8개 보관, 드라이브의 「자동채점 백업」 폴더).' : '⚠️ 자동 백업이 꺼져 있어요. <button type="button" class="btn outline" id="st-bkbtn" style="padding:4px 10px;">자동 백업 켜기</button>';
+    $('st-bk').innerHTML = r.backupOn ? '✅ 매일 새벽에 시트를 자동으로 백업해요 (최근 14개 보관, 드라이브의 「자동채점 백업」 폴더).' : '⚠️ 자동 백업이 꺼져 있어요. <button type="button" class="btn outline" id="st-bkbtn" style="padding:4px 10px;">자동 백업 켜기</button>';
     const bb = $('st-bkbtn'); if (bb) bb.addEventListener('click', async () => { bb.disabled = true; const x = await callApi('installBackup', { password: pw() }); if (!x.ok) $('st-bk').innerHTML = '<span style="color:#C1392B;">' + e(x.error) + '</span>'; else loadSettings(); });
     const lm = r.lastMissMail;
     $('st-miss-res').innerHTML = lm ? ((lm.ok ? '✅ 최근 미제출 메일: ' + lm.n + '명 분을 보냈어요' : '⚠️ 최근 미제출 메일을 <b>보내지 못했어요</b>' + (lm.err ? ' (' + e(lm.err) + ')' : '')) + ' · ' + new Date(lm.at).toLocaleString('ko-KR')) : '아직 미제출 메일을 보낸 기록이 없어요.';
