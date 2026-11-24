@@ -4,20 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>기출 현황 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250520">
+<link rel="stylesheet" href="css/style.css?v=202611250540">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <style>body{padding:10px 12px;max-width:none;} #cov-card{overflow-x:auto;} .gb{padding:6px 12px;font-size:13px;}</style>
 </head>
 <body>
 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-  <input type="search" id="q-inp" placeholder="학교 이름 (예: 불암중)" style="flex:1 1 160px;min-width:120px;" autofocus>
+  <input type="search" id="q-inp" placeholder="학교 이름 (예: 불암중) — 비우면 전체 학교" style="flex:1 1 160px;min-width:120px;" autofocus>
+  <button type="button" class="btn outline gb" id="all-btn">🏫 전체 학교 현황표</button>
   <span id="grade-chips" style="display:flex;gap:6px;"></span>
 </div>
 <div id="cov-card" class="card" style="padding:12px 14px;">학교 이름을 입력하세요.</div>
 <div class="hint" id="cov-msg" style="margin-top:6px;"></div>
-<script src="js/config.js?v=202611250520"></script>
-<script src="js/api.js?v=202611250520"></script>
-<script src="js/common.js?v=202611250520"></script>
+<script src="js/config.js?v=202611250540"></script>
+<script src="js/api.js?v=202611250540"></script>
+<script src="js/common.js?v=202611250540"></script>
+<script src="js/pdfui.js?v=202611250540"></script>
 <script>
 requireLogin();
 let exams = [];
@@ -73,8 +75,31 @@ function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;
       box.innerHTML = h + '</table>' + (unread.length ? '<div style="margin-top:8px;font-size:13px;color:#B45309;font-weight:700;">⚠️ 제목에서 연도·학기·중간/기말을 못 읽어 표에 못 넣은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread) : ''); box.style.display = '';
     }
 
+// 등록된 시험지가 하나라도 있는 학교 전체를 한 표로 보여준다 (학교 이름은 시험지 제목에서 읽는다)
+function schoolOf(ex) { let sc = ''; try { sc = extractSchoolYear(String(ex.title || '')).school; } catch (e) {} if (!sc && ex.meta && ex.meta.school) { try { sc = extractSchoolYear(String(ex.meta.school)).school || ''; } catch (e) {} } return sc; }
+function drawOverview() {
+  const box = document.getElementById('cov-card'); box.style.display = '';
+  const by = {}, noSchool = [], unread = [];
+  exams.forEach(ex => { const sc = schoolOf(ex); if (!sc) { noSchool.push(ex); return; } const info = parseExamTitle(ex), o = by[sc] || (by[sc] = { n: 0, cells: {}, unread: [] }); o.n++;
+    if (!info.kind || !info.sem || !info.gr || !info.y) { o.unread.push(String(ex.title || '')); return; }
+    const k = info.gr + '|' + info.sem + '|' + info.kind; (o.cells[k] = o.cells[k] || []).push(info.y); });
+  const names = Object.keys(by).sort((a, b) => by[b].n - by[a].n || a.localeCompare(b, 'ko'));
+  if (!names.length) { box.innerHTML = '학교 이름이 들어 있는 시험지가 아직 없어요.'; return; }
+  const gsel = (st.grade && /[중고][1-3]/.test(st.grade)) ? +st.grade.slice(1) : 0, grades = gsel ? [gsel] : [1, 2, 3], cols = [];
+  grades.forEach(g => [1, 2].forEach(sm => ['중간', '기말'].forEach(k => cols.push({ g: g, sm: sm, k: k }))));
+  const th = 'padding:5px 8px;border:1px solid #cbd5e1;background:#F1F5F9;font-size:12px;text-align:center;white-space:nowrap;', td = 'padding:4px 7px;border:1px solid #cbd5e1;text-align:center;font-size:12px;font-weight:700;';
+  let h = '<div style="font-weight:800;margin-bottom:6px;">🏫 시험지를 등록한 학교 ' + names.length + '곳 전체 현황 <span class="hint" style="font-weight:400;">(칸 안은 등록한 연도 · 빈칸 = 없음 · 학교 이름을 누르면 그 학교 상세표)</span></div><table style="border-collapse:collapse;"><tr><th style="' + th + '" rowspan="2">학교</th><th style="' + th + '" rowspan="2">시험지</th>' + grades.map(g => '<th style="' + th + '" colspan="4">' + g + '학년</th>').join('') + '<th style="' + th + '" rowspan="2">못 읽음</th></tr><tr>' + cols.map(c => '<th style="' + th + '">' + c.sm + '학기 ' + c.k + '</th>').join('') + '</tr>';
+  names.forEach(n => { const o = by[n];
+    h += '<tr><td style="' + th + 'font-size:13px;font-weight:800;cursor:pointer;color:#1F3A6B;text-decoration:underline;" data-school="' + escapeHtml(n) + '">' + escapeHtml(n) + '</td><td style="' + td + '">' + o.n + '</td>' + cols.map(c => { const ys = o.cells[c.g + '|' + c.sm + '|' + c.k];
+      return ys ? '<td style="' + td + 'color:#1f6f4a;background:#E8F5EE;" title="' + ys.join(', ') + '">' + Array.from(new Set(ys)).sort().map(y => String(y).slice(2)).join('·') + '</td>' : ((c.g === 3 && c.sm === 2 && c.k === '중간') ? '<td style="' + td + 'background:#E5E7EB;"></td>' : '<td style="' + td + '"></td>'); }).join('') + '<td style="' + td + (o.unread.length ? 'color:#B45309;" title="' + escapeHtml(o.unread.join('\n')) + '">' + o.unread.length : '">') + '</td></tr>'; });
+  h += '</table>';
+  if (noSchool.length) h += '<div style="margin-top:8px;font-size:12px;color:#64748B;">학교 이름이 없는 시험지(일반 시험지 등) ' + noSchool.length + '개는 표에서 뺐어요.</div>';
+  box.innerHTML = h;
+}
+document.getElementById('cov-card').addEventListener('click', e => { const t = e.target.closest('[data-school]'); if (!t) return; qInp.value = st.q = t.dataset.school; render(); });
+document.getElementById('all-btn').addEventListener('click', () => { qInp.value = st.q = ''; render(); });
 function drawChips() { document.getElementById('grade-chips').innerHTML = [['', '전체'], ['중1', '중1'], ['중2', '중2'], ['중3', '중3']].map(g => '<button type="button" class="btn ' + (st.grade === g[0] ? '' : 'outline') + ' gb" data-g="' + g[0] + '">' + g[1] + '</button>').join(''); }
-function render() { drawChips(); if (!st.q.trim()) { document.getElementById('cov-card').style.display = ''; document.getElementById('cov-card').innerHTML = '학교 이름을 입력하세요.'; return; } drawCoverage(); const box = document.getElementById('cov-card'); if (box.style.display === 'none') { box.style.display = ''; box.innerHTML = '검색한 이름의 시험지 중 연도·학기·중간/기말을 읽을 수 있는 것이 없어요.'; } }
+function render() { drawChips(); if (!st.q.trim()) { drawOverview(); return; } drawCoverage(); const box = document.getElementById('cov-card'); if (box.style.display === 'none') { box.style.display = ''; box.innerHTML = '검색한 이름의 시험지 중 연도·학기·중간/기말을 읽을 수 있는 것이 없어요.'; } }
 document.getElementById('grade-chips').addEventListener('click', e => { const b = e.target.closest('button[data-g]'); if (!b) return; st.grade = b.dataset.g; render(); });
 qInp.addEventListener('input', () => { st.q = qInp.value; render(); });
 async function load() {

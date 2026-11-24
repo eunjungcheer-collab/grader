@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250520">
+<link rel="stylesheet" href="css/style.css?v=202611250540">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250520"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250520"></script>
-<script src="js/printpdf.js?v=202611250520"></script>
-<script src="js/vendor/pdf.min.js?v=202611250520"></script>
-<script src="js/config.js?v=202611250520"></script>
-<script src="js/api.js?v=202611250520"></script>
-<script src="js/common.js?v=202611250520"></script>
-<script src="js/ocr.js?v=202611250520"></script>
-<script src="js/bankcore.js?v=202611250520"></script>
-<script src="js/pdfui.js?v=202611250520"></script>
-<script src="js/pdfview.js?v=202611250520"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250540"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250540"></script>
+<script src="js/printpdf.js?v=202611250540"></script>
+<script src="js/vendor/pdf.min.js?v=202611250540"></script>
+<script src="js/config.js?v=202611250540"></script>
+<script src="js/api.js?v=202611250540"></script>
+<script src="js/common.js?v=202611250540"></script>
+<script src="js/ocr.js?v=202611250540"></script>
+<script src="js/bankcore.js?v=202611250540"></script>
+<script src="js/pdfui.js?v=202611250540"></script>
+<script src="js/pdfview.js?v=202611250540"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1860,7 +1860,7 @@ async function buildBoxes() {
   }
 }
 $('regen-btn').addEventListener('click', buildBoxes);
-$('cov-open').addEventListener('click', () => { const w = 560, h = Math.min(screen.availHeight, 780), l = Math.max(0, (screen.availLeft || 0) + screen.availWidth - w - 8); window.open('exam_cov.html', 'examcov', 'popup=yes,width=' + w + ',height=' + h + ',left=' + l + ',top=' + (screen.availTop || 0)); });
+$('cov-open').addEventListener('click', () => { const w = 920, h = Math.min(screen.availHeight, 780), l = Math.max(0, (screen.availLeft || 0) + screen.availWidth - w - 8); window.open('exam_cov.html', 'examcov', 'popup=yes,width=' + w + ',height=' + h + ',left=' + l + ',top=' + (screen.availTop || 0)); });
 
 // 맨 뒤에 연속으로 이어지는 주관식은 「서술형 1번, 2번…」으로 부른다 (시험지에 적힌 이름과 같게). 중간에 섞인 주관식은 그냥 번호
 function markTrailingEssay() {
