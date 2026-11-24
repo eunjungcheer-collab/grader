@@ -673,7 +673,7 @@
     rows.sort((a, b) => (a.page - b.page) || (a.rect[1] - b.rect[1]));
     essayNums.slice().sort((a, b) => a - b).forEach((qn, i) => {
       const r = rows[i]; if (!r) return;
-      scanned.explanations[qn] = { segments: [{ page: r.page, rect: r.rect }], numRect: null };
+      scanned.explanations[qn] = { segments: [{ page: r.page, rect: r.rect }], numRect: null, rubric: true };
       if (!scanned.answers[qn]) scanned.answers[qn] = { page: r.page, rect: r.rect, text: '', written: true, fromSubjTable: true };
       cnt++;
     });

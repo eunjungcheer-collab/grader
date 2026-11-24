@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250225">
+<link rel="stylesheet" href="css/style.css?v=202611250235">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250225"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250225"></script>
-<script src="js/printpdf.js?v=202611250225"></script>
-<script src="js/vendor/pdf.min.js?v=202611250225"></script>
-<script src="js/config.js?v=202611250225"></script>
-<script src="js/api.js?v=202611250225"></script>
-<script src="js/common.js?v=202611250225"></script>
-<script src="js/ocr.js?v=202611250225"></script>
-<script src="js/bankcore.js?v=202611250225"></script>
-<script src="js/pdfui.js?v=202611250225"></script>
-<script src="js/pdfview.js?v=202611250225"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250235"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250235"></script>
+<script src="js/printpdf.js?v=202611250235"></script>
+<script src="js/vendor/pdf.min.js?v=202611250235"></script>
+<script src="js/config.js?v=202611250235"></script>
+<script src="js/api.js?v=202611250235"></script>
+<script src="js/common.js?v=202611250235"></script>
+<script src="js/ocr.js?v=202611250235"></script>
+<script src="js/bankcore.js?v=202611250235"></script>
+<script src="js/pdfui.js?v=202611250235"></script>
+<script src="js/pdfview.js?v=202611250235"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1797,6 +1797,14 @@ async function saveToBank(cls, source, onProgress, ranges) {
   // 같은 PDF를 또 올렸을 때 중복 저장하지 않는다 (이미 문제은행에 있는 글자와 같은 문항은 뺀다)
   const keys = await existingPreviewKeys();
   const kept = picks.filter(p => !isDupPreview(p.textPreview, keys));
+  // 이미 있는 서술형 문항인데 해설(모범답안)이 비어 있으면, 이번에 읽은 서술형 기준표 줄을 해설로 붙여 준다 (문항·단원은 그대로)
+  window.__essayUpd = 0;
+  for (const p of picks) {
+    if (!isDupPreview(p.textPreview, keys)) continue;
+    const ex = scanned.explanations && scanned.explanations[p.num], old = keys.q && keys.q.get(dupKey(p.textPreview));
+    if (!ex || !ex.rubric || !old || old.explFileId) continue;
+    try { const ec = await rcExpl(p.num, ex); if (!ec) continue; const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: old.id, explBase64: BankCore.canvasToBase64(ec) }); if (r && r.ok) window.__essayUpd++; } catch (e) { console.warn('기존 문항 해설 붙이기 실패', e); }
+  }
   window.__bankSkippedInfo = picks.filter(p => isDupPreview(p.textPreview, keys)).map(p => ({ num: p.num, src: (keys.get && keys.get(dupKey(p.textPreview))) || '' }));
   lastBankSkipped = picks.length - kept.length;
   const skippedQ = {};      // 중복이라 다시 저장하지 않은 문항 → 문제은행에 이미 있는 같은 문항 (그림·단원 확인에 그대로 쓴다)
@@ -2087,7 +2095,7 @@ $('new-exam-form').addEventListener('submit', async function (e) {
       try {
         mark('bank0'); updateSpinner('문제은행에 저장하는 중... 0/' + scanned.questions.length);
         await saveToBank(cls, title, n => updateSpinner('문제은행에 저장하는 중... ' + n + '/' + scanned.questions.length), ranges);
-        if (lastBankSkipped) { const si = window.__bankSkippedInfo || []; bankWarning = '이미 문제은행에 있는 문항 ' + lastBankSkipped + '개는 중복이라 다시 저장하지 않았어요.' + (si.length ? '\n(' + si.slice(0, 10).map(x => x.num + '번' + (x.src ? ' = 「' + x.src + '」' : '')).join(', ') + (si.length > 10 ? ' …' : '') + ' 문항과 같은 글이에요. 정답 점검에서 이 시험지가 「문제은행에 없는 번호」로 보일 수 있어요.)' : ''); }
+        if (lastBankSkipped) { const si = window.__bankSkippedInfo || []; bankWarning = (window.__essayUpd ? '기존 서술형 문항 ' + window.__essayUpd + '개에 서술형 기준표 답안을 해설로 붙였어요.\n' : '') + '이미 문제은행에 있는 문항 ' + lastBankSkipped + '개는 중복이라 다시 저장하지 않았어요.' + (si.length ? '\n(' + si.slice(0, 10).map(x => x.num + '번' + (x.src ? ' = 「' + x.src + '」' : '')).join(', ') + (si.length > 10 ? ' …' : '') + ' 문항과 같은 글이에요. 정답 점검에서 이 시험지가 「문제은행에 없는 번호」로 보일 수 있어요.)' : ''); }
       } catch (e) {
         bankWarning = '시험 등록은 됐지만, 문제은행 저장 중 오류가 났어요: ' + e.message;
       }

@@ -990,12 +990,15 @@ function findQuestionRow_(sheet, id) {
 function actionUpdateQuestion_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   // 다른 요청(많은 문항을 한꺼번에 고치는 요청 등)과 동시에 시트를 고치면, 한쪽이 읽어 둔 옛 값을 다시 써서 방금 고친 단원·소단원이 되돌아갈 수 있다 → 같은 잠금 안에서 고친다
+  let newExplId = '';      // 해설 그림만 새로 붙이는 요청 (서술형 기준표를 나중에 올린 경우): 드라이브에는 잠금 밖에서 올린다
+  if (p.explBase64) { try { newExplId = uploadBankFiles_(getBankFolder_(), [{ qi: 0, kind: 'e', name: String(p.id) + '_expl.png', b64: p.explBase64 }], {})[0] || ''; } catch (e) { return { ok: false, error: '해설 그림을 올리지 못했어요: ' + e.message }; } }
   const lockU = LockService.getScriptLock();
   lockU.waitLock(55000);
   try {
     const sheet = questionsSheet_();
     const row = findQuestionRow_(sheet, p.id);
     if (row < 0) return { ok: false, error: '문항을 찾을 수 없어요.' };
+    if (newExplId) { const oldE = sheet.getRange(row, 8).getValue(); sheet.getRange(row, 8).setValue(newExplId); if (oldE) { try { DriveApp.getFileById(oldE).setTrashed(true); } catch (e) {} } }
     if (p.unit !== undefined) sheet.getRange(row, 2).setValue(p.unit);
     if (p.answer !== undefined) sheet.getRange(row, 3).setValue(normAns_(p.answer));
     if (p.difficulty !== undefined) sheet.getRange(row, 9).setValue(String(p.difficulty));
