@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611240018">
+<link rel="stylesheet" href="css/style.css?v=202611240041">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -158,17 +158,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611240018"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611240018"></script>
-<script src="js/printpdf.js?v=202611240018"></script>
-<script src="js/vendor/pdf.min.js?v=202611240018"></script>
-<script src="js/config.js?v=202611240018"></script>
-<script src="js/api.js?v=202611240018"></script>
-<script src="js/common.js?v=202611240018"></script>
-<script src="js/ocr.js?v=202611240018"></script>
-<script src="js/bankcore.js?v=202611240018"></script>
-<script src="js/pdfui.js?v=202611240018"></script>
-<script src="js/pdfview.js?v=202611240018"></script>
+<script src="js/vendor/qrcode.min.js?v=202611240041"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611240041"></script>
+<script src="js/printpdf.js?v=202611240041"></script>
+<script src="js/vendor/pdf.min.js?v=202611240041"></script>
+<script src="js/config.js?v=202611240041"></script>
+<script src="js/api.js?v=202611240041"></script>
+<script src="js/common.js?v=202611240041"></script>
+<script src="js/ocr.js?v=202611240041"></script>
+<script src="js/bankcore.js?v=202611240041"></script>
+<script src="js/pdfui.js?v=202611240041"></script>
+<script src="js/pdfview.js?v=202611240041"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -280,7 +280,7 @@ async function onPickFiles(newFiles) {
   }
   const pairs = pairByName(fl, ov);
   if ((pairs.length > 1 || inReview) && !IS_CHILD) { curPair = null; await runParallelAuto(pairs); return; }     // 시험지를 2개 이상 고르면 항상 한꺼번에 읽어서 「여러 시험지 정답 확인」 화면으로 보여 준다
-  fileQueue = pairs.slice(1); queueTotal = pairs.length; queueDoneTitles = []; queueDoneIds = []; queueSkipped = []; queueNotes = []; unassignedCount = 0;
+  fileQueue = pairs.slice(1); queueTotal = pairs.length; queueDoneTitles = []; queueDoneIds = []; queueSkipped = []; queueNotes = []; unassignedCount = 0; window.__incomplete = [];
   if (pairs.length > 1 || (fl.length > 1 && pairs[0].ans)) $('pdf-answer-file').value = '';
   await loadExamFile(pairs[0].file, pairs[0].ans);
 }
@@ -1208,12 +1208,17 @@ function showAutoReview(R) {
     $('auto-reg').checked = false;
     box.style.display = 'none'; form.style.display = '';
     const q = R.stuck.map(x => x.pair);
-    fileQueue = q.slice(1); queueTotal = q.length; queueDoneTitles = []; queueDoneIds = []; queueSkipped = []; queueNotes = []; unassignedCount = 0;
+    fileQueue = q.slice(1); queueTotal = q.length; queueDoneTitles = []; queueDoneIds = []; queueSkipped = []; queueNotes = []; unassignedCount = 0; window.__incomplete = [];
     await loadExamFile(q[0].file, q[0].ans);
   });
 }
 async function autoFinishQueue() {
   window.__auto = false;
+  const inc = (window.__incomplete || []).filter(Boolean);
+  if (inc.length && !IS_CHILD && confirm('자동 등록 끝: ' + queueDoneIds.length + '개 등록, ' + queueSkipped.length + '개 건너뜀.\n\n건너뜀:\n' + queueSkipped.join('\n') + '\n\n정답·대단원이 덜 채워져 건너뛴 ' + inc.length + '개를 지금 직접 확인하며 등록할까요? (취소하면 시험지 목록으로 가요)')) {
+    window.__incomplete = []; fileQueue = inc.slice(1); queueTotal = inc.length; queueDoneTitles = []; queueDoneIds = []; queueSkipped = []; queueNotes = [];
+    await loadExamFile(inc[0].file, inc[0].ans); return;
+  }
   const ok = queueDoneIds.length;
   const msg = ('자동 등록 끝: ' + ok + '개 등록' + (queueSkipped.length ? ', ' + queueSkipped.length + '개 건너뜀' : '') + '.' +
     (queueSkipped.length ? '\n\n건너뜀:\n' + queueSkipped.join('\n') : '') + (queueNotes.length ? '\n\n알림:\n' + queueNotes.join('\n') : '') +
@@ -1830,12 +1835,22 @@ $('new-exam-form').addEventListener('submit', async function (e) {
   const answers = answerInputs.map(i => i.value);
   const missing = answers.map((a, i) => a ? null : i + 1).filter(Boolean);
   if (!answers.length) { errorBox.innerHTML = '<div class="banner error">정답 칸이 없어요. PDF를 먼저 올려주세요.</div>'; return; }
-  // 여러 시험지를 한꺼번에 등록할 때: 정답이나 대단원이 덜 채워진 시험지는 등록하지 않고 건너뛴다 (소단원이 비어 있는 것은 괜찮다)
-  if (queueTotal > 1) {
-    const noUnit = Array.from(document.querySelectorAll('.qunit-sel')).filter(s => { const v = unitSelectValue(s).unit; return !v || v === '(단원 미지정)'; }).map(s => s.dataset.n);
+  // 자동 등록 중: 정답이나 대단원이 덜 채워진 시험지는 등록하지 않고 건너뛴다 (소단원이 비어 있는 것은 괜찮다).
+  // 단, 대단원이 시험지 안에서 딱 하나로 정해져 있으면 비어 있는 문항은 그 단원으로 채워서 등록한다. 건너뛴 것은 마지막에 직접 확인하며 등록할 수 있다.
+  if (queueTotal > 1 && window.__auto) {
+    const unitOf = s => { const v = unitSelectValue(s).unit; return (!v || v === '(단원 미지정)') ? '' : v; };
+    const sels = Array.from(document.querySelectorAll('.qunit-sel'));
+    let noUnit = sels.filter(s => !unitOf(s));
+    if (!missing.length && noUnit.length && noUnit.length < sels.length) {
+      const have = Array.from(new Set(sels.map(unitOf).filter(Boolean)));
+      if (have.length === 1) { const ref = sels.find(s => unitOf(s)), v = unitSelectValue(ref); noUnit.forEach(s => setUnitSelect(s, v.unit, v.grade)); queueNotes.push(title + ': 대단원이 비어 있던 ' + noUnit.length + '문항을 같은 시험지의 단원(' + v.unit + ')으로 채웠어요'); noUnit = []; }
+    }
     if (missing.length || noUnit.length) {
-      const why = [missing.length ? '정답이 비었어요: ' + missing.slice(0, 8).join(',') + (missing.length > 8 ? ' 외' : '') + '번' : '', noUnit.length ? '대단원이 비었어요: ' + noUnit.slice(0, 8).join(',') + (noUnit.length > 8 ? ' 외' : '') + '번' : ''].filter(Boolean).join(' / ');
-      await (window.__auto ? autoSkip : skipToNext)((title || curFileName) + ' (등록 안 함 — ' + why + ')'); return;
+      const nn = noUnit.map(s => s.dataset.n);
+      const why = [missing.length ? '정답이 비었어요: ' + missing.slice(0, 8).join(',') + (missing.length > 8 ? ' 외' : '') + '번' : '', nn.length ? '대단원이 비었어요: ' + nn.slice(0, 8).join(',') + (nn.length > 8 ? ' 외' : '') + '번' : ''].filter(Boolean).join(' / ');
+      if (IS_CHILD) { childReport({ type: 'stuck', title: title, reason: '정답·대단원이 덜 채워졌어요 — ' + why }); try { hideSpinner(); } catch (e) {} return; }      // 여러 시험지 화면의 「직접 확인이 필요한 시험지」로 넘어간다 (등록은 안 함)
+      if (curPair && curPair.file) (window.__incomplete = window.__incomplete || []).push({ file: curPair.file, ans: curPair.ans });
+      await autoSkip((title || curFileName) + ' (등록 안 함 — ' + why + ')'); return;
     }
   }
   if (missing.length) {
