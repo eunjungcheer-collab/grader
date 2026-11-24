@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250410">
+<link rel="stylesheet" href="css/style.css?v=202611250425">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250410"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250410"></script>
-<script src="js/printpdf.js?v=202611250410"></script>
-<script src="js/vendor/pdf.min.js?v=202611250410"></script>
-<script src="js/config.js?v=202611250410"></script>
-<script src="js/api.js?v=202611250410"></script>
-<script src="js/common.js?v=202611250410"></script>
-<script src="js/ocr.js?v=202611250410"></script>
-<script src="js/bankcore.js?v=202611250410"></script>
-<script src="js/pdfui.js?v=202611250410"></script>
-<script src="js/pdfview.js?v=202611250410"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250425"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250425"></script>
+<script src="js/printpdf.js?v=202611250425"></script>
+<script src="js/vendor/pdf.min.js?v=202611250425"></script>
+<script src="js/config.js?v=202611250425"></script>
+<script src="js/api.js?v=202611250425"></script>
+<script src="js/common.js?v=202611250425"></script>
+<script src="js/ocr.js?v=202611250425"></script>
+<script src="js/bankcore.js?v=202611250425"></script>
+<script src="js/pdfui.js?v=202611250425"></script>
+<script src="js/pdfview.js?v=202611250425"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1127,8 +1127,11 @@ async function openCropEditor(x, startNum, onDone) {
     if (drawnPage === p) return; drawnPage = p;
     const pg = await info.doc.getPage(p), vp = pg.getViewport({ scale: SCALE });
     cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height); pageW = vp.width / SCALE; pageH = vp.height / SCALE;
-    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
-    await pg.render({ canvasContext: cx, viewport: vp, canvas: cv }).promise;
+    // 글꼴은 PDF를 연 창(시험지 창)에 올라가 있으므로 그 창 안에서 그린 뒤 복사한다 (여기서 직접 그리면 글자가 네모로 깨진다)
+    const tmp = w.document.createElement('canvas'); tmp.width = cv.width; tmp.height = cv.height;
+    const tx = tmp.getContext('2d'); tx.fillStyle = '#fff'; tx.fillRect(0, 0, tmp.width, tmp.height);
+    await pg.render({ canvasContext: tx, viewport: vp, canvas: tmp }).promise;
+    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(tmp, 0, 0);
   };
   const paint = async () => {
     await drawPage(cur.page);
