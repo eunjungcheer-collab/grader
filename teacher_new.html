@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250247">
+<link rel="stylesheet" href="css/style.css?v=202611250255">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250247"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250247"></script>
-<script src="js/printpdf.js?v=202611250247"></script>
-<script src="js/vendor/pdf.min.js?v=202611250247"></script>
-<script src="js/config.js?v=202611250247"></script>
-<script src="js/api.js?v=202611250247"></script>
-<script src="js/common.js?v=202611250247"></script>
-<script src="js/ocr.js?v=202611250247"></script>
-<script src="js/bankcore.js?v=202611250247"></script>
-<script src="js/pdfui.js?v=202611250247"></script>
-<script src="js/pdfview.js?v=202611250247"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250255"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250255"></script>
+<script src="js/printpdf.js?v=202611250255"></script>
+<script src="js/vendor/pdf.min.js?v=202611250255"></script>
+<script src="js/config.js?v=202611250255"></script>
+<script src="js/api.js?v=202611250255"></script>
+<script src="js/common.js?v=202611250255"></script>
+<script src="js/ocr.js?v=202611250255"></script>
+<script src="js/bankcore.js?v=202611250255"></script>
+<script src="js/pdfui.js?v=202611250255"></script>
+<script src="js/pdfview.js?v=202611250255"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1081,7 +1081,7 @@ async function registerHeld(x, btn, msg, R) {      // 등록하는 동안 화면
   } finally { busyEnd(); }
   if (x.pending && msg.textContent) alert('등록되지 않았어요.\n' + msg.textContent);
 }
-async function registerHeld0(x, btn, msg, R) {
+async function registerHeld0(x, btn, msg, R, quiet) {
   if (x.answers.some(a => !ANS_CELL_OK.test(a))) { msg.textContent = '⚠️ 빈 칸·빨간 칸을 고쳐 주세요 (주관식은 -)'; return; }
   const w = x.fr && x.fr.contentWindow;
   let ins = null; try { ins = w && w.eval('answerInputs'); } catch (e) {}
@@ -1104,10 +1104,29 @@ async function registerHeld0(x, btn, msg, R) {
       const fr = x.fr, y = scrollY;
       Object.assign(x, { doneNote: '✅ 방금 등록 완료', pending: false, fr: null, title: d.title, id: d.examId, answers: (d.answers || []).slice(), units: d.units || [], unread: [], dash: d.dash || [], dashImg: d.dashImg || {}, bankIds: d.bankIds || {}, unreadImg: {}, qinfo: d.qinfo || [], tm: d.tm || {}, qthumb: d.qthumb || {} });
       window.__heldN = Math.max(0, (window.__heldN || 1) - 1); setTimeout(() => { try { fr.remove(); } catch (e) {} }, 500);
-      persistReview(R); showAutoReview(R); window.scrollTo(0, y); return;
+      persistReview(R); if (!quiet) { showAutoReview(R); window.scrollTo(0, y); } return;
     }
     msg.textContent = d.type === 'skip' ? '⏭ 등록하지 않았어요: ' + d.note + ' (이름을 바꾼 뒤 다시 OK)' : '⚠️ ' + (d.msg || '등록 실패'); try { w.__auto = false; } catch (e) {} btn.disabled = false;
   } catch (err) { msg.textContent = '⚠️ ' + err.message; btn.disabled = false; }
+}
+// 대기 중인 시험지를 한꺼번에 등록한다: 3개씩 동시에 처리하고, 정답이 비었거나 형식이 이상한 시험지는 건너뛰고 알려 준다
+async function registerAllHeld(R) {
+  const list = R.reg.filter(x => x.pending), ok = list.filter(x => x.answers.every(a => ANS_CELL_OK.test(a))), bad = list.filter(x => ok.indexOf(x) < 0);
+  if (!ok.length) { alert('등록할 수 있는 시험지가 없어요. 정답이 빈 칸·빨간 칸이 없게 채워 주세요.\n\n' + bad.map(x => '· ' + x.title).join('\n')); return; }
+  if (!confirm('대기 중인 시험지 ' + ok.length + '개를 모두 등록할까요?' + (bad.length ? '\n\n정답이 덜 채워져 건너뛰는 시험지 ' + bad.length + '개:\n' + bad.map(x => '· ' + x.title).join('\n') : ''))) return;
+  const y = scrollY; let done = 0, fail = [], k = 0;
+  const paint = () => { try { busyMsg('등록하는 중... ' + done + ' / ' + ok.length + '개 완료 (창을 닫지 마세요)'); } catch (e) {} };
+  busyStart('등록하는 중... 0 / ' + ok.length + '개 완료 (창을 닫지 마세요)');
+  try {
+    const worker = async () => { while (k < ok.length) { const x = ok[k++], m = document.createElement('span'), b = document.createElement('button');
+      try { await registerHeld0(x, b, m, R, true); } catch (e) { m.textContent = e.message; }
+      if (x.pending) fail.push(x.title + ' — ' + (m.textContent || '등록 실패')); done++; paint(); } };
+    await Promise.all([worker(), worker(), worker()]);
+    try { busyMsg('✅ 등록 끝: ' + (ok.length - fail.length) + '개 등록' + (fail.length ? ', ' + fail.length + '개 실패' : '')); } catch (e) {}
+    await new Promise(r => setTimeout(r, 1500));
+  } finally { busyEnd(); }
+  showAutoReview(R); window.scrollTo(0, y);
+  if (fail.length || bad.length) alert((fail.length ? '등록하지 못한 시험지:\n' + fail.join('\n') + '\n\n' : '') + (bad.length ? '정답이 덜 채워져 건너뛴 시험지:\n' + bad.map(x => '· ' + x.title).join('\n') : ''));
 }
 // 자동 등록이 끝나면 결과를 한 화면에 펼쳐 보여 준다: 직접 확인할 시험지, 단원 확인할 문항, 등록된 시험지의 정답 전체
 function showAutoReview(R) {
@@ -1129,6 +1148,7 @@ function showAutoReview(R) {
   if (R.reg.length) {
     h += '<div class="card"><b>📋 등록된 시험지 — 정답을 훑어보세요</b><div class="hint" style="margin:4px 0 10px;">칸 위 숫자가 문항 번호예요. 이상하면 고치고 「저장」을 누르세요. 빨간 칸은 형식이 이상한 값이에요. 복수정답은 24처럼 붙여 쓰고, 둘 중 하나만 맞아도 정답이면 2/4로 쓰세요.</div>';
     R.reg.forEach((x, i) => { h += '<div class="rv-row" data-i="' + i + '" style="border-top:1px solid var(--line); padding:10px 0;"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><b class="rv-title">' + e(x.title) + '</b>' + (x.doneNote ? ' <span style="color:#15803D; font-weight:700; background:#DCFCE7; border-radius:6px; padding:2px 8px;">' + x.doneNote + '</span>' : '') + ' <button type="button" class="btn ghost rv-rename" style="padding:2px 9px; font-size:12px;">✏️ 이름 변경</button><span class="hint" style="margin:0;">' + x.answers.length + '문항 · ' + e(x.units.join(', ')) + '</span></div><div class="rv-usum" style="font-size:12px; color:#475569; margin:3px 0 0; line-height:1.6;">' + (x.pending ? '<b style="color:#C1392B;">⏸ ' + e(x.reason) + ' — 확인하고 OK를 눌러야 등록돼요 (그 전에는 저장되지 않아요)</b>' : unitSumHtml(x)) + '</div>' + (x.unread.length ? '<div style="color:#C1392B; font-size:13px; margin-top:4px;">✏️ 못 읽은 문항: ' + x.unread.join(', ') + '번 — 아래 그림을 보고 정답 칸에 적으세요</div><div class="rv-imgs">' + x.unread.map(n => '<div class="rv-img"><b>' + n + '번 &nbsp;<input type="text" class="pk-in ag-in" data-n="' + n + '" value="' + escapeHtml(x.answers[n - 1] || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + (x.unreadImg[n] ? '<img src="' + x.unreadImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div>' : '') + (x.dash && x.dash.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-size:13px; color:#B45309;">🔎 주관식(-)으로 읽은 문항 ' + x.dash.join(', ') + '번 — 맞게 읽었는지 정답 그림 보기</summary><div class="rv-imgs">' + x.dash.map(n => '<div class="rv-img"><b>' + n + '번</b>' + (x.dashImg[n] ? '<img src="' + x.dashImg[n] + '" alt="' + n + '번 정답 부분">' : '<span class="hint">그림 없음 — 원본 PDF에서 확인</span>') + '</div>').join('') + '</div></details>' : '') + '<div class="rv-grid" style="margin-top:6px;"></div><div style="margin-top:6px;"><button type="button" class="btn ' + (x.pending ? 'primary' : 'ghost') + ' rv-save" style="padding:5px 12px;" disabled>' + (x.pending ? '✅ OK — 이 시험지 등록' : '저장') + '</button> <span class="hint rv-msg" style="margin:0;"></span> <button type="button" class="btn ghost rv-peekbtn" style="padding:5px 12px;">🔎 정답 이미지로 확인</button> <button type="button" class="btn primary rv-splitbtn" style="padding:5px 12px;">🖥 정답 쪽 보면서 입력 (좌우 화면)</button></div><div class="rv-peekbox" style="display:none;"></div><details class="rv-units" style="margin-top:8px;"><summary style="cursor:pointer; font-size:13px; color:var(--point);">🗂 단원·소단원 확인/수정</summary><div class="rv-ubody hint" style="margin-top:6px;">불러오는 중...</div></details></div>'; });
+    if (nPend) h += '<div style="display:flex; justify-content:flex-end; margin-top:12px;"><button type="button" class="btn primary" id="rv-allok" style="padding:12px 26px; font-size:16px;">✅ OK — 대기 중인 시험지 ' + nPend + '개 모두 등록</button></div>';
     h += '</div>';
   }
   { const T = R.reg.filter(x => x.tm && x.tm.end);
@@ -1345,6 +1365,7 @@ function showAutoReview(R) {
       catch (err) { msg.textContent = '⚠️ ' + err.message; btn.disabled = false; }
     });
   });
+  { const ab = $('rv-allok'); if (ab) ab.addEventListener('click', () => registerAllHeld(R)); }
   const fix = $('rv-fix');
   if (fix) fix.addEventListener('click', async () => {
     $('auto-reg').checked = false;
