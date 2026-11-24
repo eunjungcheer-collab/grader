@@ -648,6 +648,38 @@
     });
   }
 
+  // ── 서술형 「평가 기준표」(맨 뒤에 붙인 쪽)에서 문항 번호별 줄을 잘라, 서술형 문항의 해설로 붙인다 (문제은행에서 출제할 때 서술형 답안도 같이 들어가게) ──
+  // pageNums: 기준표 쪽 번호들, essayNums: 서술형 문항 번호(작은 번호부터). 기준표의 1번, 2번… 줄을 이 순서대로 짝짓는다. 붙인 개수를 돌려준다
+  async function addRubricExplanations(doc, pageNums, essayNums, scanned) {
+    if (!pageNums.length || !essayNums.length) return 0;
+    const rows = [];      // {page, rect}
+    for (const p of pageNums) {
+      const pd = await pageItems(doc, p);
+      const hdr = pd.items.filter(it => /^(문항|번호|문항번호)$/.test(it.str.replace(/\s+/g, ''))).sort((a, b) => a.top - b.top)[0];
+      if (!hdr) continue;
+      const labels = pd.items.filter(it => it.top > hdr.bottom && it.x < hdr.x + 40 && /^\d{1,2}$/.test(it.str.trim())).sort((a, b) => a.top - b.top);
+      if (!labels.length) continue;
+      const body = pd.items.filter(it => it.top > hdr.bottom && it.str.trim());
+      const x0 = Math.max(0, Math.min.apply(null, body.map(c => c.x)) - 8), x1 = Math.min(pd.W, Math.max.apply(null, body.map(c => c.x + c.w)) + 8);
+      const endY = Math.max.apply(null, body.map(c => c.bottom)) + 6;
+      labels.forEach((l, i) => {
+        const top = i === 0 ? Math.max(0, hdr.bottom - 2) : labels[i - 1].bottom + (l.top - labels[i - 1].bottom) / 2 - 2;
+        const bottom = i + 1 < labels.length ? l.bottom + (labels[i + 1].top - l.bottom) / 2 : endY;
+        rows.push({ page: p, rect: [x0, top, x1, bottom], n: parseInt(l.str.trim(), 10) });
+      });
+    }
+    if (!rows.length) return 0;
+    let cnt = 0;
+    rows.sort((a, b) => (a.page - b.page) || (a.rect[1] - b.rect[1]));
+    essayNums.slice().sort((a, b) => a - b).forEach((qn, i) => {
+      const r = rows[i]; if (!r) return;
+      scanned.explanations[qn] = { segments: [{ page: r.page, rect: r.rect }], numRect: null };
+      if (!scanned.answers[qn]) scanned.answers[qn] = { page: r.page, rect: r.rect, text: '', written: true, fromSubjTable: true };
+      cnt++;
+    });
+    return cnt;
+  }
+
   // ── PDF 전체 스캔 ──
   // 쪽 안에 붙어 있는 「정답표」(문항 정답 | 문항 정답 …) 자리를 찾는다 — 마지막 문제 그림에 같이 잘려 들어가지 않게 한다. 없으면 null
   async function detectAnswerTable(doc, p, pd) {
@@ -4487,7 +4519,7 @@
   root.BankCore = {
     fitNumRect: fitNumRect,
     clearHeaderDecor: clearHeaderDecor,
-    scanPdf: scanPdf, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, extendCutQuestions: extendCutQuestions, parseBookToc: parseBookToc, coverTitleSpotByPixels: coverTitleSpotByPixels, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
+    scanPdf: scanPdf, addRubricExplanations: addRubricExplanations, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, extendCutQuestions: extendCutQuestions, parseBookToc: parseBookToc, coverTitleSpotByPixels: coverTitleSpotByPixels, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
     textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
     _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, detectBogiMarks: detectBogiMarks, detectBogiMarksB64: detectBogiMarksB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
