@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611240121">
+<link rel="stylesheet" href="css/style.css?v=202611250009">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -43,11 +43,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611240121"></script>
-<script src="js/api.js?v=202611240121"></script>
-<script src="js/common.js?v=202611240121"></script>
-<script src="js/bankcore.js?v=202611240121"></script>
-<script src="js/pdfui.js?v=202611240121"></script>
+<script src="js/config.js?v=202611250009"></script>
+<script src="js/api.js?v=202611250009"></script>
+<script src="js/common.js?v=202611250009"></script>
+<script src="js/bankcore.js?v=202611250009"></script>
+<script src="js/pdfui.js?v=202611250009"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -154,6 +154,7 @@ renderHeader();
         if (st.unit === 'none') { if (ex.meta.units.length) return false; }
         else if (st.unit && !ex.meta.units.some(u => unitKey(u) === st.unit)) return false;
         if (q && String(ex.title).replace(/\s+/g, '').toLowerCase().indexOf(q) < 0) return false;
+        if (q && st.grade && /[중고][1-3]/.test(st.grade)) { const pg = parseExamTitle(ex).gr; if (pg && pg !== +st.grade.slice(1)) return false; }      // 학교를 검색 중이면 제목에 적힌 학년(3학년 등)이 다른 시험지는 빼고, 없으면 없다고 보여 준다
         return true;
       });
       const firstUnit = ex => ex.meta.units.length ? ex.meta.units[0].no : 99;
@@ -189,24 +190,25 @@ renderHeader();
       exams.forEach(ex => {
         const t = String(ex.title || ''); if (t.replace(/\s+/g, '').toLowerCase().indexOf(q) < 0) return;
         const info = parseExamTitle(ex);
-        if (st.grade && info.gr && ('중' + info.gr) !== st.grade && ('고' + info.gr) !== st.grade) return;
         if (!info.kind || !info.sem || !info.gr || !info.y) { unread.push({ t: t, why: [!info.y ? '연도' : '', !info.gr ? '학년' : '', !info.sem ? '학기' : '', !info.kind ? '중간/기말' : ''].filter(Boolean).join('·') }); return; }
-        rows.push({ y: info.y, gr: info.gr, sem: info.sem, kind: info.kind, essay: /서술형|서답형|평가기준표|기준표/.test(t) });
+        rows.push({ y: info.y, gr: info.gr, sem: info.sem, kind: info.kind });
       });
+      const gsel = (st.grade && /[중고][1-3]/.test(st.grade)) ? +st.grade.slice(1) : 0, allRows = rows.slice();
+      if (gsel) { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].gr !== gsel) rows.splice(i, 1); }
       box._unread = unread;
-      if (!rows.length) { box.style.display = unread.length ? '' : 'none'; if (unread.length) box.innerHTML = '<div style="font-weight:800;">📋 연도·학기·중간/기말을 제목에서 못 읽은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread); return; }
-      const grades = Array.from(new Set(rows.map(r => r.gr))).sort(), ys = rows.map(r => r.y), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+      if (!allRows.length) { box.style.display = unread.length ? '' : 'none'; if (unread.length) box.innerHTML = '<div style="font-weight:800;">📋 연도·학기·중간/기말을 제목에서 못 읽은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread); return; }
+      const grades = gsel ? [gsel] : [1, 2, 3], ys = allRows.map(r => r.y), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
       const cols = []; grades.forEach(g => [1, 2].forEach(sm => ['중간', '기말'].forEach(k => cols.push({ g: g, sm: sm, k: k }))));
-      const cell = {}; rows.forEach(r => { const key = r.y + '|' + r.gr + '|' + r.sem + '|' + r.kind, c = cell[key] || (cell[key] = { main: 0, essay: 0 }); if (r.essay) c.essay++; else c.main++; });
+      const cell = {}; rows.forEach(r => { cell[r.y + '|' + r.gr + '|' + r.sem + '|' + r.kind] = 1; });
       const th = 'padding:5px 9px;border:1px solid #cbd5e1;background:#F1F5F9;font-size:13px;text-align:center;white-space:nowrap;', td = 'padding:5px 9px;border:1px solid #cbd5e1;text-align:center;font-weight:800;font-size:15px;';
-      let h = '<div style="font-weight:800;margin-bottom:6px;">📋 「' + escapeHtml(qInp.value.trim()) + '」 기출 있는지 한눈에 보기 <span class="hint" style="font-weight:400;">(O 있음 · X 없음 · 서 = 서술형 기준표만 있음)</span></div><table style="border-collapse:collapse;"><tr><th style="' + th + '" rowspan="2">연도</th>' +
+      const gMsg = (gsel && !rows.length) ? '<div style="margin:0 0 8px;padding:8px 12px;border-radius:8px;background:#FDECEA;color:#C1392B;font-weight:800;">❌ 「' + escapeHtml(qInp.value.trim()) + '」 ' + gsel + '학년 기출 시험지가 하나도 없어요</div>' : '';
+      let h = gMsg + '<div style="font-weight:800;margin-bottom:6px;">📋 「' + escapeHtml(qInp.value.trim()) + '」 기출 있는지 한눈에 보기 <span class="hint" style="font-weight:400;">(O 있음 · X 없음)</span></div><table style="border-collapse:collapse;"><tr><th style="' + th + '" rowspan="2">연도</th>' +
         grades.map(g => '<th style="' + th + '" colspan="4">' + g + '학년</th>').join('') + '</tr><tr>' + cols.map(c => '<th style="' + th + '">' + c.g + '-' + c.sm + ' ' + c.k + '</th>').join('') + '</tr>';
       for (let y = y1; y >= y0; y--) {
         h += '<tr><td style="' + th + '">' + y + '</td>' + cols.map(c => {
-          const v = cell[y + '|' + c.g + '|' + c.sm + '|' + c.k];
-          if (v && v.main) return '<td style="' + td + 'color:#1f6f4a;background:#E8F5EE;">O' + (v.main > 1 ? '<span style="font-size:11px;"> ×' + v.main + '</span>' : '') + (v.essay ? '<span style="font-size:11px;color:#1D4ED8;"> +서</span>' : '') + '</td>';
-          if (v && v.essay) return '<td style="' + td + 'color:#1D4ED8;background:#EEF2FF;">서</td>';
-          return '<td style="' + td + 'color:#C1392B;background:#FDECEA;">X</td>';
+          return cell[y + '|' + c.g + '|' + c.sm + '|' + c.k]
+            ? '<td style="' + td + 'color:#1f6f4a;background:#E8F5EE;">O</td>'
+            : '<td style="' + td + 'color:#C1392B;background:#FDECEA;">X</td>';
         }).join('') + '</tr>';
       }
       box.innerHTML = h + '</table>' + (unread.length ? '<div style="margin-top:8px;font-size:13px;color:#B45309;font-weight:700;">⚠️ 제목에서 연도·학기·중간/기말을 못 읽어 표에 못 넣은 시험지 ' + unread.length + '개</div>' + unreadHtml(unread) : ''); box.style.display = '';
