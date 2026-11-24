@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250305">
+<link rel="stylesheet" href="css/style.css?v=202611250315">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250305"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250305"></script>
-<script src="js/printpdf.js?v=202611250305"></script>
-<script src="js/vendor/pdf.min.js?v=202611250305"></script>
-<script src="js/config.js?v=202611250305"></script>
-<script src="js/api.js?v=202611250305"></script>
-<script src="js/common.js?v=202611250305"></script>
-<script src="js/ocr.js?v=202611250305"></script>
-<script src="js/bankcore.js?v=202611250305"></script>
-<script src="js/pdfui.js?v=202611250305"></script>
-<script src="js/pdfview.js?v=202611250305"></script>
+<script src="js/vendor/qrcode.min.js?v=202611250315"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611250315"></script>
+<script src="js/printpdf.js?v=202611250315"></script>
+<script src="js/vendor/pdf.min.js?v=202611250315"></script>
+<script src="js/config.js?v=202611250315"></script>
+<script src="js/api.js?v=202611250315"></script>
+<script src="js/common.js?v=202611250315"></script>
+<script src="js/ocr.js?v=202611250315"></script>
+<script src="js/bankcore.js?v=202611250315"></script>
+<script src="js/pdfui.js?v=202611250315"></script>
+<script src="js/pdfview.js?v=202611250315"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -449,12 +449,14 @@ async function loadExamFile(file, ansOverride, opts) {
     $('question-count').value = scanned.questionCount || 20;
     let msg = '📄 ' + scanned.pageCount + '쪽 · 문항 ' + scanned.questionCount + '개를 찾았어요.';
     if (scanned.answerPages.length) msg += ' 정답·해설은 ' + scanned.answerPages[0] + '~' + scanned.answerPages[scanned.answerPages.length - 1] + '쪽에서 찾았어요.';
+    window.__tailEssay = {};      // 정답표(객관식)가 끝난 뒤 번호 중에서, 보기(①②③…)가 없는 문항만 서술형으로 본다 (정답표를 일부만 읽었을 때 객관식을 서술형으로 잘못 보지 않게)
+    try { if (window.__tableMax) for (const q of scanned.questions) { if (q.num > window.__tableMax && q.num <= window.__tableMax + 8) { const t = await BankCore.textPreviewQ(pdfInfo.doc, q, 1500); if (!/[①②③④⑤]/.test(t)) window.__tailEssay[q.num] = true; } } } catch (e) { console.warn('서술형 판별 실패', e); }
     let rubricCnt = 0;      // 서술형 기준표 쪽: 서술형 문항 번호별로 해설(모범답안)을 붙인다
     try {
       const rn = window.__rubricN || 0, tot = pdfInfo.doc.numPages;
       if (rn > 0) {
         const nums = [];
-        if (window.__tableMax) { for (let n = window.__tableMax + 1; n <= (scanned.questionCount || 0) && n <= window.__tableMax + 8; n++) nums.push(n); }
+        if (window.__tableMax) { for (let n = window.__tableMax + 1; n <= (scanned.questionCount || 0) && n <= window.__tableMax + 8; n++) if (window.__tailEssay[n]) nums.push(n); }
         else scanned.questions.filter(q => q.subj).forEach(q => nums.push(q.num));
         rubricCnt = await BankCore.addRubricExplanations(pdfInfo.doc, Array.from({ length: rn }, (_, i) => tot - rn + 1 + i), nums, scanned);
       }
@@ -1726,7 +1728,7 @@ async function buildBoxes() {
     inp.classList.toggle('filled', !!inp.value);
     if (scanned && scanned.answers[n] && (scanned.answers[n].multi || /^[1-5]{2,}$/.test(String(inp.value))) && String(inp.value).length > 1) setMulti(inp, true, cell);   // 정답표에 두 개 모두(AND)로 적힌 문항
     if (scanned && scanned.subj && scanned.subj[n]) setSubjective(inp, true, cell);   // 문제 글자로 추정한 주관식
-    if (window.__tableMax && n > window.__tableMax && n - window.__tableMax <= 8 && !inp.value) setSubjective(inp, true, cell);   // 정답표(객관식)가 끝난 뒤의 번호 = 서술형
+    if (window.__tailEssay && window.__tailEssay[n] && !inp.value) setSubjective(inp, true, cell);   // 정답표(객관식)가 끝난 뒤의 번호 = 서술형
   });
   $('submit-btn').disabled = false; $('teacher-btn').disabled = false; $('merge-btn').disabled = false; $('teacher-print-btn').disabled = false; $('merge-print-btn').disabled = false;
   updateSubNote(scanned && scanned.subj ? Object.keys(scanned.subj).filter(k => scanned.subj[k] && k <= count).length : 0);
