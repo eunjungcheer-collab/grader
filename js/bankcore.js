@@ -662,7 +662,19 @@
       const body = pd.items.filter(it => it.top > hdr.bottom && it.str.trim());
       const x0 = Math.max(0, Math.min.apply(null, body.map(c => c.x)) - 8), x1 = Math.min(pd.W, Math.max.apply(null, body.map(c => c.x + c.w)) + 8);
       const endY = Math.max.apply(null, body.map(c => c.bottom)) + 6;
+      // 표의 가로줄(칸 구분선)을 그림에서 찾아, 번호 칸이 들어 있는 칸 전체를 한 줄로 자른다 (줄 높이가 서로 달라도 잘리지 않게). 못 찾으면 번호 사이 가운데로 자른다
+      let rules = [];
+      try {
+        const SC = 2, cv = await renderRect(doc, p, [x0, 0, x1, pd.H], SC, false), M = _inkMap(cv);
+        let prev = false;
+        const sw = Math.max(8, Math.min(M.w, Math.round((hdr.x + 40 - x0) * SC)));      // 번호 칸(맨 왼쪽)을 가로지르는 선만 문항 구분선으로 본다 (한 문항 안의 (1)(2) 칸 구분선은 번호 칸을 지나지 않는다)
+        for (let y = 0; y < M.h; y++) { let n = 0; for (let x = 0; x < sw; x++) n += M.ink[y * M.w + x]; const on = n / sw >= 0.8; if (on && !prev) rules.push([y, y]); else if (on && prev) rules[rules.length - 1][1] = y; prev = on; }
+        const kH = pd.H / M.h; rules = rules.map(r => ({ top: r[0] * kH, bottom: (r[1] + 1) * kH })).filter(r => r.top > hdr.top - 4);
+      } catch (e) { rules = []; }
+      const cellOf = l => { const mid = (l.top + l.bottom) / 2; let up = null, dn = null; rules.forEach(r => { if (r.bottom <= mid + 1 && (!up || r.bottom > up.bottom)) up = r; if (r.top >= mid - 1 && (!dn || r.top < dn.top)) dn = r; }); return (up && dn) ? [up.bottom - 1, dn.top + 1] : null; };
       labels.forEach((l, i) => {
+        const cell = cellOf(l);
+        if (cell) { rows.push({ page: p, rect: [x0, Math.max(0, cell[0]), x1, cell[1]], n: parseInt(l.str.trim(), 10) }); return; }
         const top = i === 0 ? Math.max(0, hdr.bottom - 2) : labels[i - 1].bottom + (l.top - labels[i - 1].bottom) / 2 - 2;
         const bottom = i + 1 < labels.length ? l.bottom + (labels[i + 1].top - l.bottom) / 2 : endY;
         rows.push({ page: p, rect: [x0, top, x1, bottom], n: parseInt(l.str.trim(), 10) });
