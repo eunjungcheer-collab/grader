@@ -1529,6 +1529,8 @@
   }
 
   // 기출문제 꼬리표 (예: "○○중 2025 1학기 중간 기출"): 한글이라 그림으로 만들어서 붙인다. 크기는 pt 기준.
+  // 서술형 순번: 정답 목록에서 '-' 인 문항을 앞에서부터 세어 「서술형 1번」처럼 부른다
+  function essayOrdOf(answers) { const o = {}; let c = 0; (answers || []).forEach((a, i) => { if (String(a && a.answer !== undefined ? a.answer : a) === '-') o[i + 1] = ++c; }); return o; }
   function tagPng(text) {
     const sc = 5, fs = 7.5, padX = 3.5, h = 11;
     const font = (fs * sc) + 'px "Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
@@ -1659,7 +1661,8 @@
     let ansTbl = null, firstPage = true;
     if (opts.answers && opts.answers.length && opts.answers.length <= 50) {
       const n = opts.answers.length, groups = 5, rows = Math.ceil(n / groups), rowH = 22, labH = 24, SCt = 3, circ = '①②③④⑤⑥⑦⑧⑨';
-      const fmt = a => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '(없음)'; if (t === '-') return '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
+      const eoT = essayOrdOf(opts.answers);
+      const fmt = (a, k) => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '(없음)'; if (t === '-') return eoT[k + 1] ? '서술형 ' + eoT[k + 1] + '번' : '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
       const FONTA = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif', tH = labH + rows * rowH + 4;
       const c = createCanvas(Math.round(areaW * SCt), Math.round(tH * SCt)), ctx = c.getContext('2d');
       ctx.scale(SCt, SCt); ctx.textBaseline = 'middle';
@@ -1671,7 +1674,7 @@
         ctx.strokeStyle = '#E5E7EB'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(x, y + rowH); ctx.lineTo(x + gw - 10, y + rowH); ctx.stroke();
         ctx.fillStyle = '#0B1F5C'; ctx.beginPath(); ctx.arc(x + 9, y + rowH / 2, 8.5, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.font = 'bold 9.5px ' + FONTA; ctx.textAlign = 'center'; ctx.fillText(String(k + 1), x + 9, y + rowH / 2 + 0.5);
-        ctx.textAlign = 'left'; ctx.fillStyle = '#111'; ctx.font = 'bold 12.5px ' + FONTA; ctx.fillText(fmt(q.answer), x + 24, y + rowH / 2 + 0.5);
+        ctx.textAlign = 'left'; ctx.fillStyle = '#111'; ctx.font = 'bold 12.5px ' + FONTA; ctx.fillText(fmt(q.answer, k), x + 24, y + rowH / 2 + 0.5);
       });
       ansTbl = { img: await doc.embedPng(b64ToBytes(canvasToBase64(c))), h: tH };
       doc.__inlineAnswers = true;
@@ -1694,7 +1697,9 @@
       ys = [top0, top0];
       col = 0;
     }
-    const subjTag = await (async () => { const t = tagPng('서술형'); return { img: await doc.embedPng(b64ToBytes(t.base64)), w: t.w, h: t.h }; })();
+    const eoB = essayOrdOf(opts.answers), subjTags = {};
+    for (const key of ['서술형'].concat(Object.keys(eoB).map(k => '서술형 ' + eoB[k] + '번'))) { if (!subjTags[key]) { const t = tagPng(key); subjTags[key] = { img: await doc.embedPng(b64ToBytes(t.base64)), w: t.w, h: t.h }; } }
+    const subjTag = subjTags['서술형'];
     function label(cx, cy, r, n, subj) {
       const t = String(n), fs = t.length > 2 ? 9 : (t.length > 1 ? 10.5 : 12), tw = font.widthOfTextAtSize(t, fs);
       if (t.length > 2) {            // "3~4" 처럼 한 문항 그림에 문제가 여러 개 들어 있을 때: 둥근 원 대신 길쭉한 빨간 이름표
@@ -1702,8 +1707,9 @@
       } else page.drawCircle({ x: cx, y: cy, size: r, color: RED });
       page.drawText(t, { x: cx - tw / 2, y: cy - fs * 0.34, size: fs, font: font, color: rgb(1, 1, 1) });
       if (subj && subjTag) {
+        const st = subjTags['서술형 ' + eoB[n] + '번'] || subjTag;
         // 서술형(주관식)은 OMR 번호처럼 보이지 않게, 배지 위에 작은 「서술형」 꼬리표를 따로 붙인다 (한글이라 그림으로 만든 것을 붙인다. 글자로 쓰면 「???」로 깨진다)
-        page.drawImage(subjTag.img, { x: Math.max(2, cx - subjTag.w / 2), y: cy + r + 1, width: subjTag.w, height: subjTag.h });      // 번호 바로 위에 붙인다 (밑에 붙이면 문제 글자를 가린다)
+        page.drawImage(st.img, { x: Math.max(2, cx - st.w / 2), y: cy + r + 1, width: st.w, height: st.h });      // 번호 바로 위에 붙인다 (밑에 붙이면 문제 글자를 가린다)
       }
     }
     // 왼쪽 여백에 붙이는 번호 (번호 위치를 모를 때)
@@ -1978,14 +1984,14 @@
 
   // ── 강사용 시험지: 문제 바로 밑에 정답(빨간 글씨)과 해설을 붙이고, 객관식 정답 번호에는 빨간 동그라미를 친다 ──
   // items: [{ base64, width, height, naturalW, num, answer, explBase64?, explW?, explH?, tag? }]
-  function answerLabelPng(answer, widthPt, numStart, nums, given) {
+  function answerLabelPng(answer, widthPt, numStart, nums, given, essayNo) {
     const circ = '①②③④⑤⑥⑦⑧⑨', sc = 4, h = 16;
     const one = a => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '?'; if (t === '-') return '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
     const t = Array.isArray(answer) ? 'multi' : String(answer == null ? '' : answer).replace(/[^0-9\-\/]/g, '');
     let txt;
     if (Array.isArray(answer)) txt = '정답  ' + answer.map((a, i) => ((nums && nums[i] != null ? nums[i] : numStart + i)) + '번 ' + one(a)).join('    ');
     else if (!t) txt = '정답: (입력 안 됨)';
-    else if (t === '-') txt = '정답: 서술형 (아래 해설 참고)';
+    else if (t === '-') txt = '정답: 서술형' + (essayNo ? ' ' + essayNo + '번' : '') + ' (아래 해설 참고)';
     else txt = '정답  ' + t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join('  또는  ') + (given !== undefined ? '      학생 답  ' + one(given) : '');
     const c = createCanvas(Math.round(widthPt * sc), h * sc), ctx = c.getContext('2d');
     ctx.fillStyle = '#FDECEA'; ctx.fillRect(0, 0, c.width, c.height);
@@ -2038,7 +2044,7 @@
       const wide = (it.naturalW || 0) > colW * 1.45;
       const fullW = wide ? areaW : colW;
       let dw = Math.min(fullW, it.naturalW || fullW), dh = it.height * (dw / it.width);
-      const lab = answerLabelPng(it.subAnswers || it.answer, dw, it.numStart, it.subNums, it.givenAns), labImg = await doc.embedPng(b64ToBytes(lab.base64));
+      const lab = answerLabelPng(it.subAnswers || it.answer, dw, it.numStart, it.subNums, it.givenAns, it.essayNo), labImg = await doc.embedPng(b64ToBytes(lab.base64));
       const TAGH = (it.tag || it.wrongTimes) ? 13 : 0;                                     // 기출 배지 줄 높이
       const limit = maxH - lab.h - 4 - TAGH;
       if (dh > limit) { dw *= limit / dh; dh = limit; }
@@ -2367,7 +2373,8 @@
     const W = 595.28, H = 841.89, SC = 2.4;
     const N = picks.length, perPage = 80, groups = 5;
     const circ = '①②③④⑤⑥⑦⑧⑨';
-    const fmt = a => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '(없음)'; if (t === '-') return '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
+    const eoS = essayOrdOf(picks);
+    const fmt = (a, k) => { const t = String(a == null ? '' : a).replace(/[^0-9\-\/]/g, ''); if (!t) return '(없음)'; if (t === '-') return eoS[k + 1] ? '서술형 ' + eoS[k + 1] + '번' : '서술형'; return t.split('/').filter(Boolean).map(g => g.split('').map(d => circ[parseInt(d, 10) - 1] || d).join(' ')).join(' 또는 '); };
     const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
     for (let start = 0; start < N || start === 0; start += perPage) {
       const chunk = picks.slice(start, start + perPage);
@@ -2388,7 +2395,7 @@
         ctx.fillStyle = '#fff'; ctx.font = 'bold 10px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(String(start + k + 1), x + 10, y + rowH / 2 + 0.5);
         ctx.textAlign = 'left'; ctx.fillStyle = '#111'; ctx.font = 'bold 13px ' + FONT;
-        ctx.fillText(fmt(q.answer), x + 28, y + rowH / 2 + 0.5);
+        ctx.fillText(fmt(q.answer, start + k), x + 28, y + rowH / 2 + 0.5);
         ctx.textBaseline = 'top';
       });
       const page = doc.addPage([W, H]);
@@ -4534,7 +4541,7 @@
     fitNumRect: fitNumRect,
     clearHeaderDecor: clearHeaderDecor,
     scanPdf: scanPdf, addRubricExplanations: addRubricExplanations, parseAnswerTable: parseAnswerTable, readCircledAnswers: readCircledAnswers, readLabeledImageAnswers: readLabeledImageAnswers, bookExplanations: bookExplanations, extendCutQuestions: extendCutQuestions, parseBookToc: parseBookToc, coverTitleSpotByPixels: coverTitleSpotByPixels, buildBookTocFromHeaders: buildBookTocFromHeaders, readDapAnswers: readDapAnswers, buildBookTocFromSectionStarts: buildBookTocFromSectionStarts, readScannedAnswerSheet: readScannedAnswerSheet, readSheetCanvas: readSheetCanvas, subjectiveGuess: subjectiveGuess, difficultyScores: difficultyScores, difficultyScore: difficultyScore, classifyByRank: classifyByRank, renderRect: renderRect, renderQuestion: renderQuestion, renderExplanation: renderExplanation, canvasToBase64: canvasToBase64,
-    textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
+    textPreview: textPreview, textPreviewQ: textPreviewQ, composeTeacherPdf: composeTeacherPdf, essayOrdOf: essayOrdOf, composeWrongNotePdf: composeWrongNotePdf, hideExplAnswer: hideExplAnswer, answerLabelPng: answerLabelPng, composeExamPdf: composeExamPdf, answerSheetDoc: answerSheetDoc, mergePdfs: mergePdfs, addPageNumbers: addPageNumbers,
     textSimilarity: textSimilarity, findSimilarQuestions: findSimilarQuestions,
     _parseKeyTable: parseKeyTable, _parseImageKeyTable: parseImageKeyTable, _readImageTable: readImageTable, detectOptionMarkers: detectOptionMarkers, detectOptionMarkersB64: detectOptionMarkersB64, detectBogiMarks: detectBogiMarks, detectBogiMarksB64: detectBogiMarksB64, findSourceMarks: findSourceMarks, sourceMarkRects: sourceMarkRects, applyRedactions: applyRedactions, boxAround: boxAround, stampTitleHeader: stampTitleHeader, _eraseTopRemnants: eraseTopRemnants, _headerPng: headerPng, findHeaderCluster: findHeaderCluster, findTitleBox: findTitleBox, replaceTitleBox: replaceTitleBox, findSchoolTitle: findSchoolTitle, replaceSchoolTitle: replaceSchoolTitle, stripYellowHighlights: stripYellowHighlights, findWatermarkCandidates: findWatermarkCandidates, findPhraseMatches: findPhraseMatches,
     _pageItems: pageItems, eraseEdgeRules: eraseEdgeRules, cleanImageBase64: cleanImageBase64,
