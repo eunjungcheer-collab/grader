@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260950">
+<link rel="stylesheet" href="css/style.css?v=202611261010">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260950"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260950"></script>
-<script src="js/printpdf.js?v=202611260950"></script>
-<script src="js/vendor/pdf.min.js?v=202611260950"></script>
-<script src="js/config.js?v=202611260950"></script>
-<script src="js/api.js?v=202611260950"></script>
-<script src="js/common.js?v=202611260950"></script>
-<script src="js/ocr.js?v=202611260950"></script>
-<script src="js/bankcore.js?v=202611260950"></script>
-<script src="js/pdfui.js?v=202611260950"></script>
-<script src="js/pdfview.js?v=202611260950"></script>
+<script src="js/vendor/qrcode.min.js?v=202611261010"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611261010"></script>
+<script src="js/printpdf.js?v=202611261010"></script>
+<script src="js/vendor/pdf.min.js?v=202611261010"></script>
+<script src="js/config.js?v=202611261010"></script>
+<script src="js/api.js?v=202611261010"></script>
+<script src="js/common.js?v=202611261010"></script>
+<script src="js/ocr.js?v=202611261010"></script>
+<script src="js/bankcore.js?v=202611261010"></script>
+<script src="js/pdfui.js?v=202611261010"></script>
+<script src="js/pdfview.js?v=202611261010"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1557,10 +1557,14 @@ function showAutoReview(R) {
       rs.addEventListener('click', () => { msg.textContent = '📄 처음 올렸던 원본 시험지 PDF를 골라 주세요. 정답지·서술형 기준표가 따로 있었다면 Ctrl을 누른 채 같이 고르세요. (서버에 있는 파일은 QR·쪽번호가 이미 찍혀 있어서 다시 만들 수 없어요)'; fi.click(); });
       fi.addEventListener('change', async () => {
         const files = Array.from(fi.files || []); fi.value = ''; if (!files.length) return;
-        const isAns = f => /정답|해설|기준|채점|답안/.test(f.name), exam = files.find(f => !isAns(f)) || files[0], ans = files.find(f => f !== exam) || null;
+        // 파일 이름이 깨져 있어도 알아보도록 내용으로 가른다: 쪽 수가 가장 많은 것 = 시험지, 「기준표/모범답안」 글자가 있는 것 = 서술형 기준표, 나머지 = 정답표
+        const info = [];
+        for (const f of files) { let n = 0, tx = ''; try { const d = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise; n = d.numPages; const tc = await (await d.getPage(1)).getTextContent(); tx = tc.items.map(i => i.str).join('').replace(/\s+/g, ''); } catch (e) {} info.push({ f: f, n: n, rub: /(평가|채점)기준|모범답안/.test(tx) }); }
+        const exam = info.slice().sort((a, b) => b.n - a.n)[0].f, others = info.filter(o => o.f !== exam), tbl = others.filter(o => !o.rub).map(o => o.f), rubs = others.filter(o => o.rub).map(o => o.f), rest = tbl.concat(rubs), ans = rest[0] || null, more = rest.slice(1);
         const old = rs.textContent; rs.disabled = true;
         try {
-          const tmp = Object.assign({}, x, { pair: { file: exam, ans: ans } });
+          const pr = { file: exam, ans: ans, more: more.length ? more : null }; if (ans) { msg.textContent = '📎 정답지·기준표를 합치는 중...'; await mergeMore([pr]); }
+          const tmp = Object.assign({}, x, { pair: { file: pr.file, ans: pr.ans } });
           const ctx = await editorCtx(tmp, s2 => { msg.textContent = s2; rs.textContent = '⏳ 진행 중...'; }), w = ctx.fr.contentWindow;
           if (typeof w.buildStudentBytes !== 'function') throw new Error('학생용을 다시 만들 수 없어요');
           const nq = w.eval('scanned').questions.length, na = (x.answers || []).length;
