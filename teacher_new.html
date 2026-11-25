@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260310">
+<link rel="stylesheet" href="css/style.css?v=202611260325">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260310"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260310"></script>
-<script src="js/printpdf.js?v=202611260310"></script>
-<script src="js/vendor/pdf.min.js?v=202611260310"></script>
-<script src="js/config.js?v=202611260310"></script>
-<script src="js/api.js?v=202611260310"></script>
-<script src="js/common.js?v=202611260310"></script>
-<script src="js/ocr.js?v=202611260310"></script>
-<script src="js/bankcore.js?v=202611260310"></script>
-<script src="js/pdfui.js?v=202611260310"></script>
-<script src="js/pdfview.js?v=202611260310"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260325"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260325"></script>
+<script src="js/printpdf.js?v=202611260325"></script>
+<script src="js/vendor/pdf.min.js?v=202611260325"></script>
+<script src="js/config.js?v=202611260325"></script>
+<script src="js/api.js?v=202611260325"></script>
+<script src="js/common.js?v=202611260325"></script>
+<script src="js/ocr.js?v=202611260325"></script>
+<script src="js/bankcore.js?v=202611260325"></script>
+<script src="js/pdfui.js?v=202611260325"></script>
+<script src="js/pdfview.js?v=202611260325"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1113,6 +1113,13 @@ async function registerHeld0(x, btn, msg, R, quiet) {
 }
 // 문항 영역 직접 조정 (OK 대기 시험지): 쪽 그림 위에서 문항 칸의 가장자리를 끌어서 옮기고, 다른 단·다른 쪽으로 이어지는 부분은 「이어지는 부분 추가」로 따로 그려서 붙인다
 // 정답 칸 옆 「답」「영」 버튼과 문항별 영역 조정: 등록 전(대기) 시험지는 열려 있는 창을 쓰고, 이미 등록된 시험지는 원본 PDF를 다시 읽어 와서 고친 뒤 서버(문제은행)에 바로 반영한다
+// 화면 아래에 크게 뜨는 확인 알림 (고친 뒤 저장됐는지 한눈에 보이게)
+function bigToast(text, ok) {
+  let d = document.getElementById('big-toast'); if (d) d.remove();
+  d = document.createElement('div'); d.id = 'big-toast';
+  d.style.cssText = 'position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:20000; max-width:min(92vw,560px); padding:14px 22px; border-radius:12px; font:700 16px/1.4 sans-serif; color:#fff; box-shadow:0 6px 24px rgba(0,0,0,.3); background:' + (ok ? '#15803D' : '#C1392B') + ';';
+  d.textContent = text; document.body.appendChild(d); setTimeout(() => { if (d.parentNode) d.remove(); }, ok ? 6000 : 12000);
+}
 const EDCTX = new WeakMap();
 async function editorCtx(x, say) {
   if (x.pending) return x;
@@ -1157,8 +1164,8 @@ function agHooks(x, afterPick, afterCrop, say) {
   if (!x.pending && !(x.bankIds && Object.keys(x.bankIds).length)) return null;
   const S = say || (() => {});
   return {
-    pick: async n => { try { const ctx = await editorCtx(x, S); openAnswerPicker(ctx, n, async (nn, url) => { if (!x.pending) { try { const inBank = await pushPickToServer(x, ctx, nn, S); S(inBank ? '✅ 서버에 반영했어요' : '✅ 정답은 바꿨어요 (이 문항은 문제은행에 없어 해설 그림은 못 붙였어요)'); } catch (e) { S('⚠️ ' + e.message); return; } } afterPick(nn, url); }); } catch (e) { S('⚠️ ' + e.message); alert(e.message); } },
-    crop: async n => { try { const ctx = await editorCtx(x, S); openCropEditor(ctx, n, async nums => { if (!x.pending) { const r = await pushCropToServer(x, ctx, nums, S); S(r.fail.length ? '⚠️ 서버에 못 올린 문항: ' + r.fail.join(', ') : '✅ 문제 그림을 서버에 반영했어요 (' + r.ok + '개)'); } afterCrop(nums); }); } catch (e) { S('⚠️ ' + e.message); alert(e.message); } }
+    pick: async n => { try { const ctx = await editorCtx(x, S); openAnswerPicker(ctx, n, async (nn, url) => { if (!x.pending) { try { const inBank = await pushPickToServer(x, ctx, nn, S); const m = inBank ? '✅ ' + nn + '번 답안 영역이 서버에 저장됐어요 (서술형으로 표시)' : '✅ ' + nn + '번 정답을 서술형(-)으로 저장했어요 (문제은행에 없는 문항이라 해설 그림은 못 붙였어요)'; S(m); bigToast(m, true); } catch (e) { S('⚠️ ' + e.message); bigToast('⚠️ 저장하지 못했어요: ' + e.message, false); return; } } else bigToast('✅ ' + nn + '번 답안 영역을 적용했어요 (아직 등록 전이라 「OK — 이 시험지 등록」을 누를 때 저장돼요)', true); afterPick(nn, url); }); } catch (e) { S('⚠️ ' + e.message); alert(e.message); } },
+    crop: async n => { try { const ctx = await editorCtx(x, S); openCropEditor(ctx, n, async nums => { if (!x.pending) { const r = await pushCropToServer(x, ctx, nums, S); const m = r.fail.length ? '⚠️ 서버에 저장하지 못한 문항: ' + r.fail.join(', ') + (r.ok ? ' (나머지 ' + r.ok + '개는 저장됨)' : '') : '✅ ' + nums.join(', ') + '번 문제 영역이 서버에 저장됐어요'; S(m); bigToast(m, !r.fail.length); } else bigToast('✅ ' + nums.join(', ') + '번 문제 영역을 적용했어요 (아직 등록 전이라 「OK — 이 시험지 등록」을 누를 때 저장돼요)', true); afterCrop(nums); }); } catch (e) { S('⚠️ ' + e.message); alert(e.message); } }
   };
 }
 
