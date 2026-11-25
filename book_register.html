@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611252235">
+<link rel="stylesheet" href="css/style.css?v=202611260120">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,16 +97,16 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611252235"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611252235"></script>
-<script src="js/vendor/pdf.min.js?v=202611252235"></script>
-<script src="js/config.js?v=202611252235"></script>
-<script src="js/api.js?v=202611252235"></script>
-<script src="js/common.js?v=202611252235"></script>
-<script src="js/bankcore.js?v=202611252235"></script>
-<script src="js/coverdesign.js?v=202611252235"></script>
-<script src="js/pdfui.js?v=202611252235"></script>
-<script src="js/tocfix.js?v=202611252235"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260120"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260120"></script>
+<script src="js/vendor/pdf.min.js?v=202611260120"></script>
+<script src="js/config.js?v=202611260120"></script>
+<script src="js/api.js?v=202611260120"></script>
+<script src="js/common.js?v=202611260120"></script>
+<script src="js/bankcore.js?v=202611260120"></script>
+<script src="js/coverdesign.js?v=202611260120"></script>
+<script src="js/pdfui.js?v=202611260120"></script>
+<script src="js/tocfix.js?v=202611260120"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -259,9 +259,9 @@ async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd,
       g.font = '800 12px ' + FONT; const qw = g.measureText(qStr).width;
       let stStr = '';
       if (stu) { const a1 = sp(sec.qa), b1 = sp(sec.qb); if (a1) stStr = '학생 ' + a1 + (b1 && b1 !== a1 ? '~' + b1 : ''); }
-      let dotEnd = qRight - qw - 8;
-      if (stStr) { g.font = '700 9.5px ' + FONT; const sw = g.measureText(stStr).width; g.textAlign = 'right'; g.fillStyle = '#2F5DA8'; g.fillText(stStr, qRight - qw - 12, cy); dotEnd = qRight - qw - 12 - sw - 6; }
-      g.save(); g.strokeStyle = '#A9A3AE'; g.lineWidth = 0.8; g.setLineDash([0.8, 2.2]); g.beginPath(); g.moveTo(nameEnd, cy + 4); g.lineTo(Math.max(nameEnd + 6, dotEnd), cy + 4); g.stroke(); g.restore();
+      let dotEnd = qRight - qw - 5;
+      if (stStr) { g.font = '700 9.5px ' + FONT; const sw = g.measureText(stStr).width; g.textAlign = 'right'; g.fillStyle = '#2F5DA8'; g.fillText(stStr, qRight - qw - 12, cy); dotEnd = qRight - qw - 12 - sw - 4; }
+      g.save(); g.strokeStyle = '#7A7480'; g.lineWidth = 1.1; g.lineCap = 'round'; g.setLineDash([0.1, 2.9]); g.beginPath(); g.moveTo(nameEnd, cy + 4); g.lineTo(Math.max(nameEnd + 6, dotEnd), cy + 4); g.stroke(); g.restore();
       g.textAlign = 'right'; g.font = '800 12px ' + FONT; g.fillStyle = '#16161F'; g.fillText(qStr, qRight, cy);
       if (hasA) { g.fillStyle = '#D6283C'; g.fillText(aStr, aRight, cy); }
       const yTop = H - y, yBot = H - (y + ROW);
