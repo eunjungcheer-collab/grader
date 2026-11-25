@@ -51,6 +51,7 @@ function setup() {
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 10).setValue('questionTexts');
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 12).setValue('aliasIds');      // 삭제 후 같은 이름으로 다시 올린 시험지가 이어받은 예전 시험 번호들 (예전 QR이 이 시험지로 열리게)
   ss.getSheetByName(SHEET_EXAMS).getRange(1, 11).setValue('essay');      // 서술형으로 표시한 문항 번호 (예: 24,25,26). 비어 있으면 맨 뒤에 이어진 주관식을 서술형으로 본다. 0 = 서술형 없음
+  ss.getSheetByName(SHEET_EXAMS).getRange(1, 13).setValue('regions');      // 선생님이 고른 문제·답안 영역 좌표(JSON) — 다른 컴퓨터에서도 이어서 고치려고 서버에 보관
   assignSheet_();
   Logger.log('설정 완료. (이미 있던 데이터는 그대로 유지돼요)');
 }
@@ -145,6 +146,8 @@ function handle_(e) {
       case 'replaceExamPdf': result = actionReplaceExamPdf_(params); break;
       case 'saveRedoUnits': result = actionSaveRedoUnits_(params); break;
       case 'getRedoUnits': result = actionGetRedoUnits_(params); break;
+      case 'getExamRegions': result = actionGetExamRegions_(params); break;
+      case 'saveExamRegions': result = actionSaveExamRegions_(params); break;
       case 'markExam': result = actionMarkExam_(params); break;
       case 'getExamMarks': result = actionGetExamMarks_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
@@ -305,6 +308,32 @@ function actionGetRedoUnits_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const v = PropertiesService.getScriptProperties().getProperty('redo_' + String(p.id || ''));
   return { ok: true, units: v ? safeJson_(v, null) : null };
+}
+// 문제·답안 영역 좌표를 시험지마다 서버(시트 13번째 칸)에 보관한다 → 다른 컴퓨터에서 열어도 고른 영역이 그대로 보이고 이어서 고칠 수 있다
+// 형식: { q: { 번호: {rect, extra} }, a: { 번호: [ {page, rect} ... ] } }
+function actionGetExamRegions_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const exams = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_EXAMS), found = findExamRow_(exams, p.id);
+  if (!found) return { ok: false, error: '시험지를 찾지 못했어요.' };
+  return { ok: true, regions: safeJson_(String(found.row[12] || ''), { q: {}, a: {} }) };
+}
+function actionSaveExamRegions_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  if (p.kind !== 'q' && p.kind !== 'a') return { ok: false, error: '종류가 잘못됐어요.' };
+  const n = parseInt(p.n, 10); if (!(n > 0 && n < 200)) return { ok: false, error: '문항 번호가 잘못됐어요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    const found = findExamRow_(exams, p.id);
+    if (!found) return { ok: false, error: '시험지를 찾지 못했어요.' };
+    const cur = safeJson_(String(found.row[12] || ''), null) || {};
+    cur.q = cur.q || {}; cur.a = cur.a || {};
+    if (p.value === null || p.value === undefined) delete cur[p.kind][n]; else cur[p.kind][n] = p.value;
+    const txt = JSON.stringify(cur);
+    if (txt.length > 45000) return { ok: false, error: '영역 정보가 너무 커요.' };
+    exams.getRange(found.rowIndex, 13).setValue(txt);
+  } finally { lock.releaseLock(); }
+  return { ok: true };
 }
 function replaceExamFromRegistration_(p) {
   if (!p.pdfBase64) return { ok: false, error: '새 PDF가 없어요.' };

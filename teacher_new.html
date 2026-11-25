@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260640">
+<link rel="stylesheet" href="css/style.css?v=202611260710">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260640"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260640"></script>
-<script src="js/printpdf.js?v=202611260640"></script>
-<script src="js/vendor/pdf.min.js?v=202611260640"></script>
-<script src="js/config.js?v=202611260640"></script>
-<script src="js/api.js?v=202611260640"></script>
-<script src="js/common.js?v=202611260640"></script>
-<script src="js/ocr.js?v=202611260640"></script>
-<script src="js/bankcore.js?v=202611260640"></script>
-<script src="js/pdfui.js?v=202611260640"></script>
-<script src="js/pdfview.js?v=202611260640"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260710"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260710"></script>
+<script src="js/printpdf.js?v=202611260710"></script>
+<script src="js/vendor/pdf.min.js?v=202611260710"></script>
+<script src="js/config.js?v=202611260710"></script>
+<script src="js/api.js?v=202611260710"></script>
+<script src="js/common.js?v=202611260710"></script>
+<script src="js/ocr.js?v=202611260710"></script>
+<script src="js/bankcore.js?v=202611260710"></script>
+<script src="js/pdfui.js?v=202611260710"></script>
+<script src="js/pdfview.js?v=202611260710"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1129,7 +1129,20 @@ function bigToast(text, ok) {
 }
 // 고친 영역은 이 브라우저에 기억해 두었다가 다시 열 때 그대로 보여 준다 (서버에는 그림만 저장돼서, 영역 좌표는 여기 보관)
 const regLoad = (k, id) => { try { return JSON.parse(localStorage.getItem('qr_reg_' + k + '_' + id) || '{}') || {}; } catch (e) { return {}; } };
-const regSave = (k, id, n, v) => { try { const o = regLoad(k, id); o[n] = v; localStorage.setItem('qr_reg_' + k + '_' + id, JSON.stringify(o)); } catch (e) {} };
+const regSave = (k, id, n, v) => {
+  try { const o = regLoad(k, id); o[n] = v; localStorage.setItem('qr_reg_' + k + '_' + id, JSON.stringify(o)); } catch (e) {}
+  if (k === 'q' || k === 'a') { try { callApi('saveExamRegions', { password: getTeacherPassword(), id: id, kind: k, n: n, value: v }).then(r => { if (!r || !r.ok) console.warn('영역 서버 저장 실패', r && r.error); }).catch(e => console.warn('영역 서버 저장 실패', e)); } catch (e) {} }      // 서버에도 보관해서 다른 컴퓨터에서도 이어 고칠 수 있게 한다
+};
+// 서버에 보관된 영역을 이 브라우저 기억에 합친다 (서버에 있는 것이 우선). 시험지당 한 번만 가져온다.
+const REG_SYNCED = {};
+async function regSync(id) {
+  if (!id || REG_SYNCED[id]) return; REG_SYNCED[id] = 1;
+  try {
+    const r = await callApi('getExamRegions', { password: getTeacherPassword(), id: id });
+    if (!r || !r.ok || !r.regions) { delete REG_SYNCED[id]; return; }
+    ['q', 'a'].forEach(k => { const sv = r.regions[k] || {}, loc = regLoad(k, id); let ch = false; Object.keys(sv).forEach(n => { loc[n] = sv[n]; ch = true; }); Object.keys(loc).forEach(n => { if (sv[n] === undefined && loc[n] && (!Array.isArray(loc[n]) || loc[n].length)) callApi('saveExamRegions', { password: getTeacherPassword(), id: id, kind: k, n: +n, value: loc[n] }).catch(() => {}); });      // 이 브라우저에만 있던 옛 영역은 서버로 올린다 if (ch) { try { localStorage.setItem('qr_reg_' + k + '_' + id, JSON.stringify(loc)); } catch (e) {} } });
+  } catch (e) { delete REG_SYNCED[id]; }
+}
 // 최근에 고친 시험지는 목록 맨 위로 올리려고, 고친 시각을 이 브라우저에 적어 둔다
 const markEdited = id => { try { localStorage.setItem('qr_edit_ts_' + id, String(Date.now())); } catch (e) {} };
 const editTs = id => { try { return +(localStorage.getItem('qr_edit_ts_' + id) || 0); } catch (e) { return 0; } };
@@ -1152,6 +1165,7 @@ async function editorCtx(x, say) {
   });
   if (!x.qthumb) x.qthumb = {};
   c = { fr: fr, qthumb: x.qthumb, examId: x.id };
+  if (!x.pending) await regSync(x.id);
   try { const sc = fr.contentWindow.eval('scanned'), sv = regLoad('q', x.id); Object.keys(sv).forEach(n => { const q = sc.questions.find(z => z.num === +n); if (q && sv[n].rect) { q.rect = sv[n].rect.slice(); if (sv[n].extra && sv[n].extra.length) q.extra = sv[n].extra.map(e => ({ page: e.page, rect: e.rect.slice() })); else delete q.extra; } });
     const sa = regLoad('a', x.id); sc.explanations = sc.explanations || {}; Object.keys(sa).forEach(n => { if (sa[n] && sa[n].length) sc.explanations[n] = { segments: sa[n].map(s => ({ page: s.page, rect: s.rect.slice() })), numRect: null, manual: true }; }); } catch (e) {}
   EDCTX.set(x, c); return c;
@@ -1187,7 +1201,7 @@ async function rebuildTeacherPdf(x, ctx, say) {
   return r;
 }
 async function applySavedThumbs(x) {      // 고른 답안 영역의 그림이 「정답 그림이 없어요」로 보이지 않게, 저장해 둔 그림을 끼운다
-  if (!x || !x.id || !x.peekImgs) return; const sv = regLoad('t', x.id); Object.keys(sv).forEach(n => { if (sv[n]) x.peekImgs[n] = sv[n]; });
+  if (!x || !x.id || !x.peekImgs) return; if (!x.pending) await regSync(x.id); const sv = regLoad('t', x.id); Object.keys(sv).forEach(n => { if (sv[n]) x.peekImgs[n] = sv[n]; });
   // 영역(좌표)은 저장돼 있는데 그림이 없는 문항(그림 저장 공간이 모자랐거나 옛 버전에서 고른 것)은 저장된 영역으로 그림을 다시 만든다
   try {
     const sa = regLoad('a', x.id), miss = Object.keys(sa).filter(n => sa[n] && sa[n].length && !x.peekImgs[n]);
