@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260810">
+<link rel="stylesheet" href="css/style.css?v=202611260835">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260810"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260810"></script>
-<script src="js/printpdf.js?v=202611260810"></script>
-<script src="js/vendor/pdf.min.js?v=202611260810"></script>
-<script src="js/config.js?v=202611260810"></script>
-<script src="js/api.js?v=202611260810"></script>
-<script src="js/common.js?v=202611260810"></script>
-<script src="js/ocr.js?v=202611260810"></script>
-<script src="js/bankcore.js?v=202611260810"></script>
-<script src="js/pdfui.js?v=202611260810"></script>
-<script src="js/pdfview.js?v=202611260810"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260835"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260835"></script>
+<script src="js/printpdf.js?v=202611260835"></script>
+<script src="js/vendor/pdf.min.js?v=202611260835"></script>
+<script src="js/config.js?v=202611260835"></script>
+<script src="js/api.js?v=202611260835"></script>
+<script src="js/common.js?v=202611260835"></script>
+<script src="js/ocr.js?v=202611260835"></script>
+<script src="js/bankcore.js?v=202611260835"></script>
+<script src="js/pdfui.js?v=202611260835"></script>
+<script src="js/pdfview.js?v=202611260835"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -464,7 +464,7 @@ async function loadExamFile(file, ansOverride, opts) {
         else scanned.questions.filter(q => q.subj).forEach(q => nums.push(q.num));
         rubricCnt = await BankCore.addRubricExplanations(pdfInfo.doc, Array.from({ length: rn }, (_, i) => tot - rn + 1 + i), nums, scanned);
         // 평가기준표 쪽에는 서술형 모범답안이 있다 → 정답 쪽과 같이 학생용 PDF에서 빼고 해설지로 옮긴다
-        { const ps = scanned.answerPages.slice(); for (let i = 0; i < rn; i++) { const pg = tot - rn + 1 + i; if (ps.indexOf(pg) < 0) ps.push(pg); } scanned.answerPages = ps.sort((a, b) => a - b); }
+        { const ps = scanned.answerPages.slice(), rl = rubricPageList(), add = rl.length ? rl : Array.from({ length: rn }, (_, i) => tot - rn + 1 + i); add.forEach(pg => { if (ps.indexOf(pg) < 0) ps.push(pg); }); scanned.answerPages = ps.sort((a, b) => a - b); }
       }
     } catch (e) { console.warn('서술형 기준표 붙이기 실패', e); }
     if (rubricCnt) msg += ' 서술형 기준표에서 서술형 ' + rubricCnt + '문항의 답안을 해설로 붙였어요.';
@@ -2288,6 +2288,11 @@ $('save-to-bank').addEventListener('change', () => { $('bank-unit-row').style.di
 
 
 // 강사용 시험지: 원본 PDF에서 문항·해설을 다시 잘라, 문제 밑에 정답·해설을 붙여 내려받는다
+// 서술형 평가기준표(채점기준표)가 들어 있는 원본 쪽 번호들 — 표 한 줄이 다음 쪽으로 이어진 쪽도 포함 (정답표 쪽은 뺀다)
+function rubricPageList() {
+  const set = new Set(); try { const ex = (scanned && scanned.explanations) || {}; Object.keys(ex).forEach(n => { if (ex[n] && ex[n].rubric) (ex[n].segments || []).forEach(sg => set.add(sg.page)); }); } catch (e) {}
+  return Array.from(set).sort((a, b) => a - b);
+}
 // 학생용 PDF(정답·해설 쪽을 빼고 QR을 찍은 것)를 만든다. 등록할 때와 「학생용 PDF 다시 만들기」가 같이 쓴다
 async function buildStudentBytes(title, examId, opts) {
     const redactions = (opts && opts.redactions) || (pane ? pane.redactions : []);
@@ -2321,6 +2326,15 @@ async function buildStudentBytes(title, examId, opts) {
     try { if (!isPast) { const qt1 = Math.min.apply(null, scanned.questions.filter(x => x.page === 1 && isFinite(x.top)).map(x => x.top).concat([1e9])); await BankCore.clearHeaderDecor(PDFLib, pdfDoc, pdfInfo.doc, qt1 < 1e9 ? qt1 : 0); } } catch (e) { console.warn('머리 장식 지우기 실패', e); }
     try { if (!isPast) { const f1 = pdfDoc.getPages()[0], pl = qrPlacement(f1.getWidth(), f1.getHeight(), qrOpts()), qr = { x0: pl.x - 6, top: f1.getHeight() - pl.y - pl.size - 6, bottom: f1.getHeight() - pl.y + 6 }; let tb = null; try { tb = await BankCore.findTitleBox(pdfInfo.doc); } catch (e) { console.warn('제목칸 찾기 실패', e); } if (!tb) { try { tb = await BankCore.findHeaderCluster(pdfInfo.doc); } catch (e) { console.warn('제목 머리 찾기 실패', e); } } let done = false; if (tb) { try { done = await BankCore.replaceTitleBox(PDFLib, pdfDoc, tb, badgeTitle, qr); } catch (e) { console.warn('제목 바꾸기 실패', e); } } if (!done) { try { await BankCore.stampTitleHeader(PDFLib, pdfDoc, pdfInfo.doc, badgeTitle, qr); } catch (e) { console.warn('제목 붙이기 실패', e); } } } } catch (e) { console.warn('제목 바꾸기 실패', e); }
     await stampQrOnDoc(pdfDoc, studentLinkFor(examId), qrOpts());
+    if (explDoc) {      // 순서: 정답표 → 해설 → 서술형 기준표 (원본 PDF에서 기준표가 앞에 있어도 맨 뒤로 보낸다)
+      try {
+        const sa = scanned.answerPages.slice().sort((a, b) => a - b), rl = rubricPageList(), first = [], last = [];
+        sa.forEach((pg, i) => (rl.indexOf(pg) >= 0 ? last : first).push(i));
+        if (last.length && first.length && (first.concat(last).join() !== first.concat(last).slice().sort((a, b) => a - b).join())) {
+          const nd = await PDFLib.PDFDocument.create(); (await nd.copyPages(explDoc, first.concat(last))).forEach(pg => nd.addPage(pg)); explDoc = nd;
+        }
+      } catch (e) { console.warn('해설 쪽 순서 바꾸기 실패', e); }
+    }
     const merged = await BankCore.mergePdfs(PDFLib, pdfDoc, explDoc);
     await BankCore.addPageNumbers(PDFLib, merged, { logoSize: 10, logoTop: 14 });
     return await merged.save();
@@ -2369,7 +2383,7 @@ async function buildTeacherBytes(title, answers) {
   // 서술형 기준표(평가 기준표) 쪽은 정답표 뒤에 그대로 붙인다
   try {
     const rn = window.__rubricN || 0;
-    if (rn > 0) { const src = await PDFLib.PDFDocument.load(pdfInfo.bytes.slice(0), { ignoreEncryption: true }), tot = src.getPageCount(), idxs = []; for (let i = Math.max(0, tot - rn); i < tot; i++) idxs.push(i); (await merged.copyPages(src, idxs)).forEach(pg => merged.addPage(pg)); }
+    if (rn > 0) { const src = await PDFLib.PDFDocument.load(pdfInfo.bytes.slice(0), { ignoreEncryption: true }), tot = src.getPageCount(), idxs = [], rl = rubricPageList(); if (rl.length) rl.forEach(pg => idxs.push(pg - 1)); else for (let i = Math.max(0, tot - rn); i < tot; i++) idxs.push(i); (await merged.copyPages(src, idxs)).forEach(pg => merged.addPage(pg)); }
   } catch (e) { console.warn('서술형 기준표 붙이기 실패', e); }
   await BankCore.addPageNumbers(PDFLib, merged);
   return { bytes: await merged.save(), fallback: false };
