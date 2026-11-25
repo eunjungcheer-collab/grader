@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260325">
+<link rel="stylesheet" href="css/style.css?v=202611260345">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260325"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260325"></script>
-<script src="js/printpdf.js?v=202611260325"></script>
-<script src="js/vendor/pdf.min.js?v=202611260325"></script>
-<script src="js/config.js?v=202611260325"></script>
-<script src="js/api.js?v=202611260325"></script>
-<script src="js/common.js?v=202611260325"></script>
-<script src="js/ocr.js?v=202611260325"></script>
-<script src="js/bankcore.js?v=202611260325"></script>
-<script src="js/pdfui.js?v=202611260325"></script>
-<script src="js/pdfview.js?v=202611260325"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260345"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260345"></script>
+<script src="js/printpdf.js?v=202611260345"></script>
+<script src="js/vendor/pdf.min.js?v=202611260345"></script>
+<script src="js/config.js?v=202611260345"></script>
+<script src="js/api.js?v=202611260345"></script>
+<script src="js/common.js?v=202611260345"></script>
+<script src="js/ocr.js?v=202611260345"></script>
+<script src="js/bankcore.js?v=202611260345"></script>
+<script src="js/pdfui.js?v=202611260345"></script>
+<script src="js/pdfview.js?v=202611260345"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1120,6 +1120,9 @@ function bigToast(text, ok) {
   d.style.cssText = 'position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:20000; max-width:min(92vw,560px); padding:14px 22px; border-radius:12px; font:700 16px/1.4 sans-serif; color:#fff; box-shadow:0 6px 24px rgba(0,0,0,.3); background:' + (ok ? '#15803D' : '#C1392B') + ';';
   d.textContent = text; document.body.appendChild(d); setTimeout(() => { if (d.parentNode) d.remove(); }, ok ? 6000 : 12000);
 }
+// 고친 영역은 이 브라우저에 기억해 두었다가 다시 열 때 그대로 보여 준다 (서버에는 그림만 저장돼서, 영역 좌표는 여기 보관)
+const regLoad = (k, id) => { try { return JSON.parse(localStorage.getItem('qr_reg_' + k + '_' + id) || '{}') || {}; } catch (e) { return {}; } };
+const regSave = (k, id, n, v) => { try { const o = regLoad(k, id); o[n] = v; localStorage.setItem('qr_reg_' + k + '_' + id, JSON.stringify(o)); } catch (e) {} };
 const EDCTX = new WeakMap();
 async function editorCtx(x, say) {
   if (x.pending) return x;
@@ -1138,7 +1141,10 @@ async function editorCtx(x, say) {
     document.body.appendChild(f);
   });
   if (!x.qthumb) x.qthumb = {};
-  c = { fr: fr, qthumb: x.qthumb }; EDCTX.set(x, c); return c;
+  c = { fr: fr, qthumb: x.qthumb, examId: x.id };
+  try { const sc = fr.contentWindow.eval('scanned'), sv = regLoad('q', x.id); Object.keys(sv).forEach(n => { const q = sc.questions.find(z => z.num === +n); if (q && sv[n].rect) { q.rect = sv[n].rect.slice(); if (sv[n].extra && sv[n].extra.length) q.extra = sv[n].extra.map(e => ({ page: e.page, rect: e.rect.slice() })); else delete q.extra; } });
+    const sa = regLoad('a', x.id); sc.explanations = sc.explanations || {}; Object.keys(sa).forEach(n => { if (sa[n] && sa[n].length) sc.explanations[n] = { segments: sa[n].map(s => ({ page: s.page, rect: s.rect.slice() })), numRect: null, manual: true }; }); } catch (e) {}
+  EDCTX.set(x, c); return c;
 }
 // 등록된 시험지에서 문제 영역을 고쳤을 때: 새 문제 그림을 서버 문제은행에 바꿔 올린다
 async function pushCropToServer(x, ctx, nums, say) {
@@ -1146,7 +1152,7 @@ async function pushCropToServer(x, ctx, nums, say) {
   for (const n of nums) {
     const qid = x.bankIds && x.bankIds[n]; if (!qid) { fail.push(n + '번(문제은행에 없음)'); continue; }
     try { say('☁ ' + n + '번 문제 그림을 서버에 올리는 중...'); const q = sc.questions.find(z => z.num === n); const c = await rb(q);
-      const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: qid, imgBase64: BankCore.canvasToBase64(c) }); if (r && r.ok) ok++; else fail.push(n + '번'); } catch (e) { fail.push(n + '번'); }
+      const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: qid, imgBase64: BankCore.canvasToBase64(c) }); if (r && r.ok) { ok++; regSave('q', x.id, n, { rect: q.rect, extra: q.extra || [] }); } else fail.push(n + '번'); } catch (e) { fail.push(n + '번'); }
   }
   return { ok: ok, fail: fail };
 }
@@ -1156,6 +1162,7 @@ async function pushPickToServer(x, ctx, n, say) {
   say('☁ ' + n + '번 답안 그림을 서버에 올리는 중...');
   const c = await w.BankCore.renderExplanation(info.doc, sc.explanations[n], 2.2);
   if (qid) { const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: qid, explBase64: BankCore.canvasToBase64(c), answer: '-' }); if (!r || !r.ok) throw new Error((r && r.error) || '답안 그림을 올리지 못했어요'); }
+  regSave('a', x.id, n, sc.explanations[n].segments);
   x.answers[n - 1] = '-';
   const r2 = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: x.id, answers: x.answers }); if (!r2 || !r2.ok) throw new Error((r2 && r2.error) || '정답을 바꾸지 못했어요');
   return !!qid;
