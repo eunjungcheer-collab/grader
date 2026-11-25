@@ -863,12 +863,12 @@ function paintAnswerCell(inp) {
   inp.classList.toggle('bad', !ANS_CELL_OK.test(v));
   inp.classList.toggle('sub', v === '-');
 }
-function buildAnswerGrid(box, answers, onChange) {
+function buildAnswerGrid(box, answers, onChange, hk) {
   box.classList.add('ag');
   box.innerHTML = '';
   // 위쪽 버튼: 칸을 누르고 「주관식」「복수정답」을 누르면 된다 (키보드로는 - · + 도 된다)
   const bar = document.createElement('div'); bar.style.cssText = 'width:100%; flex:0 0 100%; display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:0 0 8px;';
-  bar.innerHTML = '<button type="button" class="btn outline ag-bsub" style="padding:4px 10px;">주 · 주관식 (-)</button><button type="button" class="btn outline ag-bmulti" style="padding:4px 10px;">복 · 복수정답 (+)</button><span class="hint" style="margin:0; font-size:12px;">칸을 누르고 버튼을 누르거나, 키보드로 <b>-</b> / <b>+</b> 를 치세요</span>';
+  bar.innerHTML = '<button type="button" class="btn outline ag-bsub" style="padding:4px 10px;">주 · 주관식 (-)</button><button type="button" class="btn outline ag-bmulti" style="padding:4px 10px;">복 · 복수정답 (+)</button><span class="hint" style="margin:0; font-size:12px;">칸을 누르고 버튼을 누르거나, 키보드로 <b>-</b> / <b>+</b> 를 치세요' + (hk ? ' · 칸 아래 <b>답</b> = 서술형 답안 영역 고르기, <b>영</b> = 문제 영역 조정' : '') + '</span>';
   box.appendChild(bar);
   let lastInp = null;
   const press = (btn, fn) => { btn.addEventListener('mousedown', e => e.preventDefault()); btn.addEventListener('click', () => { if (lastInp) fn(lastInp); }); };
@@ -879,12 +879,13 @@ function buildAnswerGrid(box, answers, onChange) {
   const goto_ = (i, dir) => { const t = cells[i + dir]; if (t) t.focus(); };
   answers.forEach((a, i) => {
     const cell = document.createElement('div'); cell.className = 'ag-cell';
-    cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="text"><span class="ag-btns"><button type="button" class="ag-b ag-b-sub" tabindex="-1" title="주관식">주</button><button type="button" class="ag-b ag-b-mul" tabindex="-1" title="복수정답">복</button></span>';
+    cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="text"><span class="ag-btns"><button type="button" class="ag-b ag-b-sub" tabindex="-1" title="주관식">주</button><button type="button" class="ag-b ag-b-mul" tabindex="-1" title="복수정답">복</button>' + (hk ? '<button type="button" class="ag-b ag-b-pick" tabindex="-1" title="서술형 답안 영역 선택 (정답·해설 쪽에서 이 문항의 답안 부분을 골라요)">답</button><button type="button" class="ag-b ag-b-crop" tabindex="-1" title="이 문항의 문제 영역 조정">영</button>' : '') + '</span>';
     const inp = cell.querySelector('input'); paintAnswerCell(inp); cells.push(inp);
     if (/^[1-9]{2,}|\//.test(inp.value)) setM(inp, true);
     const commit = () => { answers[i] = inp.value.trim(); paintAnswerCell(inp); if (onChange) onChange(answers); };
     inp._ag = { commit: commit, next: () => goto_(i, 1), idx: i };
     const bs = cell.querySelector('.ag-b-sub'), bm = cell.querySelector('.ag-b-mul');
+    if (hk) { const bp = cell.querySelector('.ag-b-pick'), bc = cell.querySelector('.ag-b-crop'); [bp, bc].forEach(b => b.addEventListener('mousedown', e => e.preventDefault())); bp.addEventListener('click', () => hk.pick(i + 1)); bc.addEventListener('click', () => hk.crop(i + 1)); }
     [bs, bm].forEach(b => b.addEventListener('mousedown', e => e.preventDefault()));
     bs.addEventListener('click', () => { setM(inp, false); inp.value = '-'; commit(); goto_(i, 1); });
     bm.addEventListener('click', () => { setM(inp, inp.dataset.multi !== '1'); if (inp.dataset.multi !== '1') { /* 끔 */ } else if (inp.value === '-') inp.value = ''; commit(); inp.focus(); });
