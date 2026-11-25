@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260845">
+<link rel="stylesheet" href="css/style.css?v=202611260905">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260845"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260845"></script>
-<script src="js/printpdf.js?v=202611260845"></script>
-<script src="js/vendor/pdf.min.js?v=202611260845"></script>
-<script src="js/config.js?v=202611260845"></script>
-<script src="js/api.js?v=202611260845"></script>
-<script src="js/common.js?v=202611260845"></script>
-<script src="js/ocr.js?v=202611260845"></script>
-<script src="js/bankcore.js?v=202611260845"></script>
-<script src="js/pdfui.js?v=202611260845"></script>
-<script src="js/pdfview.js?v=202611260845"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260905"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260905"></script>
+<script src="js/printpdf.js?v=202611260905"></script>
+<script src="js/vendor/pdf.min.js?v=202611260905"></script>
+<script src="js/config.js?v=202611260905"></script>
+<script src="js/api.js?v=202611260905"></script>
+<script src="js/common.js?v=202611260905"></script>
+<script src="js/ocr.js?v=202611260905"></script>
+<script src="js/bankcore.js?v=202611260905"></script>
+<script src="js/pdfui.js?v=202611260905"></script>
+<script src="js/pdfview.js?v=202611260905"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -349,7 +349,7 @@ async function loadExamFile(file, ansOverride, opts) {
   showQueueNote();
   const mySeq = ++loadSeq, stale = () => mySeq !== loadSeq;
   $('error-banner').innerHTML = ''; $('qunit-hint-msg').innerHTML = '';
-  rcClear(); ansExtra = null; mergedAnsName = ''; appendedPages = 0; window.__rubricN = 0;
+  rcClear(); ansExtra = null; mergedAnsName = ''; appendedPages = 0; window.__rubricN = 0; window.__rubPgs = [];
   curQFile = file;
   { const af0 = ansOverride || (queueTotal <= 1 ? $('pdf-answer-file').files[0] : null);
     if (!IS_CHILD) curPair = { file: curQFile, ans: af0 || null };
@@ -465,8 +465,17 @@ async function loadExamFile(file, ansOverride, opts) {
         rubricCnt = await BankCore.addRubricExplanations(pdfInfo.doc, Array.from({ length: rn }, (_, i) => tot - rn + 1 + i), nums, scanned);
         // 평가기준표 쪽에는 서술형 모범답안이 있다 → 정답 쪽과 같이 학생용 PDF에서 빼고 해설지로 옮긴다
         { const ps = scanned.answerPages.slice(), rl = rubricPageList(), add = rl.length ? rl : Array.from({ length: rn }, (_, i) => tot - rn + 1 + i); add.forEach(pg => { if (ps.indexOf(pg) < 0) ps.push(pg); }); scanned.answerPages = ps.sort((a, b) => a - b); }
+        try { window.__rubPgs = await rubricByText(scanned.answerPages); } catch (e) { window.__rubPgs = []; }      // 글자로 기준표 쪽(표가 다음 쪽으로 이어진 쪽·빈 쪽 포함)을 찾는다
       }
     } catch (e) { console.warn('서술형 기준표 붙이기 실패', e); }
+    // 마지막 문제 쪽과 정답 쪽 사이에 문제가 없는 쪽이 끼어 있으면(글자가 깨져 읽히지 않는 서술형 기준표 쪽 등) 정답 쪽으로 보고 학생 시험지에서 뺀다 → 순서는 정답표 → 해설 → 이 쪽
+    try {
+      const lastQ = Math.max.apply(null, scanned.questions.map(q => Math.max.apply(null, [q.page].concat((q.extra || []).map(e => e.page)))).concat([0])), ap = scanned.answerPages.slice();
+      if (lastQ > 0 && ap.length) {
+        const first = Math.min.apply(null, ap), gap = []; for (let g = lastQ + 1; g < first; g++) gap.push(g);
+        if (gap.length) { window.__rubPgs = Array.from(new Set((window.__rubPgs || []).concat(gap))).sort((a, b) => a - b); scanned.answerPages = Array.from(new Set(ap.concat(gap))).sort((a, b) => a - b); }
+      }
+    } catch (e) { console.warn('끼어 있는 쪽 찾기 실패', e); }
     if (rubricCnt) msg += ' 서술형 기준표에서 서술형 ' + rubricCnt + '문항의 답안을 해설로 붙였어요.';
     if (tableCount) msg += ' 정답표(' + (tableInfo.label || tableInfo.pages.join(',') + '쪽') + ')에서 ' + tableCount + '개를 읽어 미리 채웠어요. 왼쪽 PDF와 맞는지 확인하세요.';
     if (tableInfo && tableInfo.notes && tableInfo.notes.length) msg += ' ⚠️ ' + tableInfo.notes.join(' / ') + '.';
@@ -2288,9 +2297,23 @@ $('save-to-bank').addEventListener('change', () => { $('bank-unit-row').style.di
 
 
 // 강사용 시험지: 원본 PDF에서 문항·해설을 다시 잘라, 문제 밑에 정답·해설을 붙여 내려받는다
+// 정답·해설 쪽 중 서술형 기준표(채점기준표) 쪽을 글자로 찾는다: 제목이 있는 쪽부터, 정답표(서답형·객관식 표)가 나오기 전까지 이어진 쪽(빈 쪽 포함)
+async function rubricByText(pages) {
+  const out = [], tx = {};
+  for (const pg of pages.slice().sort((a, b) => a - b)) { try { const tc = await (await pdfInfo.doc.getPage(pg)).getTextContent(); tx[pg] = tc.items.map(i => i.str).join(' '); } catch (e) { tx[pg] = ''; } }
+  let on = false;
+  for (const pg of pages.slice().sort((a, b) => a - b)) {
+    const t = tx[pg] || '', flat = t.replace(/\s+/g, ''), digits = (t.match(/\b\d+\b/g) || []).length;
+    const isHead = /(평가|채점)기준표/.test(flat) && /배점/.test(flat);
+    const isTable = !isHead && (/서답형|정답표|객관식|선택형/.test(flat) || digits >= 40);
+    if (isHead) on = true; else if (isTable) on = false;
+    if (on) out.push(pg);
+  }
+  return out;
+}
 // 서술형 평가기준표(채점기준표)가 들어 있는 원본 쪽 번호들 — 표 한 줄이 다음 쪽으로 이어진 쪽도 포함 (정답표 쪽은 뺀다)
 function rubricPageList() {
-  const set = new Set(); try { const ex = (scanned && scanned.explanations) || {}; Object.keys(ex).forEach(n => { if (ex[n] && ex[n].rubric) (ex[n].segments || []).forEach(sg => set.add(sg.page)); }); } catch (e) {}
+  const set = new Set((window.__rubPgs || []).slice()); try { const ex = (scanned && scanned.explanations) || {}; Object.keys(ex).forEach(n => { if (ex[n] && ex[n].rubric) (ex[n].segments || []).forEach(sg => set.add(sg.page)); }); } catch (e) {}
   return Array.from(set).sort((a, b) => a - b);
 }
 // 학생용 PDF(정답·해설 쪽을 빼고 QR을 찍은 것)를 만든다. 등록할 때와 「학생용 PDF 다시 만들기」가 같이 쓴다
