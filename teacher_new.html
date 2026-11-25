@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260610">
+<link rel="stylesheet" href="css/style.css?v=202611260640">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260610"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260610"></script>
-<script src="js/printpdf.js?v=202611260610"></script>
-<script src="js/vendor/pdf.min.js?v=202611260610"></script>
-<script src="js/config.js?v=202611260610"></script>
-<script src="js/api.js?v=202611260610"></script>
-<script src="js/common.js?v=202611260610"></script>
-<script src="js/ocr.js?v=202611260610"></script>
-<script src="js/bankcore.js?v=202611260610"></script>
-<script src="js/pdfui.js?v=202611260610"></script>
-<script src="js/pdfview.js?v=202611260610"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260640"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260640"></script>
+<script src="js/printpdf.js?v=202611260640"></script>
+<script src="js/vendor/pdf.min.js?v=202611260640"></script>
+<script src="js/config.js?v=202611260640"></script>
+<script src="js/api.js?v=202611260640"></script>
+<script src="js/common.js?v=202611260640"></script>
+<script src="js/ocr.js?v=202611260640"></script>
+<script src="js/bankcore.js?v=202611260640"></script>
+<script src="js/pdfui.js?v=202611260640"></script>
+<script src="js/pdfview.js?v=202611260640"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1186,8 +1186,15 @@ async function rebuildTeacherPdf(x, ctx, say) {
   await teacherPdfSave(x.id, x.title + ' 강사용.pdf', r.bytes);
   return r;
 }
-function applySavedThumbs(x) {      // 고른 답안 영역의 그림이 「정답 그림이 없어요」로 보이지 않게, 저장해 둔 그림을 끼운다
+async function applySavedThumbs(x) {      // 고른 답안 영역의 그림이 「정답 그림이 없어요」로 보이지 않게, 저장해 둔 그림을 끼운다
   if (!x || !x.id || !x.peekImgs) return; const sv = regLoad('t', x.id); Object.keys(sv).forEach(n => { if (sv[n]) x.peekImgs[n] = sv[n]; });
+  // 영역(좌표)은 저장돼 있는데 그림이 없는 문항(그림 저장 공간이 모자랐거나 옛 버전에서 고른 것)은 저장된 영역으로 그림을 다시 만든다
+  try {
+    const sa = regLoad('a', x.id), miss = Object.keys(sa).filter(n => sa[n] && sa[n].length && !x.peekImgs[n]);
+    if (!miss.length) return;
+    const ctx = await editorCtx(x, () => {}), w = ctx.fr.contentWindow, rc = w.eval('rcExpl'), sc = w.eval('scanned');
+    for (const n of miss) { try { const cv = await rc(+n, sc.explanations[n]); const url = cv.toDataURL('image/png'); x.peekImgs[n] = url; regSave('t', x.id, n, url); } catch (e) {} }
+  } catch (e) {}
 }
 function agHooks(x, afterPick, afterCrop, say, essayCb) {
   if (!x.pending && !(x.bankIds && Object.keys(x.bankIds).length)) return null;
@@ -1515,7 +1522,7 @@ function showAutoReview(R) {
         box.style.display = '';
         if (x.peekImgs) { paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; return; }
         pb.disabled = true; box.innerHTML = '<span class="hint">⏳ PDF를 다시 읽어서 정답 그림을 만드는 중... (몇 초 걸려요)</span>';
-        try { if (!(await ensurePair(x))) { box.innerHTML = '<span class="hint">원본 PDF를 다시 찾지 못했어요.</span>'; pb.disabled = false; return; } { const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; applySavedThumbs(x); } paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; }
+        try { if (!(await ensurePair(x))) { box.innerHTML = '<span class="hint">원본 PDF를 다시 찾지 못했어요.</span>'; pb.disabled = false; return; } { const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; await applySavedThumbs(x); } paintPeek(); pb.textContent = '🔎 정답 이미지 닫기'; }
         catch (err) { box.innerHTML = '<span class="hint" style="color:#C1392B;">정답 그림을 만들지 못했어요: ' + escapeHtml(err.message) + '</span>'; }
         pb.disabled = false;
       });
@@ -1525,7 +1532,7 @@ function showAutoReview(R) {
       sb.addEventListener('click', async () => {
         if (!x.peekPages) {
           sb.disabled = true; const old = sb.textContent; sb.textContent = '⏳ PDF 읽는 중...';
-          try { if (!(await ensurePair(x))) throw new Error('원본 PDF를 다시 찾지 못했어요.'); const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; applySavedThumbs(x); }
+          try { if (!(await ensurePair(x))) throw new Error('원본 PDF를 다시 찾지 못했어요.'); const pk = await peekImages(x.pair); x.peekImgs = pk.imgs; x.peekPages = pk.pages; await applySavedThumbs(x); }
           catch (err) { msg.textContent = '⚠️ 정답 쪽 그림을 만들지 못했어요: ' + err.message; sb.disabled = false; sb.textContent = old; return; }
           sb.disabled = false; sb.textContent = old;
         }
