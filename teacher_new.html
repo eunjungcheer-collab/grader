@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611261025">
+<link rel="stylesheet" href="css/style.css?v=202611261040">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611261025"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611261025"></script>
-<script src="js/printpdf.js?v=202611261025"></script>
-<script src="js/vendor/pdf.min.js?v=202611261025"></script>
-<script src="js/config.js?v=202611261025"></script>
-<script src="js/api.js?v=202611261025"></script>
-<script src="js/common.js?v=202611261025"></script>
-<script src="js/ocr.js?v=202611261025"></script>
-<script src="js/bankcore.js?v=202611261025"></script>
-<script src="js/pdfui.js?v=202611261025"></script>
-<script src="js/pdfview.js?v=202611261025"></script>
+<script src="js/vendor/qrcode.min.js?v=202611261040"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611261040"></script>
+<script src="js/printpdf.js?v=202611261040"></script>
+<script src="js/vendor/pdf.min.js?v=202611261040"></script>
+<script src="js/config.js?v=202611261040"></script>
+<script src="js/api.js?v=202611261040"></script>
+<script src="js/common.js?v=202611261040"></script>
+<script src="js/ocr.js?v=202611261040"></script>
+<script src="js/bankcore.js?v=202611261040"></script>
+<script src="js/pdfui.js?v=202611261040"></script>
+<script src="js/pdfview.js?v=202611261040"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -2433,7 +2433,7 @@ async function buildTeacherBytes(title, answers) {
   // 서술형 기준표(평가 기준표) 쪽은 정답표 뒤에 그대로 붙인다
   try {
     const rn = window.__rubricN || 0;
-    if (rn > 0) { const src = await PDFLib.PDFDocument.load(pdfInfo.bytes.slice(0), { ignoreEncryption: true }), tot = src.getPageCount(), idxs = [], rl = rubricPageList(); if (rl.length) rl.forEach(pg => idxs.push(pg - 1)); else for (let i = Math.max(0, tot - rn); i < tot; i++) idxs.push(i); (await merged.copyPages(src, idxs)).forEach(pg => merged.addPage(pg)); }
+    if (rn > 0 || rubricPageList().length) { const src = await PDFLib.PDFDocument.load(pdfInfo.bytes.slice(0), { ignoreEncryption: true }), tot = src.getPageCount(), idxs = [], rl = rubricPageList(); if (rl.length) rl.forEach(pg => idxs.push(pg - 1)); else for (let i = Math.max(0, tot - rn); i < tot; i++) idxs.push(i); (await merged.copyPages(src, idxs)).forEach(pg => merged.addPage(pg)); }
   } catch (e) { console.warn('서술형 기준표 붙이기 실패', e); }
   await BankCore.addPageNumbers(PDFLib, merged);
   return { bytes: await merged.save(), fallback: false };
