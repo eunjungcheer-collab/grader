@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611261010">
+<link rel="stylesheet" href="css/style.css?v=202611261025">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611261010"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611261010"></script>
-<script src="js/printpdf.js?v=202611261010"></script>
-<script src="js/vendor/pdf.min.js?v=202611261010"></script>
-<script src="js/config.js?v=202611261010"></script>
-<script src="js/api.js?v=202611261010"></script>
-<script src="js/common.js?v=202611261010"></script>
-<script src="js/ocr.js?v=202611261010"></script>
-<script src="js/bankcore.js?v=202611261010"></script>
-<script src="js/pdfui.js?v=202611261010"></script>
-<script src="js/pdfview.js?v=202611261010"></script>
+<script src="js/vendor/qrcode.min.js?v=202611261025"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611261025"></script>
+<script src="js/printpdf.js?v=202611261025"></script>
+<script src="js/vendor/pdf.min.js?v=202611261025"></script>
+<script src="js/config.js?v=202611261025"></script>
+<script src="js/api.js?v=202611261025"></script>
+<script src="js/common.js?v=202611261025"></script>
+<script src="js/ocr.js?v=202611261025"></script>
+<script src="js/bankcore.js?v=202611261025"></script>
+<script src="js/pdfui.js?v=202611261025"></script>
+<script src="js/pdfview.js?v=202611261025"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -2367,12 +2367,21 @@ async function buildStudentBytes(title, examId, opts) {
     try { if (!isPast) { const qt1 = Math.min.apply(null, scanned.questions.filter(x => x.page === 1 && isFinite(x.top)).map(x => x.top).concat([1e9])); await BankCore.clearHeaderDecor(PDFLib, pdfDoc, pdfInfo.doc, qt1 < 1e9 ? qt1 : 0); } } catch (e) { console.warn('머리 장식 지우기 실패', e); }
     try { if (!isPast) { const f1 = pdfDoc.getPages()[0], pl = qrPlacement(f1.getWidth(), f1.getHeight(), qrOpts()), qr = { x0: pl.x - 6, top: f1.getHeight() - pl.y - pl.size - 6, bottom: f1.getHeight() - pl.y + 6 }; let tb = null; try { tb = await BankCore.findTitleBox(pdfInfo.doc); } catch (e) { console.warn('제목칸 찾기 실패', e); } if (!tb) { try { tb = await BankCore.findHeaderCluster(pdfInfo.doc); } catch (e) { console.warn('제목 머리 찾기 실패', e); } } let done = false; if (tb) { try { done = await BankCore.replaceTitleBox(PDFLib, pdfDoc, tb, badgeTitle, qr); } catch (e) { console.warn('제목 바꾸기 실패', e); } } if (!done) { try { await BankCore.stampTitleHeader(PDFLib, pdfDoc, pdfInfo.doc, badgeTitle, qr); } catch (e) { console.warn('제목 붙이기 실패', e); } } } } catch (e) { console.warn('제목 바꾸기 실패', e); }
     await stampQrOnDoc(pdfDoc, studentLinkFor(examId), qrOpts());
-    if (explDoc) {      // 순서: 정답표 → 해설 → 서술형 기준표 (원본 PDF에서 기준표가 앞에 있어도 맨 뒤로 보낸다)
+    if (explDoc) {      // 순서: 정답표 → 해설 → 서술형 기준표 (원본에서 기준표가 앞에 있어도 맨 뒤로 보낸다). 원본에 끼어 있던 완전히 빈 쪽은 뺀다
       try {
-        const sa = scanned.answerPages.slice().sort((a, b) => a - b), rl = rubricPageList(), first = [], last = [];
-        sa.forEach((pg, i) => (rl.indexOf(pg) >= 0 ? last : first).push(i));
-        if (last.length && first.length && (first.concat(last).join() !== first.concat(last).slice().sort((a, b) => a - b).join())) {
-          const nd = await PDFLib.PDFDocument.create(); (await nd.copyPages(explDoc, first.concat(last))).forEach(pg => nd.addPage(pg)); explDoc = nd;
+        const sa = scanned.answerPages.slice().sort((a, b) => a - b), rl = rubricPageList(), first = [], last = [], blank = new Set();
+        for (let i = 0; i < sa.length; i++) {
+          try {
+            const pg = await pdfInfo.doc.getPage(sa[i]), vp = pg.getViewport({ scale: 0.4 }), cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+            const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); await pg.render({ canvasContext: cx, viewport: vp }).promise;
+            const d = cx.getImageData(0, 0, cv.width, cv.height).data; let ink = 0; for (let k = 0; k < d.length; k += 4) if (d[k] < 200 || d[k + 1] < 200 || d[k + 2] < 200) ink++;
+            if (ink / (cv.width * cv.height) < 0.0008) blank.add(i);
+          } catch (e) {}
+        }
+        sa.forEach((pg, i) => { if (blank.has(i)) return; (rl.indexOf(pg) >= 0 ? last : first).push(i); });
+        const order = first.concat(last);
+        if (order.length && (blank.size || order.join() !== order.slice().sort((a, b) => a - b).join())) {
+          const nd = await PDFLib.PDFDocument.create(); (await nd.copyPages(explDoc, order)).forEach(pg => nd.addPage(pg)); explDoc = nd;
         }
       } catch (e) { console.warn('해설 쪽 순서 바꾸기 실패', e); }
     }
