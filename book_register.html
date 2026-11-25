@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611251920">
+<link rel="stylesheet" href="css/style.css?v=202611252030">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,15 +97,16 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611251920"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611251920"></script>
-<script src="js/vendor/pdf.min.js?v=202611251920"></script>
-<script src="js/config.js?v=202611251920"></script>
-<script src="js/api.js?v=202611251920"></script>
-<script src="js/common.js?v=202611251920"></script>
-<script src="js/bankcore.js?v=202611251920"></script>
-<script src="js/coverdesign.js?v=202611251920"></script>
-<script src="js/pdfui.js?v=202611251920"></script>
+<script src="js/vendor/qrcode.min.js?v=202611252030"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611252030"></script>
+<script src="js/vendor/pdf.min.js?v=202611252030"></script>
+<script src="js/config.js?v=202611252030"></script>
+<script src="js/api.js?v=202611252030"></script>
+<script src="js/common.js?v=202611252030"></script>
+<script src="js/bankcore.js?v=202611252030"></script>
+<script src="js/coverdesign.js?v=202611252030"></script>
+<script src="js/pdfui.js?v=202611252030"></script>
+<script src="js/tocfix.js?v=202611252030"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -195,7 +196,7 @@ function gradeMain(bookName) {
   if ($('new-cover') && $('new-cover').checked && $('cover-color') && COVER_COLORS[$('cover-color').value]) return COVER_COLORS[$('cover-color').value][0];
   return /중\s*1/.test(bookName) ? '#E4566D' : /중\s*2/.test(bookName) ? '#2F7BC0' : /중\s*3/.test(bookName) ? '#7A55C2' : /고\s*1|공통|통합/.test(bookName) ? '#139186' : '#0B1F5C';
 }
-async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd, stu) {
+async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd, stu, fitPages) {
   posEnd = posEnd || ((sec, which) => pos(sec[which]));
   at = at || 0;
   const ref = pdf.getPage(0).getSize(), W = ref.width, H = ref.height;
@@ -207,19 +208,24 @@ async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd,
     if (ukey !== lastU) { lastU = ukey; groups.push({ unit: ui.no, name: ui.name, secs: [] }); }
     groups[groups.length - 1].secs.push(sec);
   });
-  const ROW = 25, BAN = 30, GAP = 22, TOP = 124, BOTTOM = H - 64, items = [];
-  groups.forEach((gp, gi) => { items.push({ ban: gp, h: BAN + 12, gap: gi ? GAP : 0 }); gp.secs.forEach(sec => items.push({ sec: sec, h: ROW, gap: 0 })); });
-  // 쪽 나누기 (단원 띠가 쪽 맨 아래에 혼자 남지 않게)
-  const pages = []; let cur = [], used = 0;
-  items.forEach((it, k) => {
-    const need = it.h + (cur.length ? it.gap : 0) + (it.ban ? ROW : 0);
-    if (cur.length && TOP + used + need > BOTTOM) { pages.push(cur); cur = []; used = 0; }
-    used += it.h + (cur.length ? it.gap : 0); cur.push(it);
-  });
-  if (cur.length) pages.push(cur);
+  let ROW = 25, BAN = 30, GAP = 22; const TOP = 124, BOTTOM = H - 64;
+  // 쪽 나누기 (단원 띠가 쪽 맨 아래에 혼자 남지 않게). fitPages가 있으면(이미 만든 합본의 목차 쪽 수를 그대로 지켜야 할 때) 줄 높이를 줄여서 그 쪽 수 안에 맞춘다
+  const paginate = () => {
+    const items = []; groups.forEach((gp, gi) => { items.push({ ban: gp, h: BAN + 12, gap: gi ? GAP : 0 }); gp.secs.forEach(sec => items.push({ sec: sec, h: ROW, gap: 0 })); });
+    const pgs = []; let cur = [], used = 0;
+    items.forEach((it, k) => {
+      const need = it.h + (cur.length ? it.gap : 0) + (it.ban ? ROW : 0);
+      if (cur.length && TOP + used + need > BOTTOM) { pgs.push(cur); cur = []; used = 0; }
+      used += it.h + (cur.length ? it.gap : 0); cur.push(it);
+    });
+    if (cur.length) pgs.push(cur);
+    return pgs;
+  };
+  let pages = paginate();
+  if (fitPages) { while (pages.length > fitPages && ROW > 11) { ROW -= 1; GAP = Math.max(5, GAP - 1); BAN = Math.max(18, BAN - 0.5); pages = paginate(); } }
   const nIns = Math.max(1, pages.length);
   const shift = p => p + (p > at ? nIns : 0); // 목차가 끼워진 뒤의 실제 쪽 번호
-  const sp = p => { const b = stu ? stu.pos(p) : 0; return b > 0 ? shift(b) : 0; };      // 강사용 합본에만: 같은 문제 쪽이 학생용 합본에서는 몇 쪽인지
+  const sp = p => { const b = stu ? stu.pos(p) : 0; return b > 0 ? (stu.final ? b : shift(b)) : 0; };      // 강사용 합본에만: 같은 문제 쪽이 학생용 합본에서는 몇 쪽인지
   const links = [];
   const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif', K = 3;
   const qRight = W - 120, aRight = W - 54, L = 54;
@@ -593,6 +599,28 @@ async function offerReplaceOld(rec) {
 
 function showDownloads(rec) { const box = $('dl-box'); box.innerHTML = ''; mergeBtns(rec, box); }
 
+// 저장된 강사용 합본의 목차를 강사용 쪽 번호 기준으로 새로 만들고(학생교재 쪽수 표시 포함) 서버 파일을 같은 id로 바꿔 올린다
+async function fixSavedToc(rec, btn) {
+  if (!confirm('「' + rec.name + '」 강사용 교재의 목차를 강사용 쪽 번호 기준으로 새로 만들고, 문제 쪽마다 「학생교재 몇 쪽」을 적어서 서버(드라이브) 파일을 바꿔 올려요.\n\n• 원본 파일을 다시 올릴 필요는 없어요.\n• 몇 분 걸릴 수 있으니 창을 닫지 마세요.\n• 이미 한 번 고친 교재는 다시 하지 않는 게 좋아요(쪽수 표시가 겹쳐요).\n\n진행할까요?')) return;
+  const old = btn.textContent, say = t => { btn.textContent = t.length > 46 ? t.slice(0, 46) + '…' : t; const m = $('sync-msg'); if (m) m.textContent = '📑 ' + t; };
+  btn.disabled = true;
+  try {
+    say('강사용 파일 가져오는 중...');
+    const tBlob = rec.teacher || await serverDownload(rec.sTeacher.fileId, (i, n) => say('강사용 받는 중... ' + i + '/' + n), rec.name + ' 강사용');
+    let sBlob = rec.student || null;
+    if (!sBlob && rec.sStudent) { try { sBlob = await serverDownload(rec.sStudent.fileId, (i, n) => say('학생용 받는 중... ' + i + '/' + n), rec.name + ' 학생용'); } catch (e) { sBlob = null; } }
+    const raw = rec.raw || {};
+    const r = await TocFix.rebuild({ bytes: new Uint8Array(await tBlob.arrayBuffer()), studentBytes: sBlob ? new Uint8Array(await sBlob.arrayBuffer()) : null, coverSecs: raw.cover && raw.cover.secs, bookName: rec.name, insertToc: insertGeneratedToc, say: say, noNotes: !!raw.tocFixed });
+    const nb = new Blob([r.bytes], { type: 'application/pdf' });
+    if (rec.raw) { const m2 = Object.assign({}, rec.raw, { teacher: nb, tocFixed: true }); try { await mergeDbPut(m2); } catch (e) { console.warn('local save', e); } }
+    say('서버에 바꿔 올리는 중...');
+    const ok = await syncToServer({ id: rec.id, name: rec.name, date: rec.date, teacher: nb }, 'teacher');
+    const sm = r.summary || {};
+    alert('목차를 새로 만들었어요 (단원 ' + sm.sections + '개, 목차 ' + sm.tocPagesNew + '쪽' + (sm.student ? ', 학생교재 쪽수 표시 포함' : ', 학생용을 못 읽어 학생 쪽수는 빠짐') + ').\n' + (ok ? '서버(드라이브) 파일도 바꿔 올렸어요.' : '서버 업로드는 확인되지 않았어요. 목록에서 ☁ 보관 상태를 확인해 주세요.') + (rec.raw ? '' : '\n(이 기기에는 저장하지 않았어요. 필요하면 서버 파일을 내려받아 쓰세요.)'));
+  } catch (e) { alert('목차를 고치지 못했어요: ' + e.message); }
+  btn.textContent = old; btn.disabled = false; renderSaved();
+}
+
 let serverMerges = [];
 async function renderSaved() {
   try {
@@ -600,7 +628,7 @@ async function renderSaved() {
     try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) serverMerges = r.merges || []; } catch (e) {}
     const by = {};
     serverMerges.forEach(m => { by[m.id] = { id: m.id, name: m.name, date: m.date, sTeacher: m.teacher, sStudent: m.student }; });
-    local.forEach(m => { const r = by[m.id] = by[m.id] || { id: m.id, name: m.name, date: m.date }; r.teacher = m.teacher; r.student = m.student; });
+    local.forEach(m => { const r = by[m.id] = by[m.id] || { id: m.id, name: m.name, date: m.date }; r.teacher = m.teacher; r.student = m.student; r.raw = m; });
     const all = Object.keys(by).map(k => by[k]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     $('saved-card').style.display = all.length ? '' : 'none';
     $('saved-count').textContent = all.length ? '(' + all.length + '개)' : '';
@@ -625,6 +653,12 @@ async function renderSaved() {
       };
       mk('teacher', '강사용', rec.teacher, rec.sTeacher); mk('student', '학생용', rec.student, rec.sStudent);
       if (rec.teacher || rec.student) { const ce = document.createElement('button'); ce.type = 'button'; ce.className = 'btn'; ce.style.cssText = 'margin:3px 6px 3px 0;'; ce.textContent = '🎨 표지 수정'; ce.title = '표지 도안·색과 강사용/학생용 표시 위치를 화면에서 보며 고쳐요'; ce.onclick = () => { location.href = 'cover_edit.html?id=' + encodeURIComponent(rec.id); }; row.appendChild(ce); }
+      if ((rec.teacher || rec.sTeacher) && !/_orig$/.test(rec.id)) {
+        const fx = document.createElement('button'); fx.type = 'button'; fx.className = 'btn'; fx.style.cssText = 'margin:3px 6px 3px 0;'; fx.textContent = '📑 목차 고쳐 새로 만들기';
+        fx.title = '이미 만들어 둔 강사용 합본의 목차를 강사용 쪽 번호 기준으로 다시 만들고, 문제 쪽마다 학생교재 쪽수를 적은 뒤 서버 파일을 바꿔요 (원본 파일 다시 올릴 필요 없음)';
+        fx.onclick = () => fixSavedToc(rec, fx);
+        row.appendChild(fx);
+      }
       [['teacher', '강사용', rec.teacher, rec.sTeacher], ['student', '학생용', rec.student, rec.sStudent]].forEach(a => {
         if (!a[2] || a[3]) return;
         const up = document.createElement('button'); up.type = 'button'; up.className = 'btn'; up.style.cssText = 'margin:3px 6px 3px 0;'; up.textContent = '☁ ' + a[1] + ' 서버에 보관';
