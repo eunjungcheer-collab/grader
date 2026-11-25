@@ -1140,7 +1140,7 @@ async function regSync(id) {
   try {
     const r = await callApi('getExamRegions', { password: getTeacherPassword(), id: id });
     if (!r || !r.ok || !r.regions) { delete REG_SYNCED[id]; return; }
-    ['q', 'a'].forEach(k => { const sv = r.regions[k] || {}, loc = regLoad(k, id); let ch = false; Object.keys(sv).forEach(n => { loc[n] = sv[n]; ch = true; }); Object.keys(loc).forEach(n => { if (sv[n] === undefined && loc[n] && (!Array.isArray(loc[n]) || loc[n].length)) callApi('saveExamRegions', { password: getTeacherPassword(), id: id, kind: k, n: +n, value: loc[n] }).catch(() => {}); });      // 이 브라우저에만 있던 옛 영역은 서버로 올린다 if (ch) { try { localStorage.setItem('qr_reg_' + k + '_' + id, JSON.stringify(loc)); } catch (e) {} } });
+    ['q', 'a'].forEach(k => { const sv = r.regions[k] || {}, loc = regLoad(k, id); let ch = false; Object.keys(sv).forEach(n => { loc[n] = sv[n]; ch = true; }); Object.keys(loc).forEach(n => { if (sv[n] === undefined && loc[n] && (!Array.isArray(loc[n]) || loc[n].length)) callApi('saveExamRegions', { password: getTeacherPassword(), id: id, kind: k, n: +n, value: loc[n] }).catch(() => {}); }); /* 이 브라우저에만 있던 옛 영역은 서버로 올린다 */ if (ch) { try { localStorage.setItem('qr_reg_' + k + '_' + id, JSON.stringify(loc)); } catch (e) {} } });
   } catch (e) { delete REG_SYNCED[id]; }
 }
 // 최근에 고친 시험지는 목록 맨 위로 올리려고, 고친 시각을 이 브라우저에 적어 둔다
