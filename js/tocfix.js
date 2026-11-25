@@ -71,6 +71,7 @@ const TocFix = (function () {
     say(label + ' 열어 보는 중...');
     const pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
     const N = pdf.getPageCount(), qr = qrPages(pdf);
+    if (qr[0] !== 2 && /tocfix:v1/.test(String(pdf.getKeywords() || ''))) qr.unshift(2);   // 이미 고친 파일: 목차 쪽 QR이 그림으로 바뀌어 있다
     if (qr.length < 2 || qr[0] !== 2) throw new Error(label + '에서 목차 쪽·단원 QR을 찾지 못했어요. 이 앱으로 만든 QR 합본이 아닌 것 같아요.');
     const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise;
     say(label + ' 정답 속표지 찾는 중...');
@@ -125,7 +126,9 @@ const TocFix = (function () {
       for (let i = 1; i <= K; i++) { const pg = pdf.getPage(i), t = String(i + 1), tw = font0.widthOfTextAtSize(t, 9.5); pg.drawText(t, { x: pg.getWidth() / 2 - tw / 2, y: 16, size: 9.5, font: font0, color: PDFLib.rgb(0.1, 0.1, 0.1) }); } }
     // 문제 쪽마다 「학생교재 N~M쪽」 (단원 전체 범위) — 쪽번호 옆
     let noted = 0;
-    if (S && !o.noNotes) {
+    const already = /tocfix:v1/.test(String(pdf.getKeywords() || ''));
+    if (already) say('이미 고친 파일이라 학생교재 쪽수 표시는 다시 붙이지 않아요');
+    if (S && !o.noNotes && !already) {
       const font = await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold), cache = {};
       for (let i = 0; i < n; i++) {
         const a = S.secs[i].qa, b = S.secs[i].qb, txt = '학생교재 ' + a + (b !== a ? '~' + b : '') + '쪽';
@@ -144,6 +147,7 @@ const TocFix = (function () {
       }
     }
     say('저장하는 중...');
+    try { pdf.setKeywords([String(pdf.getKeywords() || '').replace(/\s*tocfix:v1/g, '').trim(), 'tocfix:v1'].filter(Boolean)); } catch (e) {}
     const out = await pdf.save();
     return { bytes: out, summary: { sections: n, tocPagesOld: K, tocPagesNew: nIns, divider: T.div - K, pages: out.length, notes: noted, student: !!S, namesFrom: cs ? '저장된 교재 정보' : '정답 쪽 제목' }, secs: secs.map(s => ({ name: s.name, tag: s.tag, qa: pos(s.qa), qb: pos(s.qb), aa: pos(s.aa), ab: pos(s.ab) })) };
   }

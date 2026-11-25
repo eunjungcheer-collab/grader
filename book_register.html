@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611252030">
+<link rel="stylesheet" href="css/style.css?v=202611252215">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,16 +97,16 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611252030"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611252030"></script>
-<script src="js/vendor/pdf.min.js?v=202611252030"></script>
-<script src="js/config.js?v=202611252030"></script>
-<script src="js/api.js?v=202611252030"></script>
-<script src="js/common.js?v=202611252030"></script>
-<script src="js/bankcore.js?v=202611252030"></script>
-<script src="js/coverdesign.js?v=202611252030"></script>
-<script src="js/pdfui.js?v=202611252030"></script>
-<script src="js/tocfix.js?v=202611252030"></script>
+<script src="js/vendor/qrcode.min.js?v=202611252215"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611252215"></script>
+<script src="js/vendor/pdf.min.js?v=202611252215"></script>
+<script src="js/config.js?v=202611252215"></script>
+<script src="js/api.js?v=202611252215"></script>
+<script src="js/common.js?v=202611252215"></script>
+<script src="js/bankcore.js?v=202611252215"></script>
+<script src="js/coverdesign.js?v=202611252215"></script>
+<script src="js/pdfui.js?v=202611252215"></script>
+<script src="js/tocfix.js?v=202611252215"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -601,7 +601,7 @@ function showDownloads(rec) { const box = $('dl-box'); box.innerHTML = ''; merge
 
 // 저장된 강사용 합본의 목차를 강사용 쪽 번호 기준으로 새로 만들고(학생교재 쪽수 표시 포함) 서버 파일을 같은 id로 바꿔 올린다
 async function fixSavedToc(rec, btn) {
-  if (!confirm('「' + rec.name + '」 강사용 교재의 목차를 강사용 쪽 번호 기준으로 새로 만들고, 문제 쪽마다 「학생교재 몇 쪽」을 적어서 서버(드라이브) 파일을 바꿔 올려요.\n\n• 원본 파일을 다시 올릴 필요는 없어요.\n• 몇 분 걸릴 수 있으니 창을 닫지 마세요.\n• 이미 한 번 고친 교재는 다시 하지 않는 게 좋아요(쪽수 표시가 겹쳐요).\n\n진행할까요?')) return;
+  if (!confirm('「' + rec.name + '」 강사용 교재의 목차를 강사용 쪽 번호 기준으로 새로 만들고, 문제 쪽마다 「학생교재 몇 쪽」을 적어서 서버(드라이브) 파일을 바꿔 올려요.\n\n• 원본 파일을 다시 올릴 필요는 없어요.\n• 몇 분 걸릴 수 있으니 창을 닫지 마세요.\n• 이미 고친 교재에 또 눌러도 쪽수 표시는 겹치지 않아요.\n\n진행할까요?')) return;
   const old = btn.textContent, say = t => { btn.textContent = t.length > 46 ? t.slice(0, 46) + '…' : t; const m = $('sync-msg'); if (m) m.textContent = '📑 ' + t; };
   btn.disabled = true;
   try {
