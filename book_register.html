@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611252215">
+<link rel="stylesheet" href="css/style.css?v=202611252235">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,16 +97,16 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611252215"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611252215"></script>
-<script src="js/vendor/pdf.min.js?v=202611252215"></script>
-<script src="js/config.js?v=202611252215"></script>
-<script src="js/api.js?v=202611252215"></script>
-<script src="js/common.js?v=202611252215"></script>
-<script src="js/bankcore.js?v=202611252215"></script>
-<script src="js/coverdesign.js?v=202611252215"></script>
-<script src="js/pdfui.js?v=202611252215"></script>
-<script src="js/tocfix.js?v=202611252215"></script>
+<script src="js/vendor/qrcode.min.js?v=202611252235"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611252235"></script>
+<script src="js/vendor/pdf.min.js?v=202611252235"></script>
+<script src="js/config.js?v=202611252235"></script>
+<script src="js/api.js?v=202611252235"></script>
+<script src="js/common.js?v=202611252235"></script>
+<script src="js/bankcore.js?v=202611252235"></script>
+<script src="js/coverdesign.js?v=202611252235"></script>
+<script src="js/pdfui.js?v=202611252235"></script>
+<script src="js/tocfix.js?v=202611252235"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -612,12 +612,31 @@ async function fixSavedToc(rec, btn) {
     const raw = rec.raw || {};
     const r = await TocFix.rebuild({ bytes: new Uint8Array(await tBlob.arrayBuffer()), studentBytes: sBlob ? new Uint8Array(await sBlob.arrayBuffer()) : null, coverSecs: raw.cover && raw.cover.secs, bookName: rec.name, insertToc: insertGeneratedToc, say: say, noNotes: !!raw.tocFixed });
     const nb = new Blob([r.bytes], { type: 'application/pdf' });
-    if (rec.raw) { const m2 = Object.assign({}, rec.raw, { teacher: nb, tocFixed: true }); try { await mergeDbPut(m2); } catch (e) { console.warn('local save', e); } }
+    // 되돌리기용으로 고치기 전 파일을 따로 보관한다 (보관이 안 되면 바꾸지 않는다)
+    if (rec.sTeacher) { say('되돌리기용 원래 파일을 서버에 보관하는 중...'); const okb = await syncToServer({ id: rec.id + '_beforetoc', name: rec.name + ' [목차 고치기 전]', date: rec.date, teacher: tBlob }, 'teacher'); if (!okb) throw new Error('되돌리기용 보관이 안 돼서 바꾸지 않았어요. 아무것도 바뀌지 않았어요.'); }
+    if (rec.raw) { const m2 = Object.assign({}, rec.raw, { teacher: nb, tocFixed: true, beforeToc: rec.raw.beforeToc || (rec.raw.teacher || tBlob) }); try { await mergeDbPut(m2); } catch (e) { console.warn('local save', e); } }
     say('서버에 바꿔 올리는 중...');
     const ok = await syncToServer({ id: rec.id, name: rec.name, date: rec.date, teacher: nb }, 'teacher');
     const sm = r.summary || {};
     alert('목차를 새로 만들었어요 (단원 ' + sm.sections + '개, 목차 ' + sm.tocPagesNew + '쪽' + (sm.student ? ', 학생교재 쪽수 표시 포함' : ', 학생용을 못 읽어 학생 쪽수는 빠짐') + ').\n' + (ok ? '서버(드라이브) 파일도 바꿔 올렸어요.' : '서버 업로드는 확인되지 않았어요. 목록에서 ☁ 보관 상태를 확인해 주세요.') + (rec.raw ? '' : '\n(이 기기에는 저장하지 않았어요. 필요하면 서버 파일을 내려받아 쓰세요.)'));
   } catch (e) { alert('목차를 고치지 못했어요: ' + e.message); }
+  btn.textContent = old; btn.disabled = false; renderSaved();
+}
+
+// 목차 고치기를 되돌린다: 고치기 전 강사용 파일을 다시 쓰고 서버 파일도 바꾼다
+async function undoSavedToc(rec, btn) {
+  if (!confirm('「' + rec.name + '」 강사용 교재를 목차 고치기 전 파일로 되돌려요. 서버(드라이브) 파일도 바뀌어요. 진행할까요?')) return;
+  const old = btn.textContent, say = t => { btn.textContent = t.length > 46 ? t.slice(0, 46) + '…' : t; };
+  btn.disabled = true;
+  try {
+    say('되돌릴 파일 가져오는 중...');
+    const blob = (rec.raw && rec.raw.beforeToc) || await serverDownload(rec.sBack.fileId, (i, n) => say('받는 중... ' + i + '/' + n), rec.name + ' 되돌리기');
+    if (rec.raw) { const m2 = Object.assign({}, rec.raw, { teacher: blob, tocFixed: false }); delete m2.beforeToc; await mergeDbPut(m2); }
+    let ok = true;
+    if (rec.sTeacher) { say('서버에 되돌려 올리는 중...'); ok = await syncToServer({ id: rec.id, name: rec.name, date: rec.date, teacher: blob }, 'teacher'); }
+    if (ok && rec.sBack) { try { await callApi('mergeDelete', { password: getTeacherPassword(), id: rec.id + '_beforetoc' }); } catch (e) {} }
+    alert(ok ? '되돌렸어요.' : '이 기기 파일은 되돌렸지만 서버 올리기는 확인되지 않았어요. 서버 보관본을 다시 확인해 주세요.');
+  } catch (e) { alert('되돌리지 못했어요: ' + e.message); }
   btn.textContent = old; btn.disabled = false; renderSaved();
 }
 
@@ -627,8 +646,10 @@ async function renderSaved() {
     let local = []; try { local = await mergeDbAll(); } catch (e) {}
     try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) serverMerges = r.merges || []; } catch (e) {}
     const by = {};
-    serverMerges.forEach(m => { by[m.id] = { id: m.id, name: m.name, date: m.date, sTeacher: m.teacher, sStudent: m.student }; });
+    const bt = {};
+    serverMerges.forEach(m => { if (/_beforetoc$/.test(m.id)) { bt[m.id.replace(/_beforetoc$/, '')] = m.teacher; return; } by[m.id] = { id: m.id, name: m.name, date: m.date, sTeacher: m.teacher, sStudent: m.student }; });
     local.forEach(m => { const r = by[m.id] = by[m.id] || { id: m.id, name: m.name, date: m.date }; r.teacher = m.teacher; r.student = m.student; r.raw = m; });
+    Object.keys(by).forEach(k => { by[k].sBack = bt[k] || null; });
     const all = Object.keys(by).map(k => by[k]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     $('saved-card').style.display = all.length ? '' : 'none';
     $('saved-count').textContent = all.length ? '(' + all.length + '개)' : '';
@@ -658,6 +679,12 @@ async function renderSaved() {
         fx.title = '이미 만들어 둔 강사용 합본의 목차를 강사용 쪽 번호 기준으로 다시 만들고, 문제 쪽마다 학생교재 쪽수를 적은 뒤 서버 파일을 바꿔요 (원본 파일 다시 올릴 필요 없음)';
         fx.onclick = () => fixSavedToc(rec, fx);
         row.appendChild(fx);
+        if ((rec.raw && rec.raw.beforeToc) || rec.sBack) {
+          const un = document.createElement('button'); un.type = 'button'; un.className = 'btn'; un.style.cssText = 'margin:3px 6px 3px 0;'; un.textContent = '↩ 목차 고치기 되돌리기';
+          un.title = '목차를 고치기 전 강사용 파일로 되돌려요 (서버 파일도 바꿔요)';
+          un.onclick = () => undoSavedToc(rec, un);
+          row.appendChild(un);
+        }
       }
       [['teacher', '강사용', rec.teacher, rec.sTeacher], ['student', '학생용', rec.student, rec.sStudent]].forEach(a => {
         if (!a[2] || a[3]) return;
