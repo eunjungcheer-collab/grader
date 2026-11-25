@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260905">
+<link rel="stylesheet" href="css/style.css?v=202611260925">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260905"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260905"></script>
-<script src="js/printpdf.js?v=202611260905"></script>
-<script src="js/vendor/pdf.min.js?v=202611260905"></script>
-<script src="js/config.js?v=202611260905"></script>
-<script src="js/api.js?v=202611260905"></script>
-<script src="js/common.js?v=202611260905"></script>
-<script src="js/ocr.js?v=202611260905"></script>
-<script src="js/bankcore.js?v=202611260905"></script>
-<script src="js/pdfui.js?v=202611260905"></script>
-<script src="js/pdfview.js?v=202611260905"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260925"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260925"></script>
+<script src="js/printpdf.js?v=202611260925"></script>
+<script src="js/vendor/pdf.min.js?v=202611260925"></script>
+<script src="js/config.js?v=202611260925"></script>
+<script src="js/api.js?v=202611260925"></script>
+<script src="js/common.js?v=202611260925"></script>
+<script src="js/ocr.js?v=202611260925"></script>
+<script src="js/bankcore.js?v=202611260925"></script>
+<script src="js/pdfui.js?v=202611260925"></script>
+<script src="js/pdfview.js?v=202611260925"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1565,7 +1565,17 @@ function showAutoReview(R) {
           const past = !!(extractSchoolYear(x.title || '').school);      // 학교 이름이 있는 기출 시험지는 머리 제목을 그대로 둔다
           const bytes = await w.buildStudentBytes(x.title, x.id, { past: past, redactions: [] });
           await showPdfPreview(row, bytes, '새 학생용 PDF');
-          if (!confirm('아래 미리보기를 확인하세요. 이 파일로 서버의 학생용 PDF를 바꿀까요?\n(시험지 번호·QR 링크는 그대로예요. 취소하면 아무것도 바뀌지 않아요.)')) { msg.textContent = '취소했어요. 서버 파일은 그대로예요.'; }
+          msg.textContent = '👇 아래 미리보기를 확인하고, 괜찮으면 미리보기 위쪽의 「✅ 이 파일로 서버 바꾸기」를 누르세요.';
+          const okGo = await new Promise(res => {
+            const pv = row.querySelector('.rv-prev'), bar = document.createElement('div');
+            bar.style.cssText = 'display:flex; gap:8px; margin:8px 0; flex-wrap:wrap; position:sticky; top:0; background:#fafafa; padding:6px 0; z-index:5;';
+            bar.innerHTML = '<button type="button" class="btn primary pv-go" style="padding:7px 16px;">✅ 이 파일로 서버 바꾸기</button><button type="button" class="btn outline pv-no" style="padding:7px 16px;">취소 (아무것도 안 바뀌어요)</button><span class="hint" style="align-self:center;">시험지 번호·QR 링크는 그대로예요.</span>';
+            pv.insertBefore(bar, pv.children[1] || null);
+            bar.querySelector('.pv-go').onclick = () => { bar.remove(); res(true); }; bar.querySelector('.pv-no').onclick = () => { bar.remove(); res(false); };
+            const xb = pv.querySelector('.rv-prev-x'); if (xb) xb.addEventListener('click', () => res(false));
+            pv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+          if (!okGo) { msg.textContent = '취소했어요. 서버 파일은 그대로예요.'; }
           else {
             msg.textContent = '☁ 서버의 학생용 PDF를 바꾸는 중...';
             const r = await callApi('replaceExamPdf', { password: getTeacherPassword(), id: x.id, filename: x.title, pdfBase64: arrayBufferToBase64(bytes) });
