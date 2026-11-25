@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260925">
+<link rel="stylesheet" href="css/style.css?v=202611260950">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260925"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260925"></script>
-<script src="js/printpdf.js?v=202611260925"></script>
-<script src="js/vendor/pdf.min.js?v=202611260925"></script>
-<script src="js/config.js?v=202611260925"></script>
-<script src="js/api.js?v=202611260925"></script>
-<script src="js/common.js?v=202611260925"></script>
-<script src="js/ocr.js?v=202611260925"></script>
-<script src="js/bankcore.js?v=202611260925"></script>
-<script src="js/pdfui.js?v=202611260925"></script>
-<script src="js/pdfview.js?v=202611260925"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260950"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260950"></script>
+<script src="js/printpdf.js?v=202611260950"></script>
+<script src="js/vendor/pdf.min.js?v=202611260950"></script>
+<script src="js/config.js?v=202611260950"></script>
+<script src="js/api.js?v=202611260950"></script>
+<script src="js/common.js?v=202611260950"></script>
+<script src="js/ocr.js?v=202611260950"></script>
+<script src="js/bankcore.js?v=202611260950"></script>
+<script src="js/pdfui.js?v=202611260950"></script>
+<script src="js/pdfview.js?v=202611260950"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -468,14 +468,18 @@ async function loadExamFile(file, ansOverride, opts) {
         try { window.__rubPgs = await rubricByText(scanned.answerPages); } catch (e) { window.__rubPgs = []; }      // 글자로 기준표 쪽(표가 다음 쪽으로 이어진 쪽·빈 쪽 포함)을 찾는다
       }
     } catch (e) { console.warn('서술형 기준표 붙이기 실패', e); }
-    // 마지막 문제 쪽과 정답 쪽 사이에 문제가 없는 쪽이 끼어 있으면(글자가 깨져 읽히지 않는 서술형 기준표 쪽 등) 정답 쪽으로 보고 학생 시험지에서 뺀다 → 순서는 정답표 → 해설 → 이 쪽
+    // 마지막 문제 쪽 뒤의 쪽은 전부 정답 쪽으로 본다(정답표 둘째 쪽·서술형 기준표 등이 정답 쪽 판정에서 빠지는 경우). 순서는 정답표 → 해설 → 서술형 기준표로 하려고 기준표 쪽을 따로 적어 둔다
     try {
-      const lastQ = Math.max.apply(null, scanned.questions.map(q => Math.max.apply(null, [q.page].concat((q.extra || []).map(e => e.page)))).concat([0])), ap = scanned.answerPages.slice();
+      const lastQ = Math.max.apply(null, scanned.questions.map(q => Math.max.apply(null, [q.page].concat((q.extra || []).map(e => e.page)))).concat([0])), ap = scanned.answerPages.slice(), totP = pdfInfo.doc.numPages;
       if (lastQ > 0 && ap.length) {
-        const first = Math.min.apply(null, ap), gap = []; for (let g = lastQ + 1; g < first; g++) gap.push(g);
-        if (gap.length) { window.__rubPgs = Array.from(new Set((window.__rubPgs || []).concat(gap))).sort((a, b) => a - b); scanned.answerPages = Array.from(new Set(ap.concat(gap))).sort((a, b) => a - b); }
+        const all = new Set(ap); for (let g = lastQ + 1; g <= totP; g++) all.add(g);
+        const pages = Array.from(all).sort((a, b) => a - b), info = {};
+        for (const g of pages) { let t = ''; try { const tc = await (await pdfInfo.doc.getPage(g)).getTextContent(); t = tc.items.map(i => i.str).join(' '); } catch (e) {} const flat = t.replace(/\s+/g, ''); info[g] = { rub: /모범답안|(채점|평가)기준|채점기준해설/.test(flat), tbl: /정답\/배점|교과목별|지필평가|서답형문항|객관식|선택형|학년\d+과목/.test(flat) }; }
+        const firstTbl = pages.find(g => info[g].tbl && !info[g].rub), rub = new Set(window.__rubPgs || []);
+        pages.forEach(g => { if (info[g].rub && !info[g].tbl) rub.add(g); else if (firstTbl && g < firstTbl && !info[g].tbl && ap.indexOf(g) < 0) rub.add(g); });      // 정답표보다 앞에 끼어 있고 정답표 모양이 아닌 쪽(글자가 깨진 기준표 포함)
+        window.__rubPgs = Array.from(rub).sort((a, b) => a - b); scanned.answerPages = pages;
       }
-    } catch (e) { console.warn('끼어 있는 쪽 찾기 실패', e); }
+    } catch (e) { console.warn('정답 쪽 정리 실패', e); }
     if (rubricCnt) msg += ' 서술형 기준표에서 서술형 ' + rubricCnt + '문항의 답안을 해설로 붙였어요.';
     if (tableCount) msg += ' 정답표(' + (tableInfo.label || tableInfo.pages.join(',') + '쪽') + ')에서 ' + tableCount + '개를 읽어 미리 채웠어요. 왼쪽 PDF와 맞는지 확인하세요.';
     if (tableInfo && tableInfo.notes && tableInfo.notes.length) msg += ' ⚠️ ' + tableInfo.notes.join(' / ') + '.';
