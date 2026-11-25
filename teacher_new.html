@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260555">
+<link rel="stylesheet" href="css/style.css?v=202611260610">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260555"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260555"></script>
-<script src="js/printpdf.js?v=202611260555"></script>
-<script src="js/vendor/pdf.min.js?v=202611260555"></script>
-<script src="js/config.js?v=202611260555"></script>
-<script src="js/api.js?v=202611260555"></script>
-<script src="js/common.js?v=202611260555"></script>
-<script src="js/ocr.js?v=202611260555"></script>
-<script src="js/bankcore.js?v=202611260555"></script>
-<script src="js/pdfui.js?v=202611260555"></script>
-<script src="js/pdfview.js?v=202611260555"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260610"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260610"></script>
+<script src="js/printpdf.js?v=202611260610"></script>
+<script src="js/vendor/pdf.min.js?v=202611260610"></script>
+<script src="js/config.js?v=202611260610"></script>
+<script src="js/api.js?v=202611260610"></script>
+<script src="js/common.js?v=202611260610"></script>
+<script src="js/ocr.js?v=202611260610"></script>
+<script src="js/bankcore.js?v=202611260610"></script>
+<script src="js/pdfui.js?v=202611260610"></script>
+<script src="js/pdfview.js?v=202611260610"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -463,6 +463,8 @@ async function loadExamFile(file, ansOverride, opts) {
         if (window.__tableMax) { for (let n = window.__tableMax + 1; n <= (scanned.questionCount || 0) && n <= window.__tableMax + 8; n++) if (window.__tailEssay[n]) nums.push(n); }
         else scanned.questions.filter(q => q.subj).forEach(q => nums.push(q.num));
         rubricCnt = await BankCore.addRubricExplanations(pdfInfo.doc, Array.from({ length: rn }, (_, i) => tot - rn + 1 + i), nums, scanned);
+        // 평가기준표 쪽에는 서술형 모범답안이 있다 → 정답 쪽과 같이 학생용 PDF에서 빼고 해설지로 옮긴다
+        { const ps = scanned.answerPages.slice(); for (let i = 0; i < rn; i++) { const pg = tot - rn + 1 + i; if (ps.indexOf(pg) < 0) ps.push(pg); } scanned.answerPages = ps.sort((a, b) => a - b); }
       }
     } catch (e) { console.warn('서술형 기준표 붙이기 실패', e); }
     if (rubricCnt) msg += ' 서술형 기준표에서 서술형 ' + rubricCnt + '문항의 답안을 해설로 붙였어요.';
