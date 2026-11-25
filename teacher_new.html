@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260740">
+<link rel="stylesheet" href="css/style.css?v=202611260810">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260740"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260740"></script>
-<script src="js/printpdf.js?v=202611260740"></script>
-<script src="js/vendor/pdf.min.js?v=202611260740"></script>
-<script src="js/config.js?v=202611260740"></script>
-<script src="js/api.js?v=202611260740"></script>
-<script src="js/common.js?v=202611260740"></script>
-<script src="js/ocr.js?v=202611260740"></script>
-<script src="js/bankcore.js?v=202611260740"></script>
-<script src="js/pdfui.js?v=202611260740"></script>
-<script src="js/pdfview.js?v=202611260740"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260810"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260810"></script>
+<script src="js/printpdf.js?v=202611260810"></script>
+<script src="js/vendor/pdf.min.js?v=202611260810"></script>
+<script src="js/config.js?v=202611260810"></script>
+<script src="js/api.js?v=202611260810"></script>
+<script src="js/common.js?v=202611260810"></script>
+<script src="js/ocr.js?v=202611260810"></script>
+<script src="js/bankcore.js?v=202611260810"></script>
+<script src="js/pdfui.js?v=202611260810"></script>
+<script src="js/pdfview.js?v=202611260810"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -455,7 +455,7 @@ async function loadExamFile(file, ansOverride, opts) {
     try {
       const tot = pdfInfo.doc.numPages;
       if (!window.__rubricN) {      // 서술형 평가기준표가 시험지 PDF 맨 뒤에 이미 같이 들어 있는 경우: 마지막 쪽들에서 「평가기준표(문항·평가기준·배점)」 쪽을 찾아 같은 방식으로 쓴다
-        try { for (let p = Math.max(1, tot - 3); p <= tot; p++) { const tc = await (await pdfInfo.doc.getPage(p)).getTextContent(), tx = tc.items.map(i => i.str).join('').replace(/\s+/g, ''); if (/평가기준표/.test(tx) && /배점/.test(tx) && /문항/.test(tx)) { window.__rubricN = tot - p + 1; break; } } } catch (e) {}
+        try { for (let p = Math.max(1, tot - 3); p <= tot; p++) { const tc = await (await pdfInfo.doc.getPage(p)).getTextContent(), tx = tc.items.map(i => i.str).join('').replace(/\s+/g, ''); if (/(평가|채점)기준표/.test(tx) && /배점/.test(tx) && /문항/.test(tx)) { window.__rubricN = tot - p + 1; break; } } } catch (e) {}
       }
       const rn = window.__rubricN || 0;
       if (rn > 0) {
@@ -1192,6 +1192,25 @@ async function pushPickToServer(x, ctx, n, say) {
   const r2 = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: x.id, answers: x.answers, essayNums: x.essay }); if (!r2 || !r2.ok) throw new Error((r2 && r2.error) || '정답을 바꾸지 못했어요');
   return !!qid;
 }
+// 다시 만든 PDF를 목록으로 돌아가지 않고 이 화면에서 바로 확인한다 (쪽마다 작은 그림 → 누르면 크게)
+async function showPdfPreview(row, bytes, label) {
+  let box = row.querySelector('.rv-prev');
+  if (!box) { box = document.createElement('div'); box.className = 'rv-prev'; box.style.cssText = 'margin:10px 0; padding:10px; border:1px solid var(--line); border-radius:10px; background:#fafafa;'; const pb = row.querySelector('.rv-peekbox'); (pb && pb.parentNode) ? pb.parentNode.insertBefore(box, pb) : row.appendChild(box); }
+  box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px;"><b style="font-size:14px;">🔍 ' + escapeHtml(label) + ' — 전체 쪽 미리보기</b><button type="button" class="btn outline rv-prev-x" style="padding:3px 10px; font-size:12px;">닫기</button></div><div class="hint rv-prev-n" style="margin:4px 0;">불러오는 중...</div><div class="rv-prev-g" style="display:flex; flex-wrap:wrap; gap:8px;"></div>';
+  box.querySelector('.rv-prev-x').onclick = () => box.remove();
+  try {
+    setupPdfJs();
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise, g = box.querySelector('.rv-prev-g');
+    box.querySelector('.rv-prev-n').textContent = '총 ' + doc.numPages + '쪽이에요. 그림을 누르면 크게 보여요.';
+    for (let i = 1; i <= doc.numPages; i++) {
+      const pg = await doc.getPage(i), vp0 = pg.getViewport({ scale: 1 }), sc = 1.4, vp = pg.getViewport({ scale: sc }), cv = document.createElement('canvas');
+      cv.width = vp.width; cv.height = vp.height; await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      const wrap = document.createElement('div'); wrap.style.cssText = 'text-align:center; font-size:12px;';
+      cv.style.cssText = 'width:170px; border:1px solid var(--line); background:#fff; cursor:zoom-in;'; cv.onclick = () => { const big = cv.style.width === '100%'; cv.style.width = big ? '170px' : '100%'; wrap.style.flexBasis = big ? '' : '100%'; };
+      wrap.appendChild(cv); wrap.appendChild(document.createTextNode(i + '쪽')); g.appendChild(wrap);
+    }
+  } catch (e) { box.querySelector('.rv-prev-n').textContent = '미리보기를 만들지 못했어요: ' + e.message; }
+}
 // 영역을 고친 뒤: 이 브라우저에 보관된 강사용 PDF를 새 영역(문제·해설)으로 다시 만들어 바꿔 둔다 (강사용 인쇄·받기는 이 파일을 쓴다)
 async function rebuildTeacherPdf(x, ctx, say) {
   const w = ctx.fr.contentWindow; if (!w || typeof w.buildTeacherBytes !== 'function') throw new Error('강사용을 다시 만들 수 없어요');
@@ -1516,25 +1535,38 @@ function showAutoReview(R) {
     bindPk(row);
     { const rb = row.querySelector('.rv-rebuild'); if (rb) rb.addEventListener('click', async () => {
       const old = rb.textContent; rb.disabled = true;
-      try { const ctx = await editorCtx(x, s => { msg.textContent = s; rb.textContent = '⏳ 진행 중...'; }); await rebuildTeacherPdf(x, ctx, s => { msg.textContent = s; });
-        const m = '✅ 강사용 PDF를 새로 만들어 저장했어요. 「강사용 인쇄」「강사용 받기」에 바로 반영돼요.'; msg.textContent = m; bigToast(m, true); markEdited(x.id);
+      try { const ctx = await editorCtx(x, s => { msg.textContent = s; rb.textContent = '⏳ 진행 중...'; }); const rebuilt = await rebuildTeacherPdf(x, ctx, s => { msg.textContent = s; });
+        const m = '✅ 강사용 PDF를 새로 만들어 저장했어요. 「강사용 인쇄」「강사용 받기」에 바로 반영돼요.'; msg.textContent = m; bigToast(m, true); markEdited(x.id); showPdfPreview(row, new Uint8Array(rebuilt.bytes), '강사용 PDF');
       } catch (e) { msg.textContent = '⚠️ ' + e.message; bigToast('⚠️ 강사용 PDF를 새로 만들지 못했어요: ' + e.message, false); }
       rb.textContent = old; rb.disabled = false; }); }
-    { const rs = row.querySelector('.rv-rebuild-st'); if (rs) rs.addEventListener('click', async () => {
-      if (!confirm('학생용 PDF를 새로 만들어 서버의 파일을 바꿀까요?\n(시험지 번호·QR 링크는 그대로예요. 등록할 때 손으로 가린 부분은 다시 가려야 할 수 있어요.)')) return;
-      const old = rs.textContent; rs.disabled = true;
-      try {
-        const ctx = await editorCtx(x, s2 => { msg.textContent = s2; rs.textContent = '⏳ 진행 중...'; }), w = ctx.fr.contentWindow;
-        if (typeof w.buildStudentBytes !== 'function') throw new Error('학생용을 다시 만들 수 없어요');
-        msg.textContent = '📄 학생용 PDF를 새로 만드는 중... (1~2분 걸릴 수 있어요)';
-        const past = !!(extractSchoolYear(x.title || '').school);      // 학교 이름이 있는 기출 시험지는 머리 제목을 그대로 둔다
-        const bytes = await w.buildStudentBytes(x.title, x.id, { past: past, redactions: [] });
-        msg.textContent = '☁ 서버의 학생용 PDF를 바꾸는 중...';
-        const r = await callApi('replaceExamPdf', { password: getTeacherPassword(), id: x.id, filename: x.title, pdfBase64: arrayBufferToBase64(bytes) });
-        if (!r || !r.ok) throw new Error((r && r.error) || '서버에 올리지 못했어요');
-        const m = '✅ 학생용 PDF를 새로 만들어 서버에 바꿔 올렸어요. 「학생용 받기·인쇄」에 바로 반영돼요.'; msg.textContent = m; bigToast(m, true); markEdited(x.id);
-      } catch (e) { msg.textContent = '⚠️ ' + e.message; bigToast('⚠️ 학생용 PDF를 새로 만들지 못했어요: ' + e.message, false); }
-      rs.textContent = old; rs.disabled = false; }); }
+    { const rs = row.querySelector('.rv-rebuild-st'); if (rs) {
+      const fi = document.createElement('input'); fi.type = 'file'; fi.accept = 'application/pdf,.pdf'; fi.multiple = true; fi.style.display = 'none'; row.appendChild(fi);
+      rs.addEventListener('click', () => { alert('학생용 PDF는 서버에 있는 파일(이미 QR·쪽번호가 찍힌 것)로는 다시 만들 수 없어요.\n\n처음 올렸던 원본 시험지 PDF를 골라 주세요. 정답지·서술형 기준표가 따로 있었다면 그 파일도 같이(Ctrl을 누르고) 골라 주세요.'); fi.click(); });
+      fi.addEventListener('change', async () => {
+        const files = Array.from(fi.files || []); fi.value = ''; if (!files.length) return;
+        const isAns = f => /정답|해설|기준|채점|답안/.test(f.name), exam = files.find(f => !isAns(f)) || files[0], ans = files.find(f => f !== exam) || null;
+        const old = rs.textContent; rs.disabled = true;
+        try {
+          const tmp = Object.assign({}, x, { pair: { file: exam, ans: ans } });
+          const ctx = await editorCtx(tmp, s2 => { msg.textContent = s2; rs.textContent = '⏳ 진행 중...'; }), w = ctx.fr.contentWindow;
+          if (typeof w.buildStudentBytes !== 'function') throw new Error('학생용을 다시 만들 수 없어요');
+          const nq = w.eval('scanned').questions.length, na = (x.answers || []).length;
+          if (nq && na && nq < na - 8) throw new Error('고른 PDF가 이 시험지와 다른 것 같아요 (문항 ' + nq + '개 / 시험지 ' + na + '문항). 원본 파일이 맞는지 확인해 주세요.');
+          msg.textContent = '📄 학생용 PDF를 새로 만드는 중... (1~2분 걸릴 수 있어요)';
+          const past = !!(extractSchoolYear(x.title || '').school);      // 학교 이름이 있는 기출 시험지는 머리 제목을 그대로 둔다
+          const bytes = await w.buildStudentBytes(x.title, x.id, { past: past, redactions: [] });
+          await showPdfPreview(row, bytes, '새 학생용 PDF');
+          if (!confirm('아래 미리보기를 확인하세요. 이 파일로 서버의 학생용 PDF를 바꿀까요?\n(시험지 번호·QR 링크는 그대로예요. 취소하면 아무것도 바뀌지 않아요.)')) { msg.textContent = '취소했어요. 서버 파일은 그대로예요.'; }
+          else {
+            msg.textContent = '☁ 서버의 학생용 PDF를 바꾸는 중...';
+            const r = await callApi('replaceExamPdf', { password: getTeacherPassword(), id: x.id, filename: x.title, pdfBase64: arrayBufferToBase64(bytes) });
+            if (!r || !r.ok) throw new Error((r && r.error) || '서버에 올리지 못했어요');
+            const m = '✅ 학생용 PDF를 새로 만들어 서버에 바꿔 올렸어요. 「학생용 받기·인쇄」에 바로 반영돼요.'; msg.textContent = m; bigToast(m, true); markEdited(x.id);
+          }
+        } catch (e) { msg.textContent = '⚠️ ' + e.message; bigToast('⚠️ 학생용 PDF를 새로 만들지 못했어요: ' + e.message, false); }
+        rs.textContent = old; rs.disabled = false;
+      });
+    } }
     { // 🔎 정답 이미지로 확인: 누를 때만 그 시험지를 다시 읽어 문항별 정답 그림을 만든다 (등록 속도에는 영향이 없다)
       const pb = row.querySelector('.rv-peekbtn'), box = row.querySelector('.rv-peekbox');
       const paintPeek = () => {
