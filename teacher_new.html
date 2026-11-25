@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260835">
+<link rel="stylesheet" href="css/style.css?v=202611260845">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260835"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260835"></script>
-<script src="js/printpdf.js?v=202611260835"></script>
-<script src="js/vendor/pdf.min.js?v=202611260835"></script>
-<script src="js/config.js?v=202611260835"></script>
-<script src="js/api.js?v=202611260835"></script>
-<script src="js/common.js?v=202611260835"></script>
-<script src="js/ocr.js?v=202611260835"></script>
-<script src="js/bankcore.js?v=202611260835"></script>
-<script src="js/pdfui.js?v=202611260835"></script>
-<script src="js/pdfview.js?v=202611260835"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260845"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260845"></script>
+<script src="js/printpdf.js?v=202611260845"></script>
+<script src="js/vendor/pdf.min.js?v=202611260845"></script>
+<script src="js/config.js?v=202611260845"></script>
+<script src="js/api.js?v=202611260845"></script>
+<script src="js/common.js?v=202611260845"></script>
+<script src="js/ocr.js?v=202611260845"></script>
+<script src="js/bankcore.js?v=202611260845"></script>
+<script src="js/pdfui.js?v=202611260845"></script>
+<script src="js/pdfview.js?v=202611260845"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1541,7 +1541,7 @@ function showAutoReview(R) {
       rb.textContent = old; rb.disabled = false; }); }
     { const rs = row.querySelector('.rv-rebuild-st'); if (rs) {
       const fi = document.createElement('input'); fi.type = 'file'; fi.accept = 'application/pdf,.pdf'; fi.multiple = true; fi.style.display = 'none'; row.appendChild(fi);
-      rs.addEventListener('click', () => { alert('학생용 PDF는 서버에 있는 파일(이미 QR·쪽번호가 찍힌 것)로는 다시 만들 수 없어요.\n\n처음 올렸던 원본 시험지 PDF를 골라 주세요. 정답지·서술형 기준표가 따로 있었다면 그 파일도 같이(Ctrl을 누르고) 골라 주세요.'); fi.click(); });
+      rs.addEventListener('click', () => { msg.textContent = '📄 처음 올렸던 원본 시험지 PDF를 골라 주세요. 정답지·서술형 기준표가 따로 있었다면 Ctrl을 누른 채 같이 고르세요. (서버에 있는 파일은 QR·쪽번호가 이미 찍혀 있어서 다시 만들 수 없어요)'; fi.click(); });
       fi.addEventListener('change', async () => {
         const files = Array.from(fi.files || []); fi.value = ''; if (!files.length) return;
         const isAns = f => /정답|해설|기준|채점|답안/.test(f.name), exam = files.find(f => !isAns(f)) || files[0], ans = files.find(f => f !== exam) || null;
