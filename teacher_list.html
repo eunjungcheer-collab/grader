@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260455">
+<link rel="stylesheet" href="css/style.css?v=202611260510">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -45,11 +45,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611260455"></script>
-<script src="js/api.js?v=202611260455"></script>
-<script src="js/common.js?v=202611260455"></script>
-<script src="js/bankcore.js?v=202611260455"></script>
-<script src="js/pdfui.js?v=202611260455"></script>
+<script src="js/config.js?v=202611260510"></script>
+<script src="js/api.js?v=202611260510"></script>
+<script src="js/common.js?v=202611260510"></script>
+<script src="js/bankcore.js?v=202611260510"></script>
+<script src="js/pdfui.js?v=202611260510"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -179,8 +179,8 @@ renderHeader();
       // 최근(3일 안)에 단원·정답·영역을 고친 시험지는 어떤 정렬이든 맨 위에, 가장 나중에 고친 순으로 둔다
       const et = ex => { try { const t0 = +(localStorage.getItem('qr_edit_ts_' + ex.id) || 0); return t0 && Date.now() - t0 < 3 * 86400000 ? t0 : 0; } catch (e) { return 0; } };
       const base = by[st.sort] || by.new;
-      if (st.subj) return list.sort(by.new);      // 주관식·서술형만 볼 때는 최근 등록순
-      return list.sort((a, b) => { const fa = et(a), fb = et(b); return (fa || fb) ? fb - fa : base(a, b); });
+      const rest = st.subj ? by.new : base;      // 주관식·서술형만 볼 때는 (최근 수정한 것 다음에) 최근 등록순
+      return list.sort((a, b) => { const fa = et(a), fb = et(b); return (fa || fb) ? fb - fa : rest(a, b); });
     }
     // 시험지 제목에서 연도 · 학년 · 학기 · 중간/기말을 읽는다. 「2024학년도 1학년 2학기 중간고사」, 「2024-1-2 기말」, 「1-2 중간」, 「2학기 기말」 같은 여러 모양을 받는다
     function parseExamTitle(ex) {
