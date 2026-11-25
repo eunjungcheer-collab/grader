@@ -2030,6 +2030,7 @@
       return { top: ys[col], x: colX[col], w: colW, wide: false };
     }
     function advance(p, used) { if (p.wide) { ys[0] = ys[1] = p.top - used - gap; } else ys[col] = p.top - used - gap; }
+    doc._pageNums = [];      // 쪽마다 실린 문항 번호 (교재 합본에서 「학생 교재 몇 쪽」을 적을 때 쓴다)
     newPage();
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
@@ -2048,6 +2049,7 @@
         page.drawImage(timg, { x: p.x + dw - tg.w, y: p.top - tg.h, width: tg.w, height: tg.h });
         p.top -= TAGH;
       }
+      { const pi0 = doc.getPageCount() - 1; (doc._pageNums[pi0] = doc._pageNums[pi0] || []).push(it.num); }
       page.drawImage(img, { x: p.x, y: p.top - dh, width: dw, height: dh });
       if (it.headRange && !it.noBadge) { const hb = await findHeadMarker(it.base64); drawHeadPatch(page, nfont, rgb, hb, p.x, p.top, dw / it.width, newHeadText(items, it)); }
       // 학생용 시험지와 같은 번호: 옛 문항 번호를 흰색으로 지우고 그 자리에 진한 파란 원 번호(1,2,3…)를 덮는다

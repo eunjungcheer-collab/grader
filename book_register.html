@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 만들기 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611250550">
+<link rel="stylesheet" href="css/style.css?v=202611251920">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -97,15 +97,15 @@
   </div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611250550"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611250550"></script>
-<script src="js/vendor/pdf.min.js?v=202611250550"></script>
-<script src="js/config.js?v=202611250550"></script>
-<script src="js/api.js?v=202611250550"></script>
-<script src="js/common.js?v=202611250550"></script>
-<script src="js/bankcore.js?v=202611250550"></script>
-<script src="js/coverdesign.js?v=202611250550"></script>
-<script src="js/pdfui.js?v=202611250550"></script>
+<script src="js/vendor/qrcode.min.js?v=202611251920"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611251920"></script>
+<script src="js/vendor/pdf.min.js?v=202611251920"></script>
+<script src="js/config.js?v=202611251920"></script>
+<script src="js/api.js?v=202611251920"></script>
+<script src="js/common.js?v=202611251920"></script>
+<script src="js/bankcore.js?v=202611251920"></script>
+<script src="js/coverdesign.js?v=202611251920"></script>
+<script src="js/pdfui.js?v=202611251920"></script>
 <script>
 requireLogin();
 renderHeader({ wide: true, wider: true });
@@ -195,7 +195,7 @@ function gradeMain(bookName) {
   if ($('new-cover') && $('new-cover').checked && $('cover-color') && COVER_COLORS[$('cover-color').value]) return COVER_COLORS[$('cover-color').value][0];
   return /중\s*1/.test(bookName) ? '#E4566D' : /중\s*2/.test(bookName) ? '#2F7BC0' : /중\s*3/.test(bookName) ? '#7A55C2' : /고\s*1|공통|통합/.test(bookName) ? '#139186' : '#0B1F5C';
 }
-async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd) {
+async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd, stu) {
   posEnd = posEnd || ((sec, which) => pos(sec[which]));
   at = at || 0;
   const ref = pdf.getPage(0).getSize(), W = ref.width, H = ref.height;
@@ -219,6 +219,7 @@ async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd)
   if (cur.length) pages.push(cur);
   const nIns = Math.max(1, pages.length);
   const shift = p => p + (p > at ? nIns : 0); // 목차가 끼워진 뒤의 실제 쪽 번호
+  const sp = p => { const b = stu ? stu.pos(p) : 0; return b > 0 ? shift(b) : 0; };      // 강사용 합본에만: 같은 문제 쪽이 학생용 합본에서는 몇 쪽인지
   const links = [];
   const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif', K = 3;
   const qRight = W - 120, aRight = W - 54, L = 54;
@@ -227,7 +228,7 @@ async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd)
     const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.scale(K, K); g.textBaseline = 'middle';
     g.fillStyle = '#1B1B2B'; g.font = '800 30px ' + FONT; g.textAlign = 'left'; g.fillText('목 차', L, 66);
     const tw = g.measureText('목 차').width;
-    g.fillStyle = '#7A4A55'; g.font = '500 10px ' + FONT; g.fillText('문제편 → 정답편 순서 · 쪽수는 각 쪽 오른쪽 아래 번호 기준' + (nIns > 1 ? ' (' + (pi + 1) + '/' + nIns + ')' : ''), L + tw + 10, 70);
+    g.fillStyle = '#7A4A55'; g.font = '500 10px ' + FONT; g.fillText((stu ? '강사용 쪽 번호 기준 · 파란 「학생」은 학생 교재 쪽 번호' : '문제편 → 정답편 순서 · 쪽수는 각 쪽 오른쪽 아래 번호 기준') + (nIns > 1 ? ' (' + (pi + 1) + '/' + nIns + ')' : ''), L + tw + 10, 70);
     g.fillStyle = '#6B6070'; g.font = '700 9.5px ' + FONT; g.textAlign = 'right'; g.fillText('문제', qRight, 112); g.fillText('정답·해설', aRight, 112);
     let y = TOP;
     pages[pi].forEach((it, k) => {
@@ -244,12 +245,17 @@ async function insertGeneratedToc(pdf, secs, bookName, pos, withAns, at, posEnd)
       }
       const sec = it.sec, cy = y + ROW / 2;
       g.textAlign = 'left'; g.fillStyle = '#6B6070'; g.font = '500 8.5px ' + FONT; g.fillText(sec.tag || '', L + 4, cy);
-      let nm = sec.name; g.fillStyle = '#16161F'; g.font = '600 11.5px ' + FONT; const maxW = qRight - 70 - (L + 70);
+      let nm = sec.name; g.fillStyle = '#16161F'; g.font = '600 11.5px ' + FONT; const maxW = qRight - 70 - (L + 70) - (stu ? 70 : 0);
       while (g.measureText(nm).width > maxW && nm.length > 6) nm = nm.slice(0, -2);
       g.fillText(nm, L + 70, cy);
-      const nameEnd = L + 70 + g.measureText(nm).width + 8, qL = qRight - 52;
-      g.save(); g.strokeStyle = '#A9A3AE'; g.lineWidth = 0.8; g.setLineDash([0.8, 2.2]); g.beginPath(); g.moveTo(nameEnd, cy + 4); g.lineTo(qL - 8, cy + 4); g.stroke(); g.restore();
+      const nameEnd = L + 70 + g.measureText(nm).width + 8;
       const qStr = shift(pos(sec.qa)) + '~' + shift(posEnd(sec, 'qb')), hasA = pos(sec.aa) > 0, aStr = hasA ? shift(pos(sec.aa)) + '~' + shift(posEnd(sec, 'ab')) : '';
+      g.font = '800 12px ' + FONT; const qw = g.measureText(qStr).width;
+      let stStr = '';
+      if (stu) { const a1 = sp(sec.qa), b1 = sp(sec.qb); if (a1) stStr = '학생 ' + a1 + (b1 && b1 !== a1 ? '~' + b1 : ''); }
+      let dotEnd = qRight - qw - 8;
+      if (stStr) { g.font = '700 9.5px ' + FONT; const sw = g.measureText(stStr).width; g.textAlign = 'right'; g.fillStyle = '#2F5DA8'; g.fillText(stStr, qRight - qw - 12, cy); dotEnd = qRight - qw - 12 - sw - 6; }
+      g.save(); g.strokeStyle = '#A9A3AE'; g.lineWidth = 0.8; g.setLineDash([0.8, 2.2]); g.beginPath(); g.moveTo(nameEnd, cy + 4); g.lineTo(Math.max(nameEnd + 6, dotEnd), cy + 4); g.stroke(); g.restore();
       g.textAlign = 'right'; g.font = '800 12px ' + FONT; g.fillStyle = '#16161F'; g.fillText(qStr, qRight, cy);
       if (hasA) { g.fillStyle = '#D6283C'; g.fillText(aStr, aRight, cy); }
       const yTop = H - y, yBot = H - (y + ROW);
@@ -563,11 +569,28 @@ async function syncToServer(rec, only) {
       notes.push(lab + ' 보관 완료');
     }
     say('☁ ' + notes.join(' · ') + '. 강사용·학생용은 따로 보관돼요.');
-  } catch (e) { say('☁ 서버 보관은 못 했어요(' + e.message + '). 이 기기에는 저장돼 있어요.' + (notes.length ? ' (' + notes.join(' · ') + ')' : '')); alert('서버 보관을 못 했어요: ' + e.message); window._syncBtn = null; renderSaved(); return; }
+  } catch (e) { say('☁ 서버 보관은 못 했어요(' + e.message + '). 이 기기에는 저장돼 있어요.' + (notes.length ? ' (' + notes.join(' · ') + ')' : '')); alert('서버 보관을 못 했어요: ' + e.message); window._syncBtn = null; renderSaved(); return false; }
   if (only) alert('서버 보관 결과: ' + notes.join(' · '));
   window._syncBtn = null;
   renderSaved();
+  return notes.length > 0 && !notes.some(n => /건너뛰/.test(n));
 }
+// 같은 이름으로 다시 만든 교재가 서버에 잘 올라가면, 예전에 만들어 둔 같은 이름의 교재(이 기기·서버 보관본)를 새것으로 바꿔 치운다 (확인을 받고 지운다)
+async function offerReplaceOld(rec) {
+  try {
+    const olds = {};
+    try { (await mergeDbAll()).forEach(m => { if (m.id !== rec.id && m.name === rec.name && !/_orig$/.test(m.id)) olds[m.id] = m; }); } catch (e) {}
+    try { const r = await callApi('mergeList', { password: getTeacherPassword() }); if (r && r.ok) (r.merges || []).forEach(m => { if (m.id !== rec.id && m.name === rec.name && !/_orig$/.test(m.id)) olds[m.id] = Object.assign(olds[m.id] || {}, m, { srv: true }); }); } catch (e) {}
+    const ids = Object.keys(olds); if (!ids.length) return;
+    const ds = ids.map(i => { const d = new Date(olds[i].date); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }).join(', ');
+    if (!confirm('「' + rec.name + '」 교재가 예전에 만든 것이 ' + ids.length + '개 더 있어요 (' + ds + ').\n\n새로 만든 강사용·학생용이 서버(드라이브)에 올라갔어요. 예전 것은 지우고 새것으로 바꿀까요?\n(학생 QR은 시험에 연결돼 있어서 예전 교재 파일을 지워도 그대로 열려요)')) return;
+    let fail = 0;
+    for (const id of ids) { try { await mergeDbDel(id); } catch (e) {} if (olds[id].srv || olds[id].teacher || olds[id].student) { try { const r = await callApi('mergeDelete', { password: getTeacherPassword(), id: id }); if (!r || !r.ok) fail++; } catch (e) { fail++; } } }
+    const m = $('sync-msg'); if (m) m.textContent = '♻️ 예전 교재 ' + (ids.length - fail) + '개를 새 교재로 바꿨어요' + (fail ? ' (' + fail + '개는 서버에서 못 지웠어요 — 아래 목록에서 🗑 삭제)' : '');
+    serverMerges = serverMerges.filter(x => ids.indexOf(x.id) < 0); renderSaved();
+  } catch (e) { console.warn('replace old', e); }
+}
+
 function showDownloads(rec) { const box = $('dl-box'); box.innerHTML = ''; mergeBtns(rec, box); }
 
 let serverMerges = [];
@@ -917,7 +940,8 @@ $('go-btn').addEventListener('click', async () => {
             canvas.width = canvas.height = 0;      // 그림 메모리를 바로 돌려준다
             items.push(it);
           }
-          teacherSec[s.order] = { doc: await BankCore.composeTeacherPdf(PDFLib, secTitle(s), items, { keepTitle: false, qrReserve: 62 }), withExpl: items.filter(x => x.explBase64).length, n: items.length };
+          const tdoc = await BankCore.composeTeacherPdf(PDFLib, secTitle(s), items, { keepTitle: false, qrReserve: 62 }), qpg = {}; qs.forEach(q => { qpg[q.num] = s.qa + (q.page || 1) - 1; });
+          teacherSec[s.order] = { doc: tdoc, pnums: tdoc._pageNums || [], qpg: qpg, withExpl: items.filter(x => x.explBase64).length, n: items.length };
           items.length = 0; try { await bookDoc.cleanup(); } catch (e2) {}
         } catch (e) {}
       }
@@ -958,6 +982,22 @@ $('go-btn').addEventListener('click', async () => {
     const stem = bookFileName.replace(/\.pdf$/i, '');
     const bookNm = $('book-name').value.trim() || stem;
     // 한 가지 버전 만들기: 정답·해설 쪽을 뺄지 정하고 → 원래 쪽 번호를 하얗게 지우고 → (목차가 없던 교재면) 목차 쪽을 표지 뒤에 끼우고 → 새 쪽 번호를 쓴다
+    // 학생용 합본의 쪽 배치 (원래 쪽 → 학생용 몇 쪽): 강사용 목차·쪽번호 옆에 「학생 N쪽」을 적기 위해 먼저 계산해 둔다 (학생용도 같은 규칙으로 만들어진다)
+    const stuBase = (() => {
+      const N = bookDoc.numPages, drop = new Set();
+      if ($('new-toc').checked && tocPage) { const fq = Math.min.apply(null, chosen.map(s => s.qa)); for (let p = tocPage; p < fq; p++) drop.add(p - 1); }
+      const sk = []; for (let i = 0; i < N; i++) if (!drop.has(i)) sk.push(i);
+      if ($('new-cover').checked) { const fq = Math.min.apply(null, chosen.map(s => s.qa - 1)); if (sk.indexOf(fq) === 0) sk.unshift(-1); }
+      return sk;
+    })();
+    const stuPos0 = p => { const i = stuBase.indexOf(p - 1); return i < 0 ? 0 : i + 1; };
+    const noteMake = txt => {      // 「학생교재 N쪽」 작은 알약 그림
+      const nc = document.createElement('canvas'), ng = nc.getContext('2d'), F = '700 30px "Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif'; ng.font = F;
+      const tw2 = Math.ceil(ng.measureText(txt).width) + 28; nc.width = tw2; nc.height = 48; ng.font = F;
+      ng.fillStyle = '#E8F0FE'; ng.beginPath(); ng.roundRect(1, 1, tw2 - 2, 46, 12); ng.fill(); ng.strokeStyle = '#2F5DA8'; ng.lineWidth = 2.5; ng.stroke();
+      ng.fillStyle = '#1F3F7A'; ng.textBaseline = 'middle'; ng.textAlign = 'center'; ng.fillText(txt, tw2 / 2, 25);
+      return { png: nc.toDataURL('image/png'), r: tw2 / 48 };
+    };
     const makeVersion = async (withAns) => {
       window._lastCoverPng = null; window._lastSpot = null;
       const doc = await PDFLib.PDFDocument.load(stampedBytes, { ignoreEncryption: true, updateMetadata: false });
@@ -967,10 +1007,11 @@ $('go-btn').addEventListener('click', async () => {
         const fq = Math.min.apply(null, chosen.map(s => s.qa)); for (let p = tocPage; p < fq; p++) drop.add(p - 1);
       }
       let kept = doc.getPageIndices().filter(i => !drop.has(i));
+      let repNote = kept.map(() => null);      // 강사용 해설서로 바꿔 끼운 쪽마다: 그 쪽에 실린 문항이 원래 있던 쪽들
       for (let i = doc.getPageCount() - 1; i >= 0; i--) if (drop.has(i)) doc.removePage(i);
       if ($('new-cover').checked) {      // 교재에 표지가 없으면(첫 쪽이 바로 문제) 맨 앞에 표지 쪽을 하나 끼워 둔다 (아래에서 새 표지로 채운다)
         const fq = Math.min.apply(null, chosen.map(s => s.qa - 1)), at0 = kept.indexOf(fq);
-        if (at0 === 0) { const sz = doc.getPage(0).getSize(); doc.insertPage(0, [sz.width, sz.height]); kept.unshift(-1); }
+        if (at0 === 0) { const sz = doc.getPage(0).getSize(); doc.insertPage(0, [sz.width, sz.height]); kept.unshift(-1); repNote.unshift(null); }
       }
       if (withAns) {
         // 문제 쪽을 새로 짠 강사용 해설서 쪽으로 바꿔 끼운다 (kept: 원래 쪽 번호, 새 쪽은 1e6+원래 첫 쪽 / -1)
@@ -982,6 +1023,7 @@ $('go-btn').addEventListener('click', async () => {
           copied.forEach((pg, k) => doc.insertPage(at + k, pg));
           for (let k = 0; k < cnt; k++) doc.removePage(at + n);
           kept.splice(at, cnt, ...copied.map((_, k) => k === 0 ? 1e6 + s.qa - 1 : -1));
+          { const ts = teacherSec[s.order]; repNote.splice(at, cnt, ...copied.map((_, k) => { const nums = (ts.pnums && ts.pnums[k]) || [], o = {}; nums.forEach(nn => { if (ts.qpg[nn]) o[ts.qpg[nn]] = 1; }); return Object.keys(o).map(Number); })); }
           if (ids[s.order]) await stampQrOnPage(doc, at, studentLinkFor(ids[s.order]), { size: size, corner: corner, margin: 8, caption: 'QR코드로 답안 입력하세요' });
         }
       }
@@ -1000,7 +1042,7 @@ $('go-btn').addEventListener('click', async () => {
           const st = sec.qa, i0 = kept.indexOf(1e6 + st - 1); if (i0 < 0) return 0;
           let e = i0; while (kept[e + 1] === -1) e++; return e + 1;
         };
-        nIns = await insertGeneratedToc(doc, sections, bookNm, posOf, true, tocAt, posEnd);
+        nIns = await insertGeneratedToc(doc, sections, bookNm, posOf, true, tocAt, posEnd, withAns ? { pos: stuPos0 } : null);
       }
       if (!useGen) {
         // 교재에 원래 있던 목차: 각 줄(단원·문제 쪽)을 누르면 문제 첫 쪽, 정답 쪽 숫자를 누르면 정답 첫 쪽으로
@@ -1056,6 +1098,7 @@ $('go-btn').addEventListener('click', async () => {
         } catch (e) { console.warn('cover label', e); }
       }
       const font = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+      const noteJobs = [];
       doc.getPages().forEach((pgj, j) => {
         if (coverDone && j === 0) return;
         const orig = j < tocAt ? kept[j] : (j - nIns >= tocAt ? kept[j - nIns] : -1), bx = (numBoxes[orig] || [])[0];
@@ -1063,7 +1106,21 @@ $('go-btn').addEventListener('click', async () => {
         const t = (bx && bx.dash ? '- ' + (j + 1) + ' -' : String(j + 1)), fs = 9.5, tw = font.widthOfTextAtSize(t, fs);
         const cx = bx ? (bx.x0 + bx.x1) / 2 : pgj.getWidth() / 2, y = bx ? bx.y0 + 1 : 16;
         pgj.drawText(t, { x: cx - tw / 2, y: y, size: fs, font: font, color: PDFLib.rgb(0.1, 0.1, 0.1) });
+        if (withAns) {      // 강사용: 쪽번호 옆에 「학생 교재 N쪽」 (학생이 질문할 때 바로 그 문제 쪽을 찾도록)
+          const ki = j < tocAt ? j : (j - nIns >= tocAt ? j - nIns : -1), srcs = (ki >= 0 && repNote[ki] && repNote[ki].length) ? repNote[ki] : (orig >= 0 && orig < 1e6 ? [orig + 1] : []);
+          const nums = []; srcs.forEach(p0 => { const b = stuPos0(p0); if (b > 0) nums.push(b + (b > tocAt ? nIns : 0)); });
+          if (nums.length) { const a1 = Math.min.apply(null, nums), b1 = Math.max.apply(null, nums); noteJobs.push({ page: pgj, txt: '학생교재 ' + a1 + (b1 !== a1 ? '~' + b1 : '') + '쪽', cx: cx, tw: tw, y: y }); }
+        }
       });
+      { const cache = {};
+        for (const jb of noteJobs) {
+          const nt = cache[jb.txt] || (cache[jb.txt] = (() => { const m = noteMake(jb.txt); return { r: m.r, png: m.png }; })());
+          if (!nt.emb) nt.emb = await doc.embedPng(nt.png);
+          const h = 11, w = h * nt.r, W0 = jb.page.getWidth();
+          let x = jb.cx + jb.tw / 2 + 8; if (x + w > W0 - 6) x = jb.cx - jb.tw / 2 - 8 - w;
+          jb.page.drawImage(nt.emb, { x: x, y: jb.y - 1.5, width: w, height: h });
+        }
+      }
       return await doc.save();
     };
     const dl = (bytes, name) => { const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
@@ -1085,7 +1142,7 @@ $('go-btn').addEventListener('click', async () => {
     let savedOk = true; try { await mergeDbPut(rec); } catch (e) { savedOk = false; }
     showDownloads(rec);
     renderSaved();
-    syncToServer(rec);
+    syncToServer(rec).then(ok => { if (ok) offerReplaceOld(rec); });
     const base2 = location.origin + location.pathname.replace(/[^/]*$/, '');
     pdone = true; pfill.style.width = '100%';
     $('go-msg').innerHTML = '✅ 완료! 새로 등록 ' + made + '개' + (bankQ ? ' · 문제은행에 내신교재 문제 ' + bankQ + '개 저장' : '') + (refilled ? ' · 빠졌던 문제 ' + refilled + '개 다시 채움' : '') + (reused ? ' · 이미 있던 시험 ' + reused + '개' : '') + '. ' + (savedOk ? '합본 PDF는 아래 버튼으로 내려받아요(이 기기에 저장돼 나중에도 받을 수 있어요).' : '합본 PDF는 아래 버튼으로 내려받아요. (이 기기에는 저장하지 못했어요)') + '<br>여러 단원 한꺼번에 채점 주소: <a href="student_multi.html?book=' + bookId + '" target="_blank">' + base2 + 'student_multi.html?book=' + bookId + '</a><br>등록된 시험은 <a href="teacher_list.html" target="_blank">시험지 목록</a>에서 볼 수 있어요.' + (teacherSkip.length ? '<br><b style="color:#C1392B;">강사용에 정답·해설을 못 붙인 단원(문항 번호와 정답이 안 맞음): ' + teacherSkip.map(escapeHtml).join(' / ') + '</b>' : '') + (linkWarn ? '<br><b style="color:#C1392B;">이미 있던 시험을 이 교재 QR에 연결하지 못했어요(' + escapeHtml(linkWarn) + '). Apps Script를 새 버전으로 다시 배포했는지 확인해 주세요.</b>' : '') + (bankWarn.length ? '<br><b style="color:#C1392B;">문제은행에는 못 넣은 단원(문항 수가 정답과 안 맞음): ' + bankWarn.map(escapeHtml).join(' / ') + '</b> — 시험(QR 채점)은 정상 등록됐어요.' : '');
