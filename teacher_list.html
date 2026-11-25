@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260420">
+<link rel="stylesheet" href="css/style.css?v=202611260435">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -19,10 +19,10 @@
     <div id="kind-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
     <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;"><select id="book-sel" style="display:none; max-width:100%;"></select><button type="button" class="btn danger" id="book-del" style="display:none; padding:6px 12px; font-size:13px;">🗑 교재 삭제</button></div>
     <div id="grade-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+    <div id="flag-btns" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"><button type="button" class="btn outline" id="past-btn" style="padding:6px 12px; font-size:13px;"></button><button type="button" class="btn outline" id="subj-btn" style="padding:6px 12px; font-size:13px;"></button></div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
       <select id="unit-sel" style="flex:1 1 180px; min-width:150px;"><option value="">단원 전체</option></select>
-      <select id="subj-sel" style="flex:0 1 190px;"><option value="">주관식·서술형 전체</option><option value="1">주관식·서술형 있는 시험지만</option></select>
-      <select id="sort-sel" style="flex:0 1 150px;">
+            <select id="sort-sel" style="flex:0 1 150px;">
         <option value="new">최근 등록순</option>
         <option value="old">오래된 순</option>
         <option value="unit">학년·단원순</option>
@@ -45,11 +45,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611260420"></script>
-<script src="js/api.js?v=202611260420"></script>
-<script src="js/common.js?v=202611260420"></script>
-<script src="js/bankcore.js?v=202611260420"></script>
-<script src="js/pdfui.js?v=202611260420"></script>
+<script src="js/config.js?v=202611260435"></script>
+<script src="js/api.js?v=202611260435"></script>
+<script src="js/common.js?v=202611260435"></script>
+<script src="js/bankcore.js?v=202611260435"></script>
+<script src="js/pdfui.js?v=202611260435"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -104,7 +104,7 @@ renderHeader();
           gl.appendChild(row);
         });
       } }
-    const st = { kind: '', grade: '', unit: '', sort: 'new', q: '', book: '', subj: '' };
+    const st = { kind: '', grade: '', unit: '', sort: 'new', q: '', book: '', subj: '', past: '' };
     const isBook = ex => !!ex.bookTitle && !ex.hasRecipe;      // 교재 QR 합본으로 등록한 단원 시험지
     const isBank = ex => !!ex.hasRecipe;      // 문제은행에서 골라 출제한 시험지
     try { const sv = JSON.parse(sessionStorage.getItem('list_filter') || '{}'); if (sv && typeof sv === 'object') Object.assign(st, sv); } catch (e) {}
@@ -148,10 +148,19 @@ renderHeader();
       if (st.unit && !Array.from(unitSel.options).some(o => o.value === st.unit)) st.unit = '';
       unitSel.value = st.unit;
     }
+    // 기출문제 = 문제은행 출제·교재 합본이 아니면서, 제목에 「중간/기말」이나 「기출」이 있는 시험지
+    const isPast = ex => !isBank(ex) && !isBook(ex) && (/기출/.test(String(ex.title)) || !!parseExamTitle(ex).kind);
+    function drawFlags() {
+      const base = exams.filter(ex => kindOk(ex)), np = base.filter(isPast).length, ns = base.filter(ex => (!st.past || isPast(ex)) && ex.subjectiveCount > 0).length;
+      const pb = document.getElementById('past-btn'), sb = document.getElementById('subj-btn');
+      pb.className = 'btn' + (st.past ? '' : ' outline'); pb.innerHTML = '🏫 기출문제만 <span style="opacity:.7;">' + np + '</span>';
+      sb.className = 'btn' + (st.subj ? '' : ' outline'); sb.innerHTML = '✍️ 주관식·서술형 있는 것만 <span style="opacity:.7;">' + ns + '</span>';
+    }
     function visible() {
       const q = st.q.replace(/\s+/g, '').toLowerCase();
       let list = exams.filter(ex => {
         if (!kindOk(ex)) return false;
+        if (st.past && !isPast(ex)) return false;      // 기출문제(학교 기출 시험지)만
         if (st.subj && !(ex.subjectiveCount > 0)) return false;      // 주관식(-)·서술형이 하나라도 있는 시험지만
         if (st.grade && gradeOf(ex) !== st.grade && ex.meta.grades.indexOf(st.grade) < 0) return false;
         if (st.unit === 'none') { if (ex.meta.units.length) return false; }
@@ -224,7 +233,7 @@ renderHeader();
     }
     function render() {
       try { sessionStorage.setItem('list_filter', JSON.stringify(st)); } catch (e) {}
-      drawKinds(); drawChips(); drawUnitOptions(); sortSel.value = st.sort; qInp.value = st.q; { const ss = document.getElementById('subj-sel'); if (ss) ss.value = st.subj; }
+      drawKinds(); drawChips(); drawUnitOptions(); sortSel.value = st.sort; qInp.value = st.q; drawFlags();
       const list = visible(); try { drawCoverage(); } catch (e) {}
       document.getElementById('filter-msg').textContent = list.length + '개 시험지' + (list.length !== exams.length ? ' (전체 ' + exams.length + '개 중)' : '');
       const badges = ex => ex.meta.units.length
@@ -252,7 +261,8 @@ renderHeader();
     document.getElementById('book-sel').addEventListener('change', e => { st.book = e.target.value; st.unit = ''; render(); });
     unitSel.addEventListener('change', () => { st.unit = unitSel.value; render(); });
     sortSel.addEventListener('change', () => { st.sort = sortSel.value; render(); });
-    document.getElementById('subj-sel').addEventListener('change', e => { st.subj = e.target.value; if (st.subj) st.sort = 'new'; render(); });
+    document.getElementById('past-btn').addEventListener('click', () => { st.past = st.past ? '' : '1'; st.unit = ''; render(); });
+    document.getElementById('subj-btn').addEventListener('click', () => { st.subj = st.subj ? '' : '1'; if (st.subj) st.sort = 'new'; render(); });
     qInp.addEventListener('input', () => { st.q = qInp.value; render(); qInp.focus(); });
     document.getElementById('cov-open').addEventListener('click', () => { const w = 920, h = Math.min(screen.availHeight, 780), l = Math.max(0, (screen.availLeft || 0) + screen.availWidth - w - 8); window.open('exam_cov.html' + (st.q ? '?q=' + encodeURIComponent(st.q) : ''), 'examcov', 'popup=yes,width=' + w + ',height=' + h + ',left=' + l + ',top=' + (screen.availTop || 0)); });
     document.getElementById('filter-bar').style.display = 'block';
