@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260345">
+<link rel="stylesheet" href="css/style.css?v=202611260420">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611260345"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611260345"></script>
-<script src="js/printpdf.js?v=202611260345"></script>
-<script src="js/vendor/pdf.min.js?v=202611260345"></script>
-<script src="js/config.js?v=202611260345"></script>
-<script src="js/api.js?v=202611260345"></script>
-<script src="js/common.js?v=202611260345"></script>
-<script src="js/ocr.js?v=202611260345"></script>
-<script src="js/bankcore.js?v=202611260345"></script>
-<script src="js/pdfui.js?v=202611260345"></script>
-<script src="js/pdfview.js?v=202611260345"></script>
+<script src="js/vendor/qrcode.min.js?v=202611260420"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611260420"></script>
+<script src="js/printpdf.js?v=202611260420"></script>
+<script src="js/vendor/pdf.min.js?v=202611260420"></script>
+<script src="js/config.js?v=202611260420"></script>
+<script src="js/api.js?v=202611260420"></script>
+<script src="js/common.js?v=202611260420"></script>
+<script src="js/ocr.js?v=202611260420"></script>
+<script src="js/bankcore.js?v=202611260420"></script>
+<script src="js/pdfui.js?v=202611260420"></script>
+<script src="js/pdfview.js?v=202611260420"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1061,7 +1061,7 @@ async function openSavedReview(onlyIds) {
           mine = mine.sort((a, b) => a.num - b.num);
           const bankIds = {}, qinfo = [], units = [], qthumb = {};
           mine.forEach(q => { bankIds[q.num] = q.id; if (q.fileId) qthumb[q.num] = driveThumb(q.fileId, 500); qinfo.push({ n: q.num, unit: q.unit === '(단원 미지정)' ? '' : q.unit, grade: q.grade || '', sub: q.sub || '' }); if (units.indexOf(q.unit) < 0) units.push(q.unit); });
-          server.push({ title: d.title, id: d.id, answers: ans, units: units, unread: [], dash: ans.map((a, i) => a === '-' ? i + 1 : 0).filter(Boolean), dashImg: {}, pair: null, srv: true, bankIds: bankIds, unreadImg: {}, qinfo: qinfo, tm: {}, qthumb: qthumb, at: e.createdAt });
+          server.push({ title: d.title, id: d.id, answers: ans, units: units, unread: [], dash: ans.map((a, i) => a === '-' ? i + 1 : 0).filter(Boolean), dashImg: {}, pair: null, srv: true, essay: Array.isArray(e.essay) ? e.essay.filter(n => n > 0) : null, bankIds: bankIds, unreadImg: {}, qinfo: qinfo, tm: {}, qthumb: qthumb, at: e.createdAt });
         } catch (e2) {} } };
       await Promise.all([worker(), worker(), worker(), worker()]);
       if (!onlyIds) server.sort((a, b) => String(b.at).localeCompare(String(a.at)));
@@ -1095,6 +1095,7 @@ async function registerHeld0(x, btn, msg, R, quiet) {
       if (v === '-') { w.setSubjective(inp, true, cell); inp.value = '-'; }
       else { if (inp.disabled) w.setSubjective(inp, false, cell); inp.value = v; if (v.length > 1 || /\//.test(v)) w.setMulti(inp, true, cell); inp.classList.toggle('filled', !!v); }
     });
+    if (Array.isArray(x.essay)) { w.__essayTouched = true; ins.forEach((inp, i) => { const on = inp.disabled && x.essay.indexOf(i + 1) >= 0; inp.dataset.essay = on ? '1' : '0'; const b = inp.closest('.abox').querySelector('.essay-tog'); if (b) b.classList.toggle('on', on); }); }
     w.document.getElementById('pdf-file').required = false; w.__auto = true;
     const d = await new Promise(resolve => {
       const onMsg = ev => { if (ev.source !== w || !ev.data || ev.data.kind !== 'teacher-new-child') return; if (['done', 'skip', 'error'].indexOf(ev.data.type) < 0) return; clearTimeout(tm); window.removeEventListener('message', onMsg); resolve(ev.data); };
@@ -1123,6 +1124,9 @@ function bigToast(text, ok) {
 // 고친 영역은 이 브라우저에 기억해 두었다가 다시 열 때 그대로 보여 준다 (서버에는 그림만 저장돼서, 영역 좌표는 여기 보관)
 const regLoad = (k, id) => { try { return JSON.parse(localStorage.getItem('qr_reg_' + k + '_' + id) || '{}') || {}; } catch (e) { return {}; } };
 const regSave = (k, id, n, v) => { try { const o = regLoad(k, id); o[n] = v; localStorage.setItem('qr_reg_' + k + '_' + id, JSON.stringify(o)); } catch (e) {} };
+// 최근에 고친 시험지는 목록 맨 위로 올리려고, 고친 시각을 이 브라우저에 적어 둔다
+const markEdited = id => { try { localStorage.setItem('qr_edit_ts_' + id, String(Date.now())); } catch (e) {} };
+const editTs = id => { try { return +(localStorage.getItem('qr_edit_ts_' + id) || 0); } catch (e) { return 0; } };
 const EDCTX = new WeakMap();
 async function editorCtx(x, say) {
   if (x.pending) return x;
@@ -1164,13 +1168,16 @@ async function pushPickToServer(x, ctx, n, say) {
   if (qid) { const r = await callApi('updateQuestion', { password: getTeacherPassword(), id: qid, explBase64: BankCore.canvasToBase64(c), answer: '-' }); if (!r || !r.ok) throw new Error((r && r.error) || '답안 그림을 올리지 못했어요'); }
   regSave('a', x.id, n, sc.explanations[n].segments);
   x.answers[n - 1] = '-';
-  const r2 = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: x.id, answers: x.answers }); if (!r2 || !r2.ok) throw new Error((r2 && r2.error) || '정답을 바꾸지 못했어요');
+  { const es = Array.isArray(x.essay) ? x.essay.slice() : essayDefault(x.answers); if (es.indexOf(n) < 0) es.push(n); x.essay = es.sort((a, b) => a - b); }
+  const r2 = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: x.id, answers: x.answers, essayNums: x.essay }); if (!r2 || !r2.ok) throw new Error((r2 && r2.error) || '정답을 바꾸지 못했어요');
   return !!qid;
 }
-function agHooks(x, afterPick, afterCrop, say) {
+function agHooks(x, afterPick, afterCrop, say, essayCb) {
   if (!x.pending && !(x.bankIds && Object.keys(x.bankIds).length)) return null;
   const S = say || (() => {});
   return {
+    isEssay: n => Array.isArray(x.essay) ? x.essay.indexOf(n) >= 0 : essayDefault(x.answers).indexOf(n) >= 0,
+    essay: n => { if (essayCb) essayCb(n); },
     pick: async n => { try { const ctx = await editorCtx(x, S); openAnswerPicker(ctx, n, async (nn, url) => { if (!x.pending) { try { const inBank = await pushPickToServer(x, ctx, nn, S); const m = inBank ? '✅ ' + nn + '번 답안 영역이 서버에 저장됐어요 (서술형으로 표시)' : '✅ ' + nn + '번 정답을 서술형(-)으로 저장했어요 (문제은행에 없는 문항이라 해설 그림은 못 붙였어요)'; S(m); bigToast(m, true); } catch (e) { S('⚠️ ' + e.message); bigToast('⚠️ 저장하지 못했어요: ' + e.message, false); return; } } else bigToast('✅ ' + nn + '번 답안 영역을 적용했어요 (아직 등록 전이라 「OK — 이 시험지 등록」을 누를 때 저장돼요)', true); afterPick(nn, url); }); } catch (e) { S('⚠️ ' + e.message); alert(e.message); } },
     crop: async n => { try { const ctx = await editorCtx(x, S); openCropEditor(ctx, n, async nums => { if (!x.pending) { const r = await pushCropToServer(x, ctx, nums, S); const m = r.fail.length ? '⚠️ 서버에 저장하지 못한 문항: ' + r.fail.join(', ') + (r.ok ? ' (나머지 ' + r.ok + '개는 저장됨)' : '') : '✅ ' + nums.join(', ') + '번 문제 영역이 서버에 저장됐어요'; S(m); bigToast(m, !r.fail.length); } else bigToast('✅ ' + nums.join(', ') + '번 문제 영역을 적용했어요 (아직 등록 전이라 「OK — 이 시험지 등록」을 누를 때 저장돼요)', true); afterCrop(nums); }); } catch (e) { S('⚠️ ' + e.message); alert(e.message); } }
   };
@@ -1283,7 +1290,7 @@ async function openAnswerPicker(x, n, onDone) {
   const a0 = sc.answers && sc.answers[n], q0 = (sc.questions || []).find(q => q.num === n);
   let view = segs.length ? segs[0].page : (a0 && a0.page) || nPages, drawnPage = 0, pageW = 0, pageH = 0, dirty = false;
   const ov = document.createElement('div'); ov.style.cssText = 'position:fixed; inset:0; z-index:10000; background:#fff; display:flex; flex-direction:column;';
-  ov.innerHTML = '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid #cbd5e1; background:#F1F5F9;"><b>🖍 ' + n + '번 답안 영역 선택</b><button type="button" class="btn outline ap-pp" style="padding:4px 10px;">◀ 앞 쪽</button><b class="ap-pg" style="min-width:60px; text-align:center;"></b><button type="button" class="btn outline ap-pn" style="padding:4px 10px;">다음 쪽 ▶</button><button type="button" class="btn outline ap-clear" style="padding:4px 10px;">모두 지우기</button><span class="ap-msg hint" style="margin:0;"></span><button type="button" class="btn primary ap-ok" style="padding:6px 18px;">적용</button><button type="button" class="btn outline ap-close" style="padding:6px 16px;">닫기</button></div><div class="hint" style="margin:0; padding:5px 12px; background:#FFFBEB; border-bottom:1px solid #FDE68A;">정답·해설 쪽을 열고, <b>' + n + '번 답안이 적힌 부분을 마우스로 끌어서 네모</b>를 그리세요. 답안이 다른 단·다른 쪽으로 이어지면 그 부분도 이어서 그리세요(그린 순서대로 붙어요). 네모 위의 「✕」로 뺄 수 있어요. 적용하면 이 문항은 서술형(주관식)으로 표시돼요.</div><div class="ap-body" style="flex:1; overflow:auto; background:#E2E8F0; padding:10px;"><div style="position:relative; margin:0 auto; width:fit-content;"><canvas class="ap-cv" style="display:block; background:#fff;"></canvas><div class="ap-layer" style="position:absolute; left:0; top:0; right:0; bottom:0; cursor:crosshair;"></div></div></div>';
+  ov.innerHTML = '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid #cbd5e1; background:#F1F5F9;"><b>🖍 ' + n + '번 답안 영역 선택</b><button type="button" class="btn outline ap-pp" style="padding:4px 10px;">◀ 앞 쪽</button><b class="ap-pg" style="min-width:60px; text-align:center;"></b><button type="button" class="btn outline ap-pn" style="padding:4px 10px;">다음 쪽 ▶</button><button type="button" class="btn outline ap-clear" style="padding:4px 10px;">모두 지우기</button><button type="button" class="btn outline ap-prev" style="padding:4px 10px;">👁 결과 미리보기</button><span class="ap-msg hint" style="margin:0;"></span><button type="button" class="btn primary ap-ok" style="padding:6px 18px;">적용</button><button type="button" class="btn outline ap-close" style="padding:6px 16px;">닫기</button></div><div class="hint" style="margin:0; padding:5px 12px; background:#FFFBEB; border-bottom:1px solid #FDE68A;">정답·해설 쪽을 열고, <b>' + n + '번 답안이 적힌 부분을 마우스로 끌어서 네모</b>를 그리세요. 답안이 다른 단·다른 쪽으로 이어지면 그 부분도 이어서 그리세요(그린 순서대로 붙어요). 네모 위의 「✕」로 뺄 수 있어요. 적용하면 이 문항은 서술형(주관식)으로 표시돼요.</div><div class="ap-body" style="flex:1; overflow:auto; background:#E2E8F0; padding:10px;"><div style="position:relative; margin:0 auto; width:fit-content;"><canvas class="ap-cv" style="display:block; background:#fff;"></canvas><div class="ap-layer" style="position:absolute; left:0; top:0; right:0; bottom:0; cursor:crosshair;"></div></div></div>';
   document.body.appendChild(ov); document.body.style.overflow = 'hidden';
   const cv = ov.querySelector('.ap-cv'), layer = ov.querySelector('.ap-layer'), msg = ov.querySelector('.ap-msg'), body = ov.querySelector('.ap-body');
   const drawPage = async p => {
@@ -1313,7 +1320,7 @@ async function openAnswerPicker(x, n, onDone) {
     const up = e2 => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up);
       const x1 = e2.clientX - lr.left, y1 = e2.clientY - lr.top, r = [Math.max(0, Math.min(x0, x1) / SCALE), Math.max(0, Math.min(y0, y1) / SCALE), Math.min(pageW, Math.max(x0, x1) / SCALE), Math.min(pageH, Math.max(y0, y1) / SCALE)];
       if (r[2] - r[0] < 20 || r[3] - r[1] < 12) { paint(); return; }
-      segs.push({ page: view, rect: r }); dirty = true; paint(); };
+      segs.push({ page: view, rect: r, pw: pageW, ph: pageH }); dirty = true; paint(); };
     window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
   });
   ov.querySelector('.ap-pp').addEventListener('click', () => { if (view > 1) { view--; paint(); } });
@@ -1321,11 +1328,20 @@ async function openAnswerPicker(x, n, onDone) {
   ov.querySelector('.ap-clear').addEventListener('click', () => { segs.length = 0; dirty = true; paint(); });
   const close = () => { ov.remove(); document.body.style.overflow = ''; };
   ov.querySelector('.ap-close').addEventListener('click', () => { if (!dirty || confirm('고른 내용을 버리고 닫을까요?')) close(); });
+  const padded = () => segs.map(s => { const P = 3, r = s.rect.slice(); if (s.pw) { r[0] = Math.max(0, r[0] - P); r[1] = Math.max(0, r[1] - P); r[2] = Math.min(s.pw, r[2] + P); r[3] = Math.min(s.ph, r[3] + P); } return { page: s.page, rect: r }; });      // 가장자리가 짤리지 않게 살짝 여유를 둔다
+  ov.querySelector('.ap-prev').addEventListener('click', async () => {
+    if (!segs.length) { alert('답안 부분을 먼저 끌어서 고르세요.'); return; }
+    try { const c = await w.BankCore.renderExplanation(info.doc, { segments: padded(), numRect: null }, 1.2), o = document.createElement('canvas'); o.width = c.width; o.height = c.height; const g = o.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, o.width, o.height); g.drawImage(c, 0, 0);
+      const pv = document.createElement('div'); pv.style.cssText = 'position:fixed; inset:0; z-index:10001; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:20px;';
+      pv.innerHTML = '<div style="background:#fff; border-radius:10px; padding:12px; max-width:96vw; max-height:92vh; overflow:auto;"><div style="font-weight:700; margin-bottom:6px;">이렇게 저장돼요 (잘린 부분이 없는지 확인하세요) <button type="button" class="btn outline pv-x" style="padding:3px 12px; margin-left:8px;">닫기</button></div><img style="max-width:100%; border:1px solid #cbd5e1;"></div>';
+      pv.querySelector('img').src = o.toDataURL('image/jpeg', 0.8); pv.querySelector('.pv-x').addEventListener('click', () => pv.remove()); pv.addEventListener('click', e => { if (e.target === pv) pv.remove(); }); document.body.appendChild(pv);
+    } catch (e) { alert('미리보기를 만들지 못했어요: ' + e.message); }
+  });
   ov.querySelector('.ap-ok').addEventListener('click', async () => {
     if (!segs.length) { alert('답안 부분을 먼저 끌어서 고르세요.'); return; }
     const okb = ov.querySelector('.ap-ok'); okb.disabled = true; msg.textContent = '답안 그림을 만드는 중...';
     try {
-      sc.explanations = sc.explanations || {}; sc.explanations[n] = { segments: segs.map(s => ({ page: s.page, rect: s.rect.slice() })), numRect: null, manual: true };
+      sc.explanations = sc.explanations || {}; sc.explanations[n] = { segments: padded(), numRect: null, manual: true };
       try { w.eval('rcClear()'); } catch (e) {}
       const c = await w.BankCore.renderExplanation(info.doc, sc.explanations[n], 1.6);
       const k = Math.min(1, 760 / c.width), o = document.createElement('canvas'); o.width = Math.max(1, Math.round(c.width * k)); o.height = Math.max(1, Math.round(c.height * k));
@@ -1369,7 +1385,9 @@ function showAutoReview(R) {
   if (R.stuck.length) h += '<div class="card" style="border-color:#C1392B;"><b style="color:#C1392B;">⚠️ 직접 확인이 필요한 시험지 ' + R.stuck.length + '개 — 아직 등록되지 않았어요</b><div style="margin:8px 0; font-size:13px;">' + R.stuck.map(x => '· ' + e(x.name) + ' — ' + e(x.reason)).join('<br>') + '</div><button type="button" class="btn primary" id="rv-fix" style="width:100%;">이 시험지들만 정답 직접 채우러 가기</button></div>';
   if (R.skipped.length) h += '<div class="card"><b>⏭ 건너뛴 시험지 ' + R.skipped.length + '개</b><div style="margin:8px 0; font-size:13px;">' + R.skipped.map(x => '· ' + e(x)).join('<br>') + '</div></div>';
   h += '<div class="card"><b>🤖 단원 확인</b><div class="hint" style="margin:6px 0;">' + (R.unassigned ? '단원을 못 정한 문항 <b>' + R.unassigned + '개</b> ' : '단원 미지정 문항 없음 ') + (R.autoUnits ? '· 자동 추정 단원 <b>' + R.autoUnits + '개</b>' : '') + '</div><div style="display:flex; gap:8px; flex-wrap:wrap;">' + (R.unassigned ? '<a class="btn primary" target="_blank" rel="noopener" href="bank_list.html?unassigned=1">단원 미지정 문항 모아 보기</a>' : '') + '<a class="btn outline" target="_blank" rel="noopener" href="bank_list.html?auto=1">🤖 자동 분류 문항 확인하기</a></div></div>';
-  R.reg.sort((a, b) => ((b.pending ? 2 : 0) + (b.unread.length ? 1 : 0)) - ((a.pending ? 2 : 0) + (a.unread.length ? 1 : 0)));
+  { const W = 3 * 86400000, now = Date.now(), fresh = x => { const t0 = x.pending ? 0 : editTs(x.id); return t0 && now - t0 < W ? t0 : 0; };
+    R.reg.sort((a, b) => { const fa = fresh(a), fb = fresh(b); if (fa || fb) return fb - fa;      // 최근(3일 안)에 고친 시험지가 맨 위, 가장 나중에 고친 순
+      return ((b.pending ? 2 : 0) + (b.unread.length ? 1 : 0)) - ((a.pending ? 2 : 0) + (a.unread.length ? 1 : 0)); }); }
   const nPend = R.reg.filter(x => x.pending).length;
   if (nPend) h += '<div class="card" style="border-color:#C1392B;"><b style="color:#C1392B;">⏸ 확인 후 OK를 눌러야 등록되는 시험지 ' + nPend + '개 (맨 위 줄들)</b><div class="hint" style="margin:4px 0;">정답이 비었거나 기출문제라서 아직 저장하지 않았어요. 아래에서 정답을 채우고 시험지마다 「✅ OK — 이 시험지 등록」을 누르세요. OK를 누르지 않으면 저장되지 않아요.</div></div>';
   const nNeed = R.reg.filter(x => x.unread.length && !x.pending).length;
@@ -1399,17 +1417,38 @@ function showAutoReview(R) {
   { const am = $('add-more'); if (am) am.addEventListener('change', function () { onPickFiles(Array.from(this.files)); }); }
   box.querySelectorAll('.rv-row').forEach(row => {
     const x = R.reg[+row.dataset.i], btn = row.querySelector('.rv-save'), msg = row.querySelector('.rv-msg');
-    const afterPick = (n, url) => {      // 답안 영역을 고르면: 서술형(-)으로 표시하고 그림을 바꾼다
+    const touchEdit = () => { if (!x.pending && x.id) markEdited(x.id); };
+    const afterPick = (n, url) => {
+      touchEdit();      // 답안 영역을 고르면: 서술형(-)으로 표시하고 그림을 바꾼다
       x.answers[n - 1] = '-';
       row.querySelectorAll('.rv-grid .ag-in')[n - 1] && (row.querySelectorAll('.rv-grid .ag-in')[n - 1].value = '-');
       document.querySelectorAll('.sp-grid .ag-in').forEach((i2, k) => { if (k === n - 1) { i2.value = '-'; paintAnswerCell(i2); } });
       row.querySelectorAll('.pk-in[data-n="' + n + '"]').forEach(i2 => { i2.value = '-'; paintAnswerCell(i2); });
       row.querySelectorAll('.rv-grid .ag-in').forEach(i2 => paintAnswerCell(i2));
+      { const es = Array.isArray(x.essay) ? x.essay.slice() : essayDefault(x.answers); if (es.indexOf(n) < 0) es.push(n); x.essay = es.sort((a, b) => a - b); }
+      try { buildAnswerGrid(row.querySelector('.rv-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; }, HK()); refreshNames(); } catch (e) {}
       if (x.peekImgs) x.peekImgs[n] = url; if (row._repaintPeek) row._repaintPeek();
       if (x.pending) { btn.disabled = false; msg.textContent = '✅ ' + n + '번을 서술형(주관식)으로 표시하고 답안 영역을 붙였어요. 아래 「저장」을 눌러 주세요.'; } else msg.textContent = '✅ ' + n + '번을 서술형(주관식)으로 바꾸고 답안 그림을 서버에 반영했어요.';
     };
-    const afterCrop = nums => { nums.forEach(n => { row.querySelectorAll('.rv-q[data-n="' + n + '"]').forEach(im => { if (x.qthumb && x.qthumb[n]) im.src = x.qthumb[n]; }); }); if (row._repaintPeek) row._repaintPeek(); if (x.pending) { btn.disabled = false; msg.textContent = '✅ ' + nums.join(', ') + '번 문제 영역을 바꿨어요. 등록할 때 반영돼요.'; } };
-    const HK = () => agHooks(x, afterPick, afterCrop, s => { msg.textContent = s; });
+    const afterCrop = nums => {
+      touchEdit(); nums.forEach(n => { row.querySelectorAll('.rv-q[data-n="' + n + '"]').forEach(im => { if (x.qthumb && x.qthumb[n]) im.src = x.qthumb[n]; }); }); if (row._repaintPeek) row._repaintPeek(); if (x.pending) { btn.disabled = false; msg.textContent = '✅ ' + nums.join(', ') + '번 문제 영역을 바꿨어요. 등록할 때 반영돼요.'; } };
+    const refreshNames = () => {
+      row.querySelectorAll('.qunit-row b[title]').forEach(b => { const n = parseInt(b.getAttribute('title'), 10); if (n) b.textContent = numNameOf(x.answers, n, x.essay); });
+      row.querySelectorAll('.rv-img > b').forEach(b => { const i2 = b.querySelector('.pk-in'); if (i2) { const n = +i2.dataset.n; b.firstChild.nodeValue = numNameOf(x.answers, n, x.essay) + ' \u00a0'; } });
+    };
+    const toggleEssay = async n => {
+      const cur0 = Array.isArray(x.essay) ? x.essay.slice() : essayDefault(x.answers), had = cur0.indexOf(n) >= 0;
+      if (had) cur0.splice(cur0.indexOf(n), 1); else { cur0.push(n); if (x.answers[n - 1] !== '-') { x.answers[n - 1] = '-'; row.querySelectorAll('.pk-in[data-n="' + n + '"]').forEach(i2 => { i2.value = '-'; paintAnswerCell(i2); }); } }
+      x.essay = cur0.sort((a, b) => a - b);
+      const nm = () => numNameOf(x.answers, n, x.essay);
+      const rebuild = () => { buildAnswerGrid(row.querySelector('.rv-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; }, HK()); refreshNames(); if (row._repaintPeek) row._repaintPeek(); };
+      if (x.pending) { rebuild(); const m = had ? '✅ ' + n + '번의 서술형 표시를 껐어요 (등록할 때 반영돼요)' : '✅ ' + n + '번을 「' + nm() + '」으로 표시했어요 (아직 등록 전이라 「OK — 이 시험지 등록」을 누를 때 저장돼요)'; msg.textContent = m; bigToast(m, true); return; }
+      try { const r = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: x.id, answers: x.answers, essayNums: x.essay.length ? x.essay : [0] });
+        if (!r || !r.ok) throw new Error((r && r.error) || '저장하지 못했어요');
+        touchEdit(); rebuild(); const m = had ? '✅ ' + n + '번의 서술형 표시를 껐어요 (서버에 저장됨)' : '✅ ' + n + '번이 「' + nm() + '」으로 서버에 저장됐어요'; msg.textContent = m; bigToast(m, true); persistReview(R);
+      } catch (e) { x.essay = had ? cur0.concat([n]).sort((a, b) => a - b) : cur0.filter(z => z !== n); bigToast('⚠️ 저장하지 못했어요: ' + e.message, false); }
+    };
+    const HK = () => agHooks(x, afterPick, afterCrop, s => { msg.textContent = s; }, toggleEssay);
     const orig = x.answers.slice(); if (!x.pending) x.unread.forEach(n => { x.answers[n - 1] = ''; });
     buildAnswerGrid(row.querySelector('.rv-grid'), x.answers, () => { btn.disabled = false; msg.textContent = ''; }, HK());
     if (x.unread.length || x.pending) { btn.disabled = false; row.style.background = '#FFF7F5'; }
@@ -1441,7 +1480,7 @@ function showAutoReview(R) {
         const pgs = x.peekPages || [], hitP = pgs.filter(p => p.hit), restP = pgs.filter(p => !p.hit);
         const pageHtml = pgs.length ? '<div style="margin:8px 0;"><b style="font-size:13px;">📄 원본 PDF 정답·해설 쪽 (' + hitP.map(p => p.n + '쪽').join(', ') + ')</b><div class="hint" style="margin:2px 0 6px;">그림을 누르면 크게 보여요.</div>' + hitP.map(p => '<img src="' + p.url + '" alt="' + p.n + '쪽" style="width:min(520px,100%); border:1px solid var(--line); border-radius:6px; margin:0 8px 8px 0; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(520px,100%)\':\'100%\'">').join('') + (restP.length ? '<details><summary style="cursor:pointer; font-size:13px;">나머지 쪽 보기 (' + restP.length + '쪽)</summary>' + restP.map(p => '<img src="' + p.url + '" alt="' + p.n + '쪽" style="width:min(520px,100%); border:1px solid var(--line); border-radius:6px; margin:6px 8px 0 0; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(520px,100%)\':\'100%\'">').join('') + '</details>' : '') + '</div>' : '';
         box.innerHTML = pageHtml + '<div class="hint" style="margin:4px 0;">문항마다 정답이 적힌 부분이에요. 오른쪽 숫자가 지금 입력된 정답이고, 다르면 위쪽 칸에서 고치고 「저장」을 누르세요.</div><div class="rv-imgs">' +
-          cur.map((a, i) => '<div class="rv-img"><b>' + numNameOf(cur, i + 1) + ' &nbsp;<input type="text" class="pk-in ag-in" data-n="' + (i + 1) + '" value="' + escapeHtml(a || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + ((x.pending || (x.bankIds && x.bankIds[i + 1])) ? '<div style="margin:2px 0;"><button type="button" class="btn outline pk-crop" data-n="' + (i + 1) + '" style="padding:2px 8px; font-size:12px;">✂ 문제 영역</button> <button type="button" class="btn outline pk-pick" data-n="' + (i + 1) + '" style="padding:2px 8px; font-size:12px;">🖍 답안 영역 선택(서술형)</button></div>' : '') + (imgs[i + 1] ? '<img src="' + imgs[i + 1] + '" alt="' + (i + 1) + '번 정답 부분">' : (x.qthumb && x.qthumb[i + 1] ? '<img src="' + x.qthumb[i + 1] + '" alt="' + (i + 1) + '번 문제"><span class="hint">정답 그림이 없어서 문제 그림을 보여 줘요 — 「정답 쪽 보면서 입력」을 쓰세요</span>' : '<span class="hint">그림 없음 — 「정답 쪽 보면서 입력」으로 정답 쪽을 보세요</span>')) + '</div>').join('') + '</div>';
+          cur.map((a, i) => '<div class="rv-img"><b>' + numNameOf(cur, i + 1, x.essay) + ' &nbsp;<input type="text" class="pk-in ag-in" data-n="' + (i + 1) + '" value="' + escapeHtml(a || '') + '" maxlength="12" inputmode="numeric" placeholder="정답" style="width:70px; padding:3px 6px; margin:0; text-align:center; display:inline-block;"></b>' + ((x.pending || (x.bankIds && x.bankIds[i + 1])) ? '<div style="margin:2px 0;"><button type="button" class="btn outline pk-crop" data-n="' + (i + 1) + '" style="padding:2px 8px; font-size:12px;">✂ 문제 영역</button> <button type="button" class="btn outline pk-pick" data-n="' + (i + 1) + '" style="padding:2px 8px; font-size:12px;">🖍 답안 영역 선택(서술형)</button></div>' : '') + (imgs[i + 1] ? '<img src="' + imgs[i + 1] + '" alt="' + (i + 1) + '번 정답 부분">' : (x.qthumb && x.qthumb[i + 1] ? '<img src="' + x.qthumb[i + 1] + '" alt="' + (i + 1) + '번 문제"><span class="hint">정답 그림이 없어서 문제 그림을 보여 줘요 — 「정답 쪽 보면서 입력」을 쓰세요</span>' : '<span class="hint">그림 없음 — 「정답 쪽 보면서 입력」으로 정답 쪽을 보세요</span>')) + '</div>').join('') + '</div>';
         bindPk(box);
       };
       row._repaintPeek = () => { if (box.style.display !== 'none' && x.peekImgs) paintPeek(); };
@@ -1492,7 +1531,7 @@ function showAutoReview(R) {
       const g0 = (q[0] && q[0].grade) || '';
       body.className = 'rv-ubody'; body.innerHTML = '<div class="hint" style="margin:0 0 6px; font-weight:700; color:#0F766E;">' + (x.pending ? '💾 단원·소단원은 고르면 바로 적용되고, 맨 아래 「OK — 이 시험지 등록」을 누를 때 시험지와 함께 저장돼요.' : '💾 단원·소단원은 고르는 즉시 자동 저장돼요 (저장 버튼을 누를 필요 없어요). 번호 옆에 ✅ 저장됨이 보이면 끝난 거예요.') + '</div><div class="qunit-row" style="flex-wrap:wrap;"><b>전체</b><select class="rv-allu" style="width:auto; max-width:100%;">' + unitSelectOptions(g0, '', '') + '</select><span class="sub-wrap"><select class="rv-alls" style="width:auto; max-width:100%;"></select></span><button type="button" class="btn outline rv-allbtn" style="padding:4px 10px;">이 시험지 전체에 적용</button><span class="hint rv-umsg" style="margin:0; position:sticky; top:0; background:#fff; font-weight:700;"></span></div>' +
         '<div class="qunit-row" style="flex-wrap:wrap;"><b>📏 구간</b><input type="number" class="rv-rf" min="1" placeholder="시작" style="width:64px;"> <span>번 ~</span> <input type="number" class="rv-rt" min="1" placeholder="끝" style="width:64px;"> <span>번</span><button type="button" class="btn outline rv-rangebtn" style="padding:4px 10px;">위에서 고른 단원·소단원을 이 구간에 적용</button></div><div class="hint rv-rsum" style="margin:2px 0 6px; font-weight:700;"></div>' +
-        q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b title="' + o.n + '번">' + numNameOf(x.answers, o.n) + '</b>' + ((x.pending || (x.bankIds && x.bankIds[o.n])) ? '<span style="display:flex; flex-direction:column; gap:3px; align-items:flex-start;"><button type="button" class="btn outline rv-crop" data-n="' + o.n + '" style="padding:2px 8px; font-size:12px;">✂ 영역 조정</button><span class="hint" style="margin:0; font-size:11px;">' + (() => { try { const sq = x.fr.contentWindow.eval('scanned').questions.filter(z => z.num === o.n); if (!sq.length) return 'PDF에서 이 번호를 못 찾았어요'; return sq.map(z => 'PDF ' + z.page + '쪽 · ' + (z.rect[0] > 250 ? '오른쪽' : '왼쪽') + ' 단 · 위에서 ' + Math.round(z.rect[1] / 8.42) + '%').join(' / '); } catch (e) { return ''; } })() + '</span></span>' : '') + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" data-n="' + o.n + '" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span></div>').join('');
+        q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b title="' + o.n + '번">' + numNameOf(x.answers, o.n, x.essay) + '</b>' + ((x.pending || (x.bankIds && x.bankIds[o.n])) ? '<span style="display:flex; flex-direction:column; gap:3px; align-items:flex-start;"><button type="button" class="btn outline rv-crop" data-n="' + o.n + '" style="padding:2px 8px; font-size:12px;">✂ 영역 조정</button><span class="hint" style="margin:0; font-size:11px;">' + (() => { try { const sq = x.fr.contentWindow.eval('scanned').questions.filter(z => z.num === o.n); if (!sq.length) return 'PDF에서 이 번호를 못 찾았어요'; return sq.map(z => 'PDF ' + z.page + '쪽 · ' + (z.rect[0] > 250 ? '오른쪽' : '왼쪽') + ' 단 · 위에서 ' + Math.round(z.rect[1] / 8.42) + '%').join(' / '); } catch (e) { return ''; } })() + '</span></span>' : '') + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" data-n="' + o.n + '" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span></div>').join('');
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
       { const hd = document.createElement('div'); hd.className = 'rv-uhead'; hd.style.cssText = 'position:sticky; top:0; z-index:6; background:#fff; padding:6px 0 4px; border-bottom:2px solid var(--line); box-shadow:0 4px 6px -4px rgba(0,0,0,.15);';
         const kids = Array.from(body.children).slice(0, 4); body.insertBefore(hd, kids[0]); kids.forEach(k => hd.appendChild(k)); }       // 전체·구간 지정 줄을 맨 위에 고정해서, 아래로 내려가도 구간 버튼이 보이게 한다
@@ -1541,7 +1580,7 @@ function showAutoReview(R) {
       allu.addEventListener('change', () => { const v = unitSelectValue(allu); refreshSubSelect(alls, tocEntryFor(v.grade, v.unit), ''); });
       const upSum = () => { const d = row.querySelector('.rv-usum'); if (d) d.innerHTML = unitSumHtml(x); };
       const idN = {}; Object.keys(x.bankIds || {}).forEach(k => { idN[x.bankIds[k]] = k; });
-      const mark = (items, t, c) => items.forEach(it => { const el = body.querySelector('.rv-st[data-n="' + idN[it.id] + '"]'); if (el) { el.textContent = t; el.style.color = c; } });
+      const mark = (items, t, c) => { if (/저장됨/.test(t)) touchEdit(); items.forEach(it => { const el = body.querySelector('.rv-st[data-n="' + idN[it.id] + '"]'); if (el) { el.textContent = t; el.style.color = c; } }); };
       // 저장 요청이 한꺼번에 몰리면 서버가 줄 서서 기다리다 「잠금 시간초과」가 난다 → 한 번에 하나씩 차례로 보내고, 잠금 때문에 실패하면 잠시 뒤 자동으로 다시 보낸다 (최대 4번)
       const childApply = it => {      // OK 대기 시험지: 붙들어 둔 창의 단원 칸에 넣어 둔다 (등록할 때 같이 저장된다)
         const n = +String(it.id).slice(1), w = x.fr && x.fr.contentWindow; if (!w) return;
@@ -1606,7 +1645,7 @@ function showAutoReview(R) {
       btn.disabled = true; msg.textContent = '저장 중...';
       try { const r = await callApi('updateExamAnswers', { password: getTeacherPassword(), id: x.id, answers: x.answers });
         if (r.ok) { for (const n of x.unread) { const qid = x.bankIds[n]; if (qid) { try { await callApi('updateQuestion', { password: getTeacherPassword(), id: qid, answer: x.answers[n - 1] }); } catch (e) {} } } x.unread = []; }
-        msg.textContent = r.ok ? '✅ 저장했어요' : '⚠️ ' + (r.error || '저장 실패'); if (r.ok) persistReview(R); if (!r.ok) btn.disabled = false; }
+        msg.textContent = r.ok ? '✅ 저장했어요' : '⚠️ ' + (r.error || '저장 실패'); if (r.ok) { touchEdit(); persistReview(R); } if (!r.ok) btn.disabled = false; }
       catch (err) { msg.textContent = '⚠️ ' + err.message; btn.disabled = false; }
     });
   });

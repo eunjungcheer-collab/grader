@@ -111,7 +111,12 @@ function relNum(q, canvas) {
 }
 
 // 맨 뒤에 연속으로 이어지는 주관식(-)은 「서술형 1번, 2번…」으로 부른다 (시험지에 적힌 이름과 같게). 중간에 섞인 주관식은 그냥 번호
-function numNameOf(answers, n) {
+function essayDefault(answers) {      // 서술형 표시를 따로 안 했으면: 맨 뒤에 이어진 주관식(-)이 서술형
+  const a = (answers || []).map(x => String(x === undefined || x === null ? '' : x).trim()); let k = a.length; while (k > 0 && a[k - 1] === '-') k--;
+  const r = []; for (let i = k + 1; i <= a.length; i++) r.push(i); return r;
+}
+function numNameOf(answers, n, essay) {
+  if (Array.isArray(essay)) { const i = essay.indexOf(n); return i >= 0 ? '서술형 ' + (i + 1) + '번' : n + '번'; }
   const a = (answers || []).map(x => String(x === undefined || x === null ? '' : (x.answer !== undefined ? x.answer : x)).trim()); let k = a.length; while (k > 0 && a[k - 1] === '-') k--;
   return (k < a.length && n > k && n <= a.length) ? '서술형 ' + (n - k) + '번' : n + '번';
 }
@@ -879,13 +884,14 @@ function buildAnswerGrid(box, answers, onChange, hk) {
   const goto_ = (i, dir) => { const t = cells[i + dir]; if (t) t.focus(); };
   answers.forEach((a, i) => {
     const cell = document.createElement('div'); cell.className = 'ag-cell';
-    cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="text"><span class="ag-btns"><button type="button" class="ag-b ag-b-sub" tabindex="-1" title="주관식">주</button><button type="button" class="ag-b ag-b-mul" tabindex="-1" title="복수정답">복</button>' + (hk ? '<button type="button" class="ag-b ag-b-pick" tabindex="-1" title="서술형 답안 영역 선택 (정답·해설 쪽에서 이 문항의 답안 부분을 골라요)">답</button><button type="button" class="ag-b ag-b-crop" tabindex="-1" title="이 문항의 문제 영역 조정">영</button>' : '') + '</span>';
+    cell.innerHTML = '<span class="ag-n">' + (i + 1) + '</span><input type="text" class="ag-in" value="' + escapeHtml(a) + '" maxlength="12" inputmode="text"><span class="ag-btns"><button type="button" class="ag-b ag-b-sub" tabindex="-1" title="주관식">주</button><button type="button" class="ag-b ag-b-mul" tabindex="-1" title="복수정답">복</button>' + (hk ? '<button type="button" class="ag-b ag-b-pick" tabindex="-1" title="서술형 답안 영역 선택 (정답·해설 쪽에서 이 문항의 답안 부분을 골라요)">답</button><button type="button" class="ag-b ag-b-crop" tabindex="-1" title="이 문항의 문제 영역 조정">영</button>' + (hk.essay ? '<button type="button" class="ag-b ag-b-es" tabindex="-1" title="서술형으로 표시 (켜면 「서술형 N번」으로 불러요)">서</button>' : '') : '') + '</span>';
     const inp = cell.querySelector('input'); paintAnswerCell(inp); cells.push(inp);
     if (/^[1-9]{2,}|\//.test(inp.value)) setM(inp, true);
     const commit = () => { answers[i] = inp.value.trim(); paintAnswerCell(inp); if (onChange) onChange(answers); };
     inp._ag = { commit: commit, next: () => goto_(i, 1), idx: i };
     const bs = cell.querySelector('.ag-b-sub'), bm = cell.querySelector('.ag-b-mul');
-    if (hk) { const bp = cell.querySelector('.ag-b-pick'), bc = cell.querySelector('.ag-b-crop'); [bp, bc].forEach(b => b.addEventListener('mousedown', e => e.preventDefault())); bp.addEventListener('click', () => hk.pick(i + 1)); bc.addEventListener('click', () => hk.crop(i + 1)); }
+    if (hk) { const bp = cell.querySelector('.ag-b-pick'), bc = cell.querySelector('.ag-b-crop'); [bp, bc].forEach(b => b.addEventListener('mousedown', e => e.preventDefault())); bp.addEventListener('click', () => hk.pick(i + 1)); bc.addEventListener('click', () => hk.crop(i + 1));
+      const be = cell.querySelector('.ag-b-es'); if (be) { be.addEventListener('mousedown', e => e.preventDefault()); be.classList.toggle('on', !!hk.isEssay(i + 1)); be.addEventListener('click', () => { hk.essay(i + 1); }); } }
     [bs, bm].forEach(b => b.addEventListener('mousedown', e => e.preventDefault()));
     bs.addEventListener('click', () => { setM(inp, false); inp.value = '-'; commit(); goto_(i, 1); });
     bm.addEventListener('click', () => { setM(inp, inp.dataset.multi !== '1'); if (inp.dataset.multi !== '1') { /* 끔 */ } else if (inp.value === '-') inp.value = ''; commit(); inp.focus(); });

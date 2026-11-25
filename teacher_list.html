@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험지 목록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611260345">
+<link rel="stylesheet" href="css/style.css?v=202611260420">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -21,6 +21,7 @@
     <div id="grade-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
       <select id="unit-sel" style="flex:1 1 180px; min-width:150px;"><option value="">단원 전체</option></select>
+      <select id="subj-sel" style="flex:0 1 190px;"><option value="">주관식·서술형 전체</option><option value="1">주관식·서술형 있는 시험지만</option></select>
       <select id="sort-sel" style="flex:0 1 150px;">
         <option value="new">최근 등록순</option>
         <option value="old">오래된 순</option>
@@ -44,11 +45,11 @@
   <div id="list-container" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611260345"></script>
-<script src="js/api.js?v=202611260345"></script>
-<script src="js/common.js?v=202611260345"></script>
-<script src="js/bankcore.js?v=202611260345"></script>
-<script src="js/pdfui.js?v=202611260345"></script>
+<script src="js/config.js?v=202611260420"></script>
+<script src="js/api.js?v=202611260420"></script>
+<script src="js/common.js?v=202611260420"></script>
+<script src="js/bankcore.js?v=202611260420"></script>
+<script src="js/pdfui.js?v=202611260420"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -103,7 +104,7 @@ renderHeader();
           gl.appendChild(row);
         });
       } }
-    const st = { kind: '', grade: '', unit: '', sort: 'new', q: '', book: '' };
+    const st = { kind: '', grade: '', unit: '', sort: 'new', q: '', book: '', subj: '' };
     const isBook = ex => !!ex.bookTitle && !ex.hasRecipe;      // 교재 QR 합본으로 등록한 단원 시험지
     const isBank = ex => !!ex.hasRecipe;      // 문제은행에서 골라 출제한 시험지
     try { const sv = JSON.parse(sessionStorage.getItem('list_filter') || '{}'); if (sv && typeof sv === 'object') Object.assign(st, sv); } catch (e) {}
@@ -151,6 +152,7 @@ renderHeader();
       const q = st.q.replace(/\s+/g, '').toLowerCase();
       let list = exams.filter(ex => {
         if (!kindOk(ex)) return false;
+        if (st.subj && !(ex.subjectiveCount > 0)) return false;      // 주관식(-)·서술형이 하나라도 있는 시험지만
         if (st.grade && gradeOf(ex) !== st.grade && ex.meta.grades.indexOf(st.grade) < 0) return false;
         if (st.unit === 'none') { if (ex.meta.units.length) return false; }
         else if (st.unit && !ex.meta.units.some(u => unitKey(u) === st.unit)) return false;
@@ -165,7 +167,11 @@ renderHeader();
         name: (a, b) => String(a.title).localeCompare(String(b.title), 'ko'),
         sub: (a, b) => (b.submissionCount || 0) - (a.submissionCount || 0) || b.ts - a.ts
       };
-      return list.sort(by[st.sort] || by.new);
+      // 최근(3일 안)에 단원·정답·영역을 고친 시험지는 어떤 정렬이든 맨 위에, 가장 나중에 고친 순으로 둔다
+      const et = ex => { try { const t0 = +(localStorage.getItem('qr_edit_ts_' + ex.id) || 0); return t0 && Date.now() - t0 < 3 * 86400000 ? t0 : 0; } catch (e) { return 0; } };
+      const base = by[st.sort] || by.new;
+      if (st.subj) return list.sort(by.new);      // 주관식·서술형만 볼 때는 최근 등록순
+      return list.sort((a, b) => { const fa = et(a), fb = et(b); return (fa || fb) ? fb - fa : base(a, b); });
     }
     // 시험지 제목에서 연도 · 학년 · 학기 · 중간/기말을 읽는다. 「2024학년도 1학년 2학기 중간고사」, 「2024-1-2 기말」, 「1-2 중간」, 「2학기 기말」 같은 여러 모양을 받는다
     function parseExamTitle(ex) {
@@ -218,7 +224,7 @@ renderHeader();
     }
     function render() {
       try { sessionStorage.setItem('list_filter', JSON.stringify(st)); } catch (e) {}
-      drawKinds(); drawChips(); drawUnitOptions(); sortSel.value = st.sort; qInp.value = st.q;
+      drawKinds(); drawChips(); drawUnitOptions(); sortSel.value = st.sort; qInp.value = st.q; { const ss = document.getElementById('subj-sel'); if (ss) ss.value = st.subj; }
       const list = visible(); try { drawCoverage(); } catch (e) {}
       document.getElementById('filter-msg').textContent = list.length + '개 시험지' + (list.length !== exams.length ? ' (전체 ' + exams.length + '개 중)' : '');
       const badges = ex => ex.meta.units.length
@@ -230,7 +236,7 @@ renderHeader();
         <a href="teacher_exam.html?id=${ex.id}" style="text-decoration:none; color:inherit; display:block;">
           <div class="title">${isBook(ex) ? '<span style="font-size:12px; background:#DCFCE7; color:#166534; border-radius:10px; padding:1px 8px; margin-right:6px;">📚 ' + escapeHtml(ex.bookTitle) + '</span>' : ''}${isBank(ex) ? '<span style="font-size:12px; background:#FEF3C7; color:#92400E; border-radius:10px; padding:1px 8px; margin-right:6px;">🧩 문제은행 출제</span>' : ''}${escapeHtml(ex.title)}</div>
           <div style="margin:4px 0 2px;">${badges(ex)}</div>
-          <div class="meta">${ex.answerCount}문항${ex.subjectiveCount ? ' (주관식 ' + ex.subjectiveCount + ')' : ''} · 제출 ${ex.submissionCount}건 · ${formatDate(ex.createdAt)}</div>
+          <div class="meta">${(() => { try { const t0 = +(localStorage.getItem('qr_edit_ts_' + ex.id) || 0); return t0 && Date.now() - t0 < 3 * 86400000 ? '<b style="color:#15803D;">🕘 최근 수정</b> · ' : ''; } catch (e) { return ''; } })()}${ex.answerCount}문항${ex.subjectiveCount ? ' (주관식 ' + ex.subjectiveCount + ')' : ''} · 제출 ${ex.submissionCount}건 · ${formatDate(ex.createdAt)}</div>
         </a>
         <a class="btn outline" href="teacher_new.html?review=${encodeURIComponent(ex.id)}" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;">✏️ 단원·정답 수정</a>
         <a class="btn outline" href="alerts.html?exam=${encodeURIComponent(ex.id)}#assign" style="margin-top:8px; padding:7px 12px; font-size:13px; display:inline-block;">👥 학생에게 배정</a>
@@ -246,6 +252,7 @@ renderHeader();
     document.getElementById('book-sel').addEventListener('change', e => { st.book = e.target.value; st.unit = ''; render(); });
     unitSel.addEventListener('change', () => { st.unit = unitSel.value; render(); });
     sortSel.addEventListener('change', () => { st.sort = sortSel.value; render(); });
+    document.getElementById('subj-sel').addEventListener('change', e => { st.subj = e.target.value; if (st.subj) st.sort = 'new'; render(); });
     qInp.addEventListener('input', () => { st.q = qInp.value; render(); qInp.focus(); });
     document.getElementById('cov-open').addEventListener('click', () => { const w = 920, h = Math.min(screen.availHeight, 780), l = Math.max(0, (screen.availLeft || 0) + screen.availWidth - w - 8); window.open('exam_cov.html' + (st.q ? '?q=' + encodeURIComponent(st.q) : ''), 'examcov', 'popup=yes,width=' + w + ',height=' + h + ',left=' + l + ',top=' + (screen.availTop || 0)); });
     document.getElementById('filter-bar').style.display = 'block';
