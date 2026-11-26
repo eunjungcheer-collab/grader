@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>기출 현황 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611261405">
+<link rel="stylesheet" href="css/style.css?v=202611261425">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <style>body{padding:10px 12px;max-width:none;} #cov-card{overflow-x:auto;} .gb{padding:6px 12px;font-size:13px;}</style>
 </head>
@@ -17,10 +17,10 @@
 </div>
 <div id="cov-card" class="card" style="padding:12px 14px;">학교 이름을 입력하세요.</div>
 <div class="hint" id="cov-msg" style="margin-top:6px;"></div>
-<script src="js/config.js?v=202611261405"></script>
-<script src="js/api.js?v=202611261405"></script>
-<script src="js/common.js?v=202611261405"></script>
-<script src="js/pdfui.js?v=202611261405"></script>
+<script src="js/config.js?v=202611261425"></script>
+<script src="js/api.js?v=202611261425"></script>
+<script src="js/common.js?v=202611261425"></script>
+<script src="js/pdfui.js?v=202611261425"></script>
 <script>
 requireLogin();
 let exams = [];
@@ -39,7 +39,9 @@ function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;
         if ((m = t.match(/([12])\s*학기/))) sem = +m[1];
       }
       if (!gr) { const g3 = t.match(/[중고]\s*([1-3])(?!\s*-\s*\d)/); if (g3) gr = +g3[1]; }
+      if (!gr) { const g4 = t.match(/[중고]\s*([1-3])\s*-\s*\d+(?:\s*,\s*\d+)*\s*단원/); if (g4) gr = +g4[1]; }      // 「중2-3,5단원」처럼 단원이 붙은 학년 표기
       if (!gr) { const g2 = String((ex.meta && ex.meta.grade) || '').match(/[초중고]([1-3])/); if (g2) gr = +g2[1]; }
+      if (!gr) { const g5 = String(((ex.meta && ex.meta.grades) || [])[0] || '').match(/[초중고]([1-3])/); if (g5) gr = +g5[1]; }
       return { y: y ? +y[1] : 0, gr: gr, sem: sem, kind: kind };
     }
     function unreadHtml(list) { return '<details style="margin-top:4px;"><summary style="cursor:pointer;font-size:13px;">목록 보기</summary><div style="font-size:12px;line-height:1.7;margin-top:4px;">' + list.map(x => escapeHtml(x.t) + ' <span style="color:#C1392B;">(못 읽음: ' + x.why + ')</span>').join('<br>') + '</div></details>'; }
@@ -94,6 +96,8 @@ function drawOverview() {
     h += '<tr><td style="' + th + 'font-size:13px;font-weight:800;cursor:pointer;color:#1F3A6B;text-decoration:underline;" data-school="' + escapeHtml(n) + '">' + escapeHtml(n) + '</td><td style="' + td + '">' + o.n + '</td>' + cols.map(c => { const ys = o.cells[c.g + '|' + c.sm + '|' + c.k];
       return ys ? '<td style="' + td + 'color:#1f6f4a;background:#E8F5EE;" title="' + ys.join(', ') + '">' + Array.from(new Set(ys)).sort().map(y => String(y).slice(2)).join('·') + '</td>' : ((c.g === 3 && c.sm === 2 && c.k === '중간') ? '<td style="' + td + 'background:#E5E7EB;"></td>' : '<td style="' + td + '"></td>'); }).join('') + '<td style="' + td + (o.unread.length ? 'color:#B45309;" title="' + escapeHtml(o.unread.join('\n')) + '">' + o.unread.length : '">') + '</td></tr>'; });
   h += '</table>';
+  const un = []; names.forEach(n => by[n].unread.forEach(t => un.push(n + ' — ' + t)));
+  if (un.length) h += '<details style="margin-top:8px;font-size:13px;color:#B45309;" open><summary style="cursor:pointer;font-weight:800;">⚠️ 제목에서 연도·학년·학기·중간/기말을 못 읽어 표에 못 넣은 시험지 ' + un.length + '개</summary><div style="font-size:12px;line-height:1.7;margin-top:4px;">' + un.map(t => escapeHtml(t)).join('<br>') + '<br><span style="color:#64748B;">시험지 이름에 「2025학년도 1학기 중간고사」처럼 적어 주면 표에 들어가요.</span></div></details>';
   if (noSchool.length) h += '<div style="margin-top:8px;font-size:12px;color:#64748B;">학교 이름이 없는 시험지(일반 시험지 등) ' + noSchool.length + '개는 표에서 뺐어요.</div>';
   box.innerHTML = h;
 }
