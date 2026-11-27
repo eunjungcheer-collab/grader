@@ -228,6 +228,7 @@ function showResults(results) {
         <button type="button" class="btn outline" data-req="${esc(ex.id)}" style="width:100%;">✏️ 수정 요청하기</button>
         <button type="button" class="btn primary" data-chk="${esc(ex.id)}" style="width:100%; margin-top:6px; display:none;">🔍 승인 확인</button>
         <div class="hint" data-fm="${esc(ex.id)}" style="margin-top:6px; font-weight:700;"></div>`}</div>` : ''}
+      ${(() => { const w = res.results.map((r, i) => r === 'x' ? i + 1 : 0).filter(Boolean); return w.length ? `<a class="btn primary" href="student_retry.html?id=${encodeURIComponent(ex.id)}&n=${w.join(',')}&name=${encodeURIComponent(studentName)}" style="display:block; width:100%; text-align:center; margin-bottom:8px; box-sizing:border-box;">❌ 틀린 문제 ${w.length}개 다시 입력하기</a>` : ''; })()}
       <div class="card">${res.results.map((rs, i) => rs === 'subj' ? `
         <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${numLbl(ex.id, i)}번</span><span>주관식 (자동 채점 제외)</span></div>` : rs === 'skip' ? `
         <div class="submission-row" style="color:#9CA3AF; background:#F3F4F6;"><span>${numLbl(ex.id, i)}번</span><span>안 푼 문항 (채점 제외)</span></div>` : `

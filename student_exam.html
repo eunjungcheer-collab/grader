@@ -369,6 +369,7 @@ async function submitAnswers(e) {
       <div class="sx-ring" style="background:conic-gradient(${ringCol} ${pct * 3.6}deg, #E5E1D6 0);"><div style="width:122px;height:122px;border-radius:50%;background:#F7F5EF;display:flex;align-items:center;justify-content:center;">${sc100 === null ? '<span style="font-size:15px;">객관식 없음</span>' : sc100 + '<span>점</span>'}</div></div>
       <p class="hint" style="text-align:center;">${res.total ? '객관식 ' + res.total + '문항 중 ' + res.score + '개 정답 · 100점 만점 환산' : ''}</p>
       ${(res.subjective && res.subjective.length) ? '<p class="hint" style="text-align:center;">주관식 ' + res.subjective.length + '문항(' + res.subjective.map(dnOf).join(', ') + '번)은 점수에 합산하지 않아요. 선생님이 따로 채점해요.</p>' : ''}
+      ${wrongN ? '<button type="button" class="btn primary" id="go-retry" style="width:100%; margin:6px 0 4px;">❌ 틀린 문제 ' + wrongN + '개 다시 입력하기 ↓</button>' : ''}
       <h2>문항별 결과</h2>
       <div class="sx-chips">
         ${res.results.map((rs, i) => rs === 'ok' ? '<div class="sx-chip ok">' + dn(i) + '번<small>⭕ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : rs === 'x' ? '<div class="sx-chip x">' + dn(i) + '번<small>❌ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : '<div class="sx-chip na">' + dn(i) + '번<small>' + (rs === 'subj' ? '주관식' : '안 품') + '</small></div>').join('')}
@@ -386,7 +387,7 @@ async function submitAnswers(e) {
     { const cb = document.getElementById('continue-btn'); if (cb) cb.addEventListener('click', () => goEdit('fill', res.submittedAt, res.studentAnswers, name, false, res.outOfRange)); const fb = document.getElementById('fix-btn'); if (fb) fb.addEventListener('click', () => goEdit('fix', res.submittedAt, res.studentAnswers, name, true, res.outOfRange));
       const rq = document.getElementById('fixreq-btn'), ck = document.getElementById('fixchk-btn'), fm = document.getElementById('fixreq-msg');
       if (rq) { rq.addEventListener('click', async () => { if (await sxRequestFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false, res.outOfRange))) { rq.style.display = 'none'; ck.style.display = ''; } }); ck.addEventListener('click', () => sxCheckFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false))); } }
-    if (wrongN) setupRetry(res);
+    if (wrongN) { setupRetry(res); const g = document.getElementById('go-retry'); if (g) g.addEventListener('click', () => document.getElementById('retry-card').scrollIntoView({ behavior: 'smooth', block: 'start' })); }
   } catch (err) {
     alert('오류가 발생했어요: ' + err.message + '\n\n입력한 답은 그대로 남아 있어요. 잠시 뒤에 다시 제출해 주세요.');
     btn.disabled = false;
