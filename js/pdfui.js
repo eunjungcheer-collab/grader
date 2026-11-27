@@ -190,6 +190,11 @@ function qrPlacement(pageW, pageH, opts) {
 async function stampQrOnDoc(pdfDoc, url, opts) { return stampQrOnPage(pdfDoc, 0, url, opts); }
 // 지정한 쪽(0부터)에 QR을 찍는다. opts.caption 으로 안내 문구를 바꿀 수 있다.
 async function stampQrOnPage(pdfDoc, pageIndex, url, opts) {
+  // 'both': 맨 위 양쪽 모서리에 같은 QR을 찍는다 — 제본(접히는 부분)에 한쪽이 가려져도 반대쪽 QR로 찍을 수 있게
+  if (opts && opts.corner === 'both') {
+    await stampQrOnPage(pdfDoc, pageIndex, url, Object.assign({}, opts, { corner: 'top-right' }));
+    return stampQrOnPage(pdfDoc, pageIndex, url, Object.assign({}, opts, { corner: 'top-left', caption: opts.caption || 'QR코드로 답안 입력하세요' }));
+  }
   const qrDataUrl = await QRCode.toDataURL(url, { width: 300, margin: 1 });
   const qrBytes = new Uint8Array(await (await fetch(qrDataUrl)).arrayBuffer());
   const qrImage = await pdfDoc.embedPng(qrBytes);
