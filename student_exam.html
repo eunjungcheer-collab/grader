@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611271415">
+<link rel="stylesheet" href="css/style.css?v=202611271500">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611271415"></script>
-<script src="js/api.js?v=202611271415"></script>
-<script src="js/common.js?v=202611271415"></script>
-<script src="js/confirmans.js?v=202611271415"></script>
+<script src="js/config.js?v=202611271500"></script>
+<script src="js/api.js?v=202611271500"></script>
+<script src="js/common.js?v=202611271500"></script>
+<script src="js/confirmans.js?v=202611271500"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -113,7 +113,16 @@ async function loadExam() {
         <input type="text" id="student-name" required autocomplete="off" value="${escapeHtml(STU_NAME)}">
         <div id="dl-box" style="display:none; margin-top:8px; padding:8px 10px; border-radius:8px; background:#FFF4E0; border:1px solid #F3D9A4; color:#7A4A00; font-size:14px;"></div>
         <label style="margin-top:12px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 또는 1-10, 15 · 풀지 않는 번호는 채점에서 빠져요)</span></label>
-        <input type="text" id="skip-input" placeholder="예: 1-10" inputmode="numeric" autocomplete="off">
+        <input type="text" id="skip-input" placeholder="예: 1-10" autocomplete="off" autocapitalize="off" autocorrect="off">
+        <div id="skip-helper" style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <span class="hint" style="font-weight:700;">숫자만 눌러서 넣기</span>
+          <input type="text" id="sk-a" inputmode="numeric" pattern="[0-9]*" placeholder="시작" style="width:70px; text-align:center;" autocomplete="off">
+          <b>~</b>
+          <input type="text" id="sk-b" inputmode="numeric" pattern="[0-9]*" placeholder="끝" style="width:70px; text-align:center;" autocomplete="off">
+          <button type="button" class="btn outline" id="sk-add" style="padding:6px 14px;">추가</button>
+          <button type="button" class="btn outline" id="sk-clear" style="padding:6px 14px;">모두 지우기</button>
+          <div class="hint" style="width:100%;">시작 번호만 넣으면 그 번호 하나, 끝 번호까지 넣으면 그 사이 전부예요. 여러 번 눌러 더할 수 있어요. (예: 1 ~ 10 추가 → 15 추가)</div>
+        </div>
         <div id="skip-why" style="display:none; margin-top:8px; font-size:14px;">
           <span class="hint" style="font-weight:700;">왜 안 푸나요?</span>
           <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;"><button type="button" class="btn primary" data-why="scope" style="padding:7px 12px;">시험 범위가 아니에요</button><button type="button" class="btn outline" data-why="later" style="padding:7px 12px;">나중에 풀 거예요</button></div>
@@ -160,6 +169,16 @@ async function loadExam() {
     document.getElementById('sx-prog').style.display = 'block'; updateProgress();
 
     document.getElementById('skip-input').addEventListener('input', applySkip);
+    { const si = document.getElementById('skip-input'), A = document.getElementById('sk-a'), B = document.getElementById('sk-b');
+      const dig = el => el.addEventListener('input', () => { el.value = el.value.replace(/\D/g, '').slice(0, 3); });
+      dig(A); dig(B);
+      document.getElementById('sk-add').addEventListener('click', () => {
+        const a = parseInt(A.value, 10), b = B.value ? parseInt(B.value, 10) : a; if (!(a >= 1)) { A.focus(); return; }
+        const t = (b && b !== a) ? Math.min(a, b) + '-' + Math.max(a, b) : String(a);
+        si.value = si.value.trim() ? si.value.trim().replace(/[,，\s]+$/, '') + ', ' + t : t; A.value = ''; B.value = ''; applySkip(); A.focus();
+      });
+      document.getElementById('sk-clear').addEventListener('click', () => { si.value = ''; applySkip(); });
+    }
     const paintWhy = () => { document.querySelectorAll('#skip-why [data-why]').forEach(b => { const on = b.dataset.why === skipWhy; b.className = 'btn ' + (on ? 'primary' : 'outline'); }); document.getElementById('skip-why-hint').textContent = skipWhy === 'scope' ? '시험 범위가 아닌 문항은 계속 빠진 채로 두고, 점수에도 넣지 않아요.' : '나중에 「이어서 입력하기」로 풀 수 있어요. 풀기 전까지는 점수에 들어가지 않아요.'; };
     document.querySelectorAll('#skip-why [data-why]').forEach(b => b.addEventListener('click', () => { skipWhy = b.dataset.why; paintWhy(); }));
     paintWhy();
