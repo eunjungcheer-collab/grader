@@ -2366,19 +2366,28 @@ function actionStuHome_(p) {
   try { const cc = CacheService.getScriptCache(); if (!cc.get('cd_run')) { cc.put('cd_run', '1', 60); checkDeadlines_(); } } catch (e) {}
   if (p.login) { try { stuSheet_().getRange(a.rowIndex, 5).setValue(new Date().toISOString()); } catch (e) {} try { stuPushToAcct_(a.display, p.pin); } catch (e) {} }
   const ed = ss.getSheetByName(SHEET_EXAMS).getDataRange().getValues();
-  const titleOf = {}, exams = [];
+  const titleOf = {}, exams = [], correctOf = {};
   for (let i = 1; i < ed.length; i++) {
     const r = ed[i]; if (!r[0]) continue;
     titleOf[String(r[0])] = String(r[1]);
     const rc = safeJson_(r[8], null);
     if (rc && rc.aliases) rc.aliases.forEach(function (al) { if (!titleOf[String(al)]) titleOf[String(al)] = String(r[1]); });      // 삭제 후 다시 등록해 이어 준 예전 시험 번호
+    correctOf[String(r[0])] = examAnswers_(r); if (rc && rc.aliases) rc.aliases.forEach(function (al) { if (!correctOf[String(al)]) correctOf[String(al)] = correctOf[String(r[0])]; });
     exams.push({ id: String(r[0]), title: String(r[1]), count: examAnswers_(r).length, createdAt: r[3], book: (rc && rc.book) ? String(rc.book) : '' });
   }
   const sd = ss.getSheetByName(SHEET_SCORES).getDataRange().getValues(), records = [], doneIds = {}, best = {};
   for (let i = sd.length - 1; i >= 1; i--) {
     if (nameKey_(sd[i][1]) !== key) continue;
     const id = String(sd[i][0]);
-    records.push({ examId: id, title: titleOf[id] || '(삭제된 시험)', score: sd[i][3], total: sd[i][4], score100: sd[i][6], submittedAt: sd[i][5] });
+    // 결과 보기에서 몇 번을 틀렸고 무엇을 썼는지 보이게: 내 답과 틀린 번호(정답은 보내지 않는다)
+    const my = String(sd[i][2] || '').split(','), cor = correctOf[id] || [], wr = [], sk = [];
+    for (let k = 0; k < cor.length; k++) {
+      const a = String(my[k] === undefined ? '' : my[k]).trim();
+      if (isSubjective_(cor[k])) continue;
+      if (a === '~' || a === '') { sk.push(k + 1); continue; }
+      if (!ansMatches_(normAns_(a), cor[k])) wr.push(k + 1);
+    }
+    records.push({ examId: id, title: titleOf[id] || '(삭제된 시험)', score: sd[i][3], total: sd[i][4], score100: sd[i][6], submittedAt: sd[i][5], answers: my, wrong: wr, skipped: sk });
     doneIds[id] = 1; if (best[id] === undefined || sd[i][6] > best[id]) best[id] = sd[i][6];
   }
   const asg = [], sh = assignSheet_();

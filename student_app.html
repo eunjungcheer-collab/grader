@@ -123,9 +123,9 @@ svg text{font-family:inherit;}
   <button data-t="wrong"><span class="ic">🔁</span>다시 풀기</button>
 </nav>
 
-<script src="js/config.js?v=202611272140"></script>
-<script src="js/api.js?v=202611272140"></script>
-<script src="js/common.js?v=202611272140"></script>
+<script src="js/config.js?v=202611272250"></script>
+<script src="js/api.js?v=202611272250"></script>
+<script src="js/common.js?v=202611272250"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -256,7 +256,20 @@ function drawRec() {
   sc.forEach((v, i) => { svg += '<circle cx="' + X(i) + '" cy="' + Y(v) + '" r="4.5" fill="#0B1F5C"/>'; if (n <= 12) svg += '<text x="' + X(i) + '" y="' + (Y(v) - 9) + '" font-size="11" text-anchor="middle" fill="#0B1F5C" font-weight="700">' + v + '</text>'; });
   svg += '</svg>';
   box.innerHTML = '<h2>📈 내 기록</h2><div class="card"><div class="row"><div><div class="hint" style="margin:0;">푼 시험</div><div class="score">' + n + '번</div></div><div><div class="hint" style="margin:0;">평균 점수</div><div class="score">' + avg + '점</div></div><div><div class="hint" style="margin:0;">최고 점수</div><div class="score">' + Math.max.apply(null, sc) + '점</div></div></div>' + svg + '</div><h2>시험별 기록</h2>' +
-    R.map(r => '<div class="ex"><div class="row"><div class="t" style="font-size:14.5px;">' + esc(r.title) + '</div><div class="score">' + r.score100 + '점</div></div><div class="m">' + fmtT(r.submittedAt) + ' · 객관식 ' + r.total + '문항 중 ' + r.score + '개 정답</div></div>').join('');
+    R.map((r, i) => '<div class="ex" data-ri="' + i + '" style="cursor:pointer;"><div class="row"><div class="t" style="font-size:14.5px;">' + esc(r.title) + '</div><div class="score">' + r.score100 + '점</div></div><div class="m">' + fmtT(r.submittedAt) + ' · 객관식 ' + r.total + '문항 중 ' + r.score + '개 정답' +
+      (Array.isArray(r.wrong) ? (r.wrong.length ? ' · <b style="color:var(--red);">틀린 문항 ' + r.wrong.length + '개</b>' : ' · 다 맞았어요 🎉') : '') + ' <span style="float:right; font-weight:700;">▾ 자세히</span></div><div class="rdet" style="display:none;"></div></div>').join('');
+  // 시험을 누르면: 틀린 번호와 내가 쓴 답 (정답은 오답 복습에서)
+  box.querySelectorAll('[data-ri]').forEach(el => el.addEventListener('click', ev => {
+    if (ev.target.closest('a, button, details, summary')) return;
+    const r = R[+el.dataset.ri], det = el.querySelector('.rdet');
+    if (det.style.display !== 'none') { det.style.display = 'none'; return; }
+    if (!Array.isArray(r.answers)) { det.innerHTML = '<div class="hint" style="margin:8px 0 0;">자세한 결과는 🔁 오답 복습에서 볼 수 있어요.</div>'; det.style.display = ''; return; }
+    const html = lastAnswersHtml({ answers: r.answers, wrong: r.wrong, skipped: r.skipped, submittedAt: r.submittedAt }).replace('<details style="margin-top:8px;">', '<details open style="margin-top:8px;">').replace('📋 지난번에 낸 답 보기', '📋 내가 낸 답');
+    det.innerHTML = html + (r.wrong && r.wrong.length ? '<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;"><button type="button" class="btn sm primary" data-rv="' + esc(r.examId) + '">🔁 오답 복습 (문제 그림·정답)</button><a class="btn sm outline" href="student_retry.html?id=' + encodeURIComponent(r.examId) + '&n=' + r.wrong.join(',') + '&name=' + encodeURIComponent(ME.name) + '">틀린 문제만 다시 풀기</a></div>' : '');
+    det.style.display = '';
+    const rv = det.querySelector('[data-rv]');
+    if (rv) rv.addEventListener('click', () => { goTab('wrong'); const s2 = $('wsel'); if (s2) { s2.value = rv.dataset.rv; loadWrong(s2.value); } });
+  }));
 }
 // ── 오답 복습 ──
 function drawWrongPicker() {
