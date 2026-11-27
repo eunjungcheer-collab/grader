@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611261425">
+<link rel="stylesheet" href="css/style.css?v=202611271415">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611261425"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611261425"></script>
-<script src="js/config.js?v=202611261425"></script>
-<script src="js/api.js?v=202611261425"></script>
-<script src="js/common.js?v=202611261425"></script>
-<script src="js/bankcore.js?v=202611261425"></script>
-<script src="js/vendor/pdf.min.js?v=202611261425"></script>
-<script src="js/printpdf.js?v=202611261425"></script>
-<script src="js/pdfui.js?v=202611261425"></script>
+<script src="js/vendor/qrcode.min.js?v=202611271415"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611271415"></script>
+<script src="js/config.js?v=202611271415"></script>
+<script src="js/api.js?v=202611271415"></script>
+<script src="js/common.js?v=202611271415"></script>
+<script src="js/bankcore.js?v=202611271415"></script>
+<script src="js/vendor/pdf.min.js?v=202611271415"></script>
+<script src="js/printpdf.js?v=202611271415"></script>
+<script src="js/pdfui.js?v=202611271415"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -197,7 +197,8 @@ function showAvail() {
     groups[u].filter(passesFilters).forEach(q => { if (excludeIds.has(q.id)) nExcluded++; });
     poolFor(u).forEach(q => { c[dKey(q)]++; if (q.answer === '-') nSub++; });
   });
-  let t = units.length ? '선택한 단원의 보유 문항 → 상 ' + c['상'] + ' · 중 ' + c['중'] + ' · 하 ' + c['하'] + ' · 난이도 미정 ' + c['미정'] : '단원을 선택하면 난이도별 보유 개수가 보여요.';
+  const scSel = schoolFilter.size && kindFilter !== '일반' ? '「' + Array.from(schoolFilter).join('·') + '」 기출 기준 · ' : '';
+  let t = units.length ? scSel + '선택한 단원의 보유 문항 → 상 ' + c['상'] + ' · 중 ' + c['중'] + ' · 하 ' + c['하'] + ' · 난이도 미정 ' + c['미정'] : '단원을 선택하면 난이도별 보유 개수가 보여요.';
   if (nSub) t += ' (이 중 주관식 ' + nSub + '개 — 시험에 들어가면 회색으로 표시되고 자동 채점에서 빠져요)';
   if (nExcluded) t += ' · 겹치지 않게 제외됨 ' + nExcluded + '개';
   $('diff-avail').textContent = t;
@@ -266,7 +267,9 @@ function renderSchoolFilter() {
 }
 function updatePastFilterBox() {
   const has = allQuestions.some(isPastExam);
-  $('past-filter').style.display = (kindFilter !== '일반' && has) ? '' : 'none';
+  const pf = $('past-filter'); pf.style.display = (kindFilter !== '일반' && has) ? '' : 'none';
+  if (kindFilter === '기출' && has && !pf._opened) { pf.open = true; pf._opened = true; }      // 기출문제를 고르면 학교 고르는 칸을 바로 펼쳐 둔다
+  if (kindFilter !== '기출') pf._opened = false;
 }
 function renderYearFilter() {
   updatePastFilterBox();
@@ -425,7 +428,7 @@ async function loadRegenParams() {
         <label class="field-label-spaced">출제 유형 <span class="muted" style="font-weight:400;">(서술형은 자동 채점에서 빠져요)</span></label>
         <div class="kind-chips" id="type-chips"></div>
         <div id="book-filter" class="school-filter" style="display:none;"></div>
-        <details id="past-filter" style="display:none; margin:6px 0;"><summary class="hint" style="cursor:pointer;">학교·연도로 좁히기 (선택 — 안 고르면 기출문제 전부)</summary>
+        <details id="past-filter" style="display:none; margin:6px 0;"><summary style="cursor:pointer;font-weight:800;color:#1F3A6B;">🏫 학교·연도로 좁히기 <span class="hint" style="font-weight:400;">— 학교를 고르면 아래 단원 목록이 그 학교 기출만으로 바뀌어요 (예: 불암중 → 2·3단원만 체크)</span></summary>
           <div id="school-filter" class="school-filter"></div>
           <div id="year-filter" class="school-filter"></div>
         </details>
