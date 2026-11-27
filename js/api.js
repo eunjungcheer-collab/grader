@@ -60,6 +60,25 @@ async function callApiSWR(action, params, render) {
 }
 window.callApiSWR = callApiSWR;
 
+// ── 학생 답안 제출: 서버가 바쁘거나(선생님이 시험지를 올리는 중 등) 연결이 잠깐 끊겨도 같은 제출 번호(sid)로 몇 번 더 보낸다.
+//    서버는 같은 sid를 한 번만 저장하므로 다시 보내도 기록이 두 번 생기지 않는다. 입력한 답은 화면에 그대로 둔다.
+function newSubmitId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+async function submitWithRetry(action, params, onWait) {
+  const waits = [2000, 4000, 7000, 10000, 15000]; let last = null;
+  for (let i = 0; i <= waits.length; i++) {
+    try {
+      const r = await callApi(action, params);
+      if (r && r.ok) return r;
+      last = r;
+      if (!/바빠|잠금|lock|timeout|시간|Exception|Service|too many|서버|연결/i.test(String((r && r.error) || ''))) return r;      // 틀린 이름 등 다시 보내도 안 되는 오류는 바로 알려 준다
+    } catch (e) { last = { ok: false, error: (e && e.message) || String(e) }; }
+    if (i < waits.length) { if (onWait) { try { onWait(i + 1, waits.length); } catch (e) {} } await new Promise(res => setTimeout(res, waits[i])); }
+  }
+  return last;
+}
+window.newSubmitId = newSubmitId;
+window.submitWithRetry = submitWithRetry;
+
 // 저장이 끝나기 전에 창을 닫거나 다른 화면으로 나가면 방금 고른 값이 사라진다 → 저장 중인 요청이 있으면 나가기 전에 경고한다
 const _SAVE_GUARD_RE = /^(updateQuestions?|updateExamAnswers|updateExamTitle|saveQuestions|deleteQuestions?|deleteExams?|saveRedoUnits)$/;
 window.__savePending = 0; window.__saveDirty = 0;

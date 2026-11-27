@@ -15,7 +15,7 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 <script src="js/config.js?v=202611271500"></script>
-<script src="js/api.js?v=202611271500"></script>
+<script src="js/api.js?v=202611271800"></script>
 <script src="js/common.js?v=202611271500"></script>
 <script src="js/confirmans.js?v=202611271500"></script>
 <script>
@@ -92,6 +92,15 @@ async function startAnswering() {
   showAnswering();
 }
 
+// ── 입력 중인 답 임시 저장 (화면이 새로 고쳐지거나 제출이 실패해도 처음부터 다시 입력하지 않게) ──
+function mDraftKey() { return 'sm_draft_' + bookId + '|' + studentName; }
+function mSaveDraft() {
+  try {
+    const o = { t: Date.now(), ex: {} }; let has = false;
+    picked.forEach(ex => { const st = state[ex.id]; if (!st) return; const sk = st.card ? st.card.querySelector('.skip-in').value : ''; o.ex[ex.id] = { answers: st.answers, skip: sk }; if (st.answers.some(a => a)) has = true; });
+    if (has) localStorage.setItem(mDraftKey(), JSON.stringify(o)); else localStorage.removeItem(mDraftKey());
+  } catch (e) {}
+}
 function showAnswering() {
   area().innerHTML = `
     <h1>${esc(studentName)}님 답안 입력</h1>
@@ -106,7 +115,7 @@ function showAnswering() {
     const sub = r.subjective || [], mul = r.multi || [];
     const nm = (r.nums && r.nums.length === r.answerCount) ? r.nums : null, dn = i => (nm ? nm[i] : i + 1);
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = 'card'; st.card = card;
     card.innerHTML = `<h2 style="margin-top:0;">${ex.unit ? esc(ex.unit) + '단원 ' : ''}${esc(ex.label)}</h2><label style="font-size:13px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 · 채점에서 빠져요)</span></label><input type="text" class="skip-in" placeholder="예: 1-10" inputmode="numeric" autocomplete="off" style="margin-bottom:4px;"><label style="font-size:13px; display:block; margin-bottom:10px;"><input type="checkbox" class="later-cb"> 나중에 풀 예정이에요 <span class="hint" style="font-weight:400;">(체크하지 않으면 시험 범위가 아니라서 빼는 걸로 처리해요)</span></label><div class="grid"></div>`;
     st.skip = new Set();
     card.querySelector('.skip-in').addEventListener('input', function () {
@@ -141,8 +150,27 @@ function showAnswering() {
       grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(b => b.classList.remove('selected'));
       this.classList.add('selected');
     }));
+    grid.addEventListener('click', e => { if (e.target.closest('.ans-btn')) mSaveDraft(); });      // 복수 선택 포함, 누를 때마다 저장
+    card.querySelector('.skip-in').addEventListener('change', mSaveDraft);
     wrap.appendChild(card);
   });
+  // 전에 입력하다 만 답이 있으면 되살리기
+  try {
+    const d = JSON.parse(localStorage.getItem(mDraftKey()) || 'null');
+    if (d && d.ex && Date.now() - (d.t || 0) < 3 * 86400000) {
+      let n = 0;
+      picked.forEach(ex => {
+        const dx = d.ex[ex.id], st = state[ex.id]; if (!dx || !st) return;
+        if (dx.skip) { const si = st.card.querySelector('.skip-in'); si.value = dx.skip; si.dispatchEvent(new Event('input')); }
+        (dx.answers || []).forEach((v, i) => {
+          if (!v || i >= st.answers.length || (st.skip && st.skip.has(i + 1))) return;
+          st.answers[i] = v; n++;
+          String(v).split('').forEach(ch => { const b = st.card.querySelector('.ans-btn[data-q="' + i + '"][data-v="' + ch + '"]'); if (b) b.classList.add('selected'); });
+        });
+      });
+      if (n) document.getElementById('sub-msg').textContent = '💾 입력하던 답 ' + n + '개를 되살렸어요. 이어서 입력하면 돼요.';
+    }
+  } catch (e) {}
   document.getElementById('back').addEventListener('click', () => { const k = {}; picked.forEach(e => k[e.id] = 1); showPicker(k); });
   document.getElementById('submit').addEventListener('click', submitAll);
 }
@@ -161,16 +189,18 @@ async function submitAll() {
   try {
     for (const ex of picked) {
       const stx = state[ex.id], oorN = (stx.later || !stx.skip) ? [] : Array.from(stx.skip).filter(n => (stx.info.subjective || []).indexOf(n) < 0);
-      const res = await callApi('submitAnswer', { defer: true, id: ex.id, studentName: studentName, outOfRange: oorN, answers: state[ex.id].answers.map((a, i) => (state[ex.id].skip && state[ex.id].skip.has(i + 1) && (state[ex.id].info.subjective || []).indexOf(i + 1) < 0) ? '~' : a) });
-      if (!res.ok) throw new Error((ex.label) + ': ' + (res.error || '제출 실패'));
+      if (!stx.sid) stx.sid = newSubmitId();      // 같은 단원을 다시 보내도 한 번만 저장되게 (앞에서 이미 낸 단원은 처음 결과를 그대로 받음)
+      const res = await submitWithRetry('submitAnswer', { sid: stx.sid, defer: true, id: ex.id, studentName: studentName, outOfRange: oorN, answers: state[ex.id].answers.map((a, i) => (state[ex.id].skip && state[ex.id].skip.has(i + 1) && (state[ex.id].info.subjective || []).indexOf(i + 1) < 0) ? '~' : a) }, (k, n) => { btn.textContent = '서버가 바빠서 다시 보내는 중… (' + k + '/' + n + ') · 답은 그대로 있어요'; });
+      if (!res || !res.ok) throw new Error((ex.label) + ': ' + ((res && res.error) || '제출 실패'));
       results.push({ ex, res });
       callApi('afterSubmit', { id: ex.id, studentName: studentName }).catch(() => {});
     }
   } catch (e) {
-    msg.textContent = '오류: ' + e.message + (results.length ? ' (앞의 ' + results.length + '개 단원은 이미 제출됐어요)' : '');
+    msg.textContent = '오류: ' + e.message + (results.length ? ' (앞의 ' + results.length + '개 단원은 이미 제출됐어요)' : '') + ' · 입력한 답은 그대로 있어요. 잠시 뒤에 다시 눌러 주세요.';
     btn.disabled = false; btn.textContent = '제출하고 채점받기';
     return;
   }
+  try { localStorage.removeItem(mDraftKey()); } catch (e) {}
   showResults(results);
 }
 

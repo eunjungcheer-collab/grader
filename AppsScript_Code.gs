@@ -125,7 +125,7 @@ function handle_(e) {
       case 'getExamPublic': result = actionGetExamPublic_(params); break;
       case 'getBookPublic': result = actionGetBookPublic_(params); break;
       case 'getExamDetail': result = actionGetExamDetail_(params); break;
-      case 'submitAnswer': result = actionSubmitAnswer_(params); break;
+      case 'submitAnswer': result = submitOnce_(params, actionSubmitAnswer_); break;
       case 'afterSubmit': result = actionAfterSubmit_(params); break;
       case 'retryCheck': result = actionRetryCheck_(params); break;
       case 'listSubmissions': result = actionListSubmissions_(params); break;
@@ -152,7 +152,7 @@ function handle_(e) {
       case 'getExamMarks': result = actionGetExamMarks_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
       case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
-      case 'editSubmission': result = actionEditSubmission_(params); break;
+      case 'editSubmission': result = submitOnce_(params, actionEditSubmission_); break;
       case 'requestFix': result = actionRequestFix_(params); break;
       case 'getFixStatus': result = actionGetFixStatus_(params); break;
       case 'approveFix': result = actionApproveFix_(params); break;
@@ -652,6 +652,25 @@ function actionAfterSubmit_(p) {
   return { ok: false, error: '방금 제출한 기록을 찾지 못했어요.' };
 }
 
+// 학생 제출은 앱이 같은 제출 번호(sid)로 다시 보낼 수 있다(서버가 바쁘거나 응답이 끊겼을 때).
+// 같은 sid는 한 번만 저장하고, 두 번째부터는 처음 결과를 그대로 돌려준다 → 기록이 두 번 생기지 않는다.
+function submitOnce_(p, fn) {
+  const sid = String(p.sid || '').replace(/[^\w-]/g, '').slice(0, 40);
+  if (!sid) return fn(p);
+  const c = CacheService.getScriptCache(), k = 'sid_' + sid;
+  let hit = c.get(k);
+  if (hit === 'busy') {      // 앞 요청이 아직 처리 중 → 끝날 때까지 잠깐 기다렸다가 그 결과를 돌려준다
+    for (let i = 0; i < 25 && hit === 'busy'; i++) { Utilities.sleep(1000); hit = c.get(k); }
+    if (hit === 'busy') return { ok: false, error: '서버가 바빠서 아직 채점 중이에요. 잠시 뒤에 다시 눌러 주세요. (입력한 답은 화면에 그대로 있어요)' };
+  }
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  try { c.put(k, 'busy', 120); } catch (e) {}
+  let r;
+  try { r = fn(p); }
+  catch (e) { try { c.remove(k); } catch (x) {} throw e; }
+  try { if (r && r.ok) c.put(k, JSON.stringify(r), 3600); else c.remove(k); } catch (e) { try { c.remove(k); } catch (x) {} }
+  return r;
+}
 function actionSubmitAnswer_(p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);

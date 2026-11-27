@@ -42,7 +42,7 @@
 </template>
 
 <script src="js/config.js?v=202611271500"></script>
-<script src="js/api.js?v=202611271500"></script>
+<script src="js/api.js?v=202611271800"></script>
 <script src="js/common.js?v=202611271500"></script>
 <script src="js/confirmans.js?v=202611271500"></script>
 <script>
@@ -62,6 +62,33 @@ let studentAnswers = [];
 const FROM_APP = new URLSearchParams(location.search).get('app') === '1';
 let STU_NAME = '';
 try { STU_NAME = sessionStorage.getItem('stu_name') || ''; if (!STU_NAME) { const l = JSON.parse(localStorage.getItem('stu_login') || sessionStorage.getItem('stu_login') || 'null'); if (l && l.name) STU_NAME = l.name; } } catch (e) {}
+// ── 입력 중인 답 임시 저장: 화면이 새로 고쳐지거나 제출이 실패해도 처음부터 다시 입력하지 않게 ──
+let DRAFT_ON = false, submitSid = '';
+function draftKey() { return 'sx_draft_' + examId; }
+function saveDraft() {
+  if (!DRAFT_ON || EDIT) return;
+  try {
+    const nm = document.getElementById('student-name'), sk = document.getElementById('skip-input');
+    const has = studentAnswers.some(a => a);
+    if (!has) { localStorage.removeItem(draftKey()); return; }
+    localStorage.setItem(draftKey(), JSON.stringify({ t: Date.now(), name: nm ? nm.value.trim() : '', skip: sk ? sk.value : '', chipOff: Array.from(chipOff || []), answers: studentAnswers }));
+  } catch (e) {}
+}
+function restoreDraft(grid) {
+  let d = null; try { d = JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (e) {}
+  if (!d || !Array.isArray(d.answers) || Date.now() - (d.t || 0) > 3 * 86400000) return 0;
+  const nm = document.getElementById('student-name');
+  if (d.name && nm && !nm.readOnly && (!nm.value.trim() || nm.value.trim() === d.name)) nm.value = d.name;
+  if (d.skip) document.getElementById('skip-input').value = d.skip;
+  (d.chipOff || []).forEach(c => chipOff.add(c));
+  let n = 0;
+  d.answers.forEach((v, i) => {
+    if (!v || i >= answerCount || isSub(i) || lockedQ(i)) return;
+    studentAnswers[i] = v; n++;
+    String(v).split('').forEach(ch => { const b = grid.querySelector('.ans-btn[data-q="' + i + '"][data-v="' + ch + '"]'); if (b) b.classList.add('selected'); });
+  });
+  return n;
+}
 function updateProgress() {
   const need = []; for (let i = 0; i < answerCount; i++) if (!isSub(i) && !skipSet.has(i + 1)) need.push(i);
   const done = need.filter(i => studentAnswers[i]).length;
@@ -69,6 +96,7 @@ function updateProgress() {
   t.textContent = '답 입력 ' + done + ' / ' + need.length;
   document.getElementById('sx-pbar').style.width = (need.length ? done / need.length * 100 : 0) + '%';
   const left = need.length - done; document.getElementById('sx-pleft').textContent = left ? left + '문항 남았어요' : '✅ 다 입력했어요!';
+  saveDraft();
   document.querySelectorAll('#answer-grid .qrow').forEach((r, i) => { r.classList.toggle('done', !!studentAnswers[i]); if (studentAnswers[i]) r.classList.remove('miss'); });
 }
 function advanceFrom(q) {
@@ -224,6 +252,21 @@ async function loadExam() {
         }
       } catch (e) {}
     }
+    // 전에 입력하다 만 답이 이 기기에 남아 있으면 되살린다
+    if (!EDIT) {
+      const n = restoreDraft(grid);
+      if (n) {
+        const box = document.createElement('div');
+        box.style.cssText = 'margin:0 0 10px; padding:10px 12px; border-radius:10px; background:#EEF7F1; border:1px solid #9AD3B0; font-size:14px; line-height:1.5;';
+        box.innerHTML = '💾 <b>입력하던 답 ' + n + '개를 되살렸어요.</b> 이어서 입력하면 돼요. <button type="button" class="btn outline" id="draft-clear" style="padding:4px 10px; margin-left:6px;">지우고 새로 입력</button>';
+        const form = document.getElementById('answer-form'); form.insertBefore(box, form.firstChild);
+        document.getElementById('draft-clear').addEventListener('click', () => { try { localStorage.removeItem(draftKey()); } catch (e) {} location.reload(); });
+        applySkip();
+        const rb = document.getElementById('range-box'); if (rb && rb.style.display !== 'none') rb.querySelectorAll('button').forEach(bt => { const c = +bt.dataset.c, on = !chipOff.has(c); bt.className = 'btn ' + (on ? 'primary' : 'outline'); bt.textContent = (on ? '✅ ' : '') + bt.textContent.replace(/^✅ /, ''); });
+      }
+    }
+    DRAFT_ON = true;
+    document.getElementById('student-name').addEventListener('input', saveDraft);
     document.getElementById('answer-form').addEventListener('submit', submitAnswers);
     // 선생님이 예약해 둔 학생이면 이름을 적을 때 제출 기한을 보여 준다
     (function () {
@@ -306,9 +349,12 @@ async function submitAnswers(e) {
 
   try {
     const arr = studentAnswers.map((a, i) => skipAll[i] ? '~' : a);
-    const res = EDIT ? await callApi('editSubmission', { id: examId, studentName: name, submittedAt: EDIT.submittedAt, answers: arr, outOfRange: oorNew })
-                     : await callApi('submitAnswer', { defer: true, id: examId, studentName: name, answers: arr, outOfRange: oorNew });
-    if (!res.ok) { alert(res.error || '제출에 실패했어요.'); btn.disabled = false; btn.textContent = '제출하고 채점받기'; return; }
+    if (!submitSid) submitSid = newSubmitId();
+    const onWait = (k, n) => { btn.textContent = '서버가 바빠서 다시 보내는 중… (' + k + '/' + n + ') · 답은 그대로 있어요'; };
+    const res = EDIT ? await submitWithRetry('editSubmission', { sid: submitSid, id: examId, studentName: name, submittedAt: EDIT.submittedAt, answers: arr, outOfRange: oorNew }, onWait)
+                     : await submitWithRetry('submitAnswer', { sid: submitSid, defer: true, id: examId, studentName: name, answers: arr, outOfRange: oorNew }, onWait);
+    if (!res || !res.ok) { alert(((res && res.error) || '제출에 실패했어요.') + '\n\n입력한 답은 그대로 남아 있어요. 잠시 뒤에 「제출하고 채점받기」를 다시 눌러 주세요.'); btn.disabled = false; btn.textContent = '제출하고 채점받기'; return; }
+    DRAFT_ON = false; submitSid = ''; try { localStorage.removeItem(draftKey()); } catch (e) {}
     if (!EDIT) callApi('afterSubmit', { id: examId, studentName: name }).catch(() => {});
     try { localStorage.setItem('sx_last_' + examId, JSON.stringify({ name: name, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], oor: res.outOfRange || [], answers: res.studentAnswers, wrong: (res.results || []).map((r, i) => r === 'x' ? i + 1 : 0).filter(Boolean) })); } catch (e) {}      // 알림은 결과를 보여 준 뒤 따로 보낸다
 
@@ -342,7 +388,7 @@ async function submitAnswers(e) {
       if (rq) { rq.addEventListener('click', async () => { if (await sxRequestFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false, res.outOfRange))) { rq.style.display = 'none'; ck.style.display = ''; } }); ck.addEventListener('click', () => sxCheckFix(examId, name, res.submittedAt, fm, () => goEdit('fix', res.submittedAt, res.studentAnswers, name, false))); } }
     if (wrongN) setupRetry(res);
   } catch (err) {
-    alert('오류가 발생했어요: ' + err.message);
+    alert('오류가 발생했어요: ' + err.message + '\n\n입력한 답은 그대로 남아 있어요. 잠시 뒤에 다시 제출해 주세요.');
     btn.disabled = false;
     btn.textContent = '제출하고 채점받기';
   }
