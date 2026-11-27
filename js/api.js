@@ -159,15 +159,17 @@ const _PIN_RE = /^(submitAnswer|myExamStatus|retryCheck)$/;
 function _pinKey(n) { return String(n || '').replace(/\s+/g, '').toLowerCase(); }
 function _pinGet(name) {
   try {
-    const k = _pinKey(name), s = JSON.parse(sessionStorage.getItem('stu_pin') || 'null');
+    const k = _pinKey(name), s = JSON.parse(localStorage.getItem('stu_pin') || 'null');
     if (s && s.k === k && s.pin) return s.pin;
     const l = JSON.parse(localStorage.getItem('stu_login') || sessionStorage.getItem('stu_login') || 'null');
     if (l && l.pin && _pinKey(l.name) === k) return String(l.pin);
   } catch (e) {}
   return '';
 }
-function _pinSet(name, pin) { try { sessionStorage.setItem('stu_pin', JSON.stringify({ k: _pinKey(name), pin: pin })); } catch (e) {} }
-function _pinForget(name) { try { const s = JSON.parse(sessionStorage.getItem('stu_pin') || 'null'); if (s && s.k === _pinKey(name)) sessionStorage.removeItem('stu_pin'); } catch (e) {} }
+// 이 폰에 계속 기억한다 (같은 폰에서는 한 번 입력하면 다음부터 묻지 않음). 다른 학생이 쓰려면 「내가 아니에요」
+function _pinSet(name, pin) { try { localStorage.setItem('stu_pin', JSON.stringify({ k: _pinKey(name), pin: pin, name: String(name || '') })); } catch (e) {} }
+function _pinForget(name) { try { const s = JSON.parse(localStorage.getItem('stu_pin') || 'null'); if (!name || (s && s.k === _pinKey(name))) localStorage.removeItem('stu_pin'); } catch (e) {} }
+window.stuPinForget = function () { try { localStorage.removeItem('stu_pin'); } catch (e) {} };
 function askStudentPin(name, msg) {
   return new Promise(function (resolve) {
     const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;';

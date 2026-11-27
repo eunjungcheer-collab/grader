@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611280014">
+<link rel="stylesheet" href="css/style.css?v=202611280015">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611280014"></script>
-<script src="js/api.js?v=202611280014"></script>
-<script src="js/common.js?v=202611280014"></script>
-<script src="js/confirmans.js?v=202611280014"></script>
+<script src="js/config.js?v=202611280015"></script>
+<script src="js/api.js?v=202611280015"></script>
+<script src="js/common.js?v=202611280015"></script>
+<script src="js/confirmans.js?v=202611280015"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -61,7 +61,7 @@ const isSub = i => subjective.indexOf(i + 1) >= 0;
 let studentAnswers = [];
 const FROM_APP = new URLSearchParams(location.search).get('app') === '1';
 let STU_NAME = '';
-try { STU_NAME = sessionStorage.getItem('stu_name') || ''; if (!STU_NAME) { const l = JSON.parse(localStorage.getItem('stu_login') || sessionStorage.getItem('stu_login') || 'null'); if (l && l.name) STU_NAME = l.name; } } catch (e) {}
+try { STU_NAME = sessionStorage.getItem('stu_name') || ''; if (!STU_NAME) { const l = JSON.parse(localStorage.getItem('stu_login') || sessionStorage.getItem('stu_login') || 'null'); if (l && l.name) STU_NAME = l.name; } if (!STU_NAME) { const sp = JSON.parse(localStorage.getItem('stu_pin') || 'null'); if (sp && sp.name && sp.pin) STU_NAME = sp.name; } } catch (e) {}
 // ── 입력 중인 답 임시 저장: 화면이 새로 고쳐지거나 제출이 실패해도 처음부터 다시 입력하지 않게 ──
 let DRAFT_ON = false, submitSid = '';
 function draftKey() { return 'sx_draft_' + examId; }
@@ -275,7 +275,7 @@ async function loadExam() {
     if (!EDIT) showMyStatus();
     document.getElementById('student-name').addEventListener('input', saveDraft);
     document.getElementById('answer-form').addEventListener('submit', submitAnswers);
-    { const nm = document.getElementById('not-me'); if (nm) nm.addEventListener('click', e => { e.preventDefault(); try { sessionStorage.removeItem('stu_name'); localStorage.removeItem('sx_last_' + examId); localStorage.removeItem(draftKey()); } catch (x) {} const i = document.getElementById('student-name'); i.value = ''; nm.remove(); const ms = document.getElementById('my-status'); if (ms) ms.remove(); const f = document.getElementById('answer-form'); if (f) f.style.display = ''; i.focus(); }); }
+    { const nm = document.getElementById('not-me'); if (nm) nm.addEventListener('click', e => { e.preventDefault(); try { sessionStorage.removeItem('stu_name'); if (window.stuPinForget) window.stuPinForget(); localStorage.removeItem('sx_last_' + examId); localStorage.removeItem(draftKey()); } catch (x) {} const i = document.getElementById('student-name'); i.value = ''; nm.remove(); const ms = document.getElementById('my-status'); if (ms) ms.remove(); const f = document.getElementById('answer-form'); if (f) f.style.display = ''; i.focus(); }); }
     // 선생님이 예약해 둔 학생이면 이름을 적을 때 제출 기한을 보여 준다
     (function () {
       const inp = document.getElementById('student-name'), box = document.getElementById('dl-box');
@@ -406,10 +406,12 @@ async function submitAnswers(e) {
 
 // ── 틀린 문제만 다시 입력해서 맞는지 확인 (점수에는 안 들어가고, 정답은 알려 주지 않는다) ──
 // ── 같은 QR을 다시 찍었을 때: 이 시험의 공부 현황(틀린 문제 → 다시 풀기 → 정답·해설)을 맨 위에 한 번에 보여 준다 ──
+function _hasPin(n) { try { const s = JSON.parse(localStorage.getItem('stu_pin') || 'null'); return !!(s && s.pin && s.k === String(n || '').replace(/\s+/g, '').toLowerCase()); } catch (e) { return false; } }
 async function showMyStatus(confirmedName) {
   let last = null; try { last = JSON.parse(localStorage.getItem('sx_last_' + examId) || 'null'); } catch (e) {}
   const sessName = (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })();
   const name = sessName || confirmedName || '';
+  if (!name && last && last.name && !confirmedName && _hasPin(last.name)) return showMyStatus(last.name);
   if (!name && last && last.name && !confirmedName) {
     // 이 폰에 남은 이름(다른 학생일 수 있음)은 자동으로 열지 않고, 본인인지 먼저 묻는다
     const f0 = document.getElementById('answer-form'); if (!f0 || document.getElementById('who-card')) return;
@@ -418,7 +420,7 @@ async function showMyStatus(confirmedName) {
       '<div style="display:flex; gap:8px;"><button type="button" class="btn primary" id="who-yes" style="flex:1;">네, 내 기록 보기</button><button type="button" class="btn outline" id="who-no" style="flex:1;">아니에요</button></div>';
     f0.parentNode.insertBefore(w, f0);
     document.getElementById('who-yes').addEventListener('click', () => { showMyStatus(last.name).then(() => { if (document.getElementById('my-status')) w.remove(); }); });
-    document.getElementById('who-no').addEventListener('click', () => { try { localStorage.removeItem('sx_last_' + examId); localStorage.removeItem(draftKey()); } catch (e) {} location.reload(); });
+    document.getElementById('who-no').addEventListener('click', () => { try { localStorage.removeItem('sx_last_' + examId); localStorage.removeItem(draftKey()); if (window.stuPinForget) window.stuPinForget(); } catch (e) {} location.reload(); });
     return;
   }
   if (!name) return;
