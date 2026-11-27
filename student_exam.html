@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611280011">
+<link rel="stylesheet" href="css/style.css?v=202611280012">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611280011"></script>
-<script src="js/api.js?v=202611280011"></script>
-<script src="js/common.js?v=202611280011"></script>
-<script src="js/confirmans.js?v=202611280011"></script>
+<script src="js/config.js?v=202611280012"></script>
+<script src="js/api.js?v=202611280012"></script>
+<script src="js/common.js?v=202611280012"></script>
+<script src="js/confirmans.js?v=202611280012"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -439,7 +439,7 @@ function setupRetry(res, opt) {
   const grid = document.getElementById('retry-grid'), msg = document.getElementById('retry-msg'), btn = document.getElementById('retry-btn');
   wrong.forEach(i => {
     const row = document.createElement('div'); row.className = 'qrow'; row.id = 'rq' + i;
-    row.innerHTML = '<span class="qnum" style="min-width:auto;">' + dn(i) + '번</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(n => '<button type="button" class="ans-btn" data-q="' + i + '" data-v="' + n + '">' + n + '</button>').join('') + '</div>' + (isMulti(i) ? '<span class="multi-note">복수 선택</span>' : '') + '<span class="rq-st" style="margin-left:8px;font-weight:800;"></span>';
+    row.innerHTML = '<span class="qnum" style="min-width:auto;display:inline-block;background:#0B1F5C;color:#fff;border-radius:8px;padding:3px 12px;font-size:17px;">문제 ' + dn(i) + '번</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(n => '<button type="button" class="ans-btn" data-q="' + i + '" data-v="' + n + '">' + '①②③④⑤'[n - 1] + '</button>').join('') + '</div>' + (isMulti(i) ? '<span class="multi-note">복수 선택</span>' : '') + '<span class="rq-st" style="margin-left:8px;font-weight:800;"></span>';
     grid.appendChild(row);
   });
   // 오늘 이미 기회를 다 쓴 문항은 잠가 둔다
