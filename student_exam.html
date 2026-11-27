@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611280012">
+<link rel="stylesheet" href="css/style.css?v=202611280013">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611280012"></script>
-<script src="js/api.js?v=202611280012"></script>
-<script src="js/common.js?v=202611280012"></script>
-<script src="js/confirmans.js?v=202611280012"></script>
+<script src="js/config.js?v=202611280013"></script>
+<script src="js/api.js?v=202611280013"></script>
+<script src="js/common.js?v=202611280013"></script>
+<script src="js/confirmans.js?v=202611280013"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -138,7 +138,7 @@ async function loadExam() {
       <form id="answer-form" class="card">
         <div id="edit-banner" style="display:none; margin-bottom:10px; padding:10px 12px; border-radius:10px; font-size:14px; line-height:1.5;"></div>
         <label>이름</label>
-        <input type="text" id="student-name" required autocomplete="off" value="${escapeHtml(STU_NAME)}">
+        <input type="text" id="student-name" required autocomplete="off" value="${escapeHtml(STU_NAME)}">${STU_NAME ? '<a href="#" id="not-me" class="hint" style="display:inline-block;margin-top:4px;">내가 아니에요 (이름 지우고 다시 쓰기)</a>' : ''}
         <div id="dl-box" style="display:none; margin-top:8px; padding:8px 10px; border-radius:8px; background:#FFF4E0; border:1px solid #F3D9A4; color:#7A4A00; font-size:14px;"></div>
         <label style="margin-top:12px;">안 푸는 문항 <span class="hint" style="font-weight:400;">(선택 · 예: 1-10 또는 1-10, 15 · 풀지 않는 번호는 채점에서 빠져요)</span></label>
         <input type="text" id="skip-input" placeholder="예: 1-10" autocomplete="off" autocapitalize="off" autocorrect="off">
@@ -275,6 +275,7 @@ async function loadExam() {
     if (!EDIT) showMyStatus();
     document.getElementById('student-name').addEventListener('input', saveDraft);
     document.getElementById('answer-form').addEventListener('submit', submitAnswers);
+    { const nm = document.getElementById('not-me'); if (nm) nm.addEventListener('click', e => { e.preventDefault(); try { sessionStorage.removeItem('stu_name'); localStorage.removeItem('sx_last_' + examId); localStorage.removeItem(draftKey()); } catch (x) {} const i = document.getElementById('student-name'); i.value = ''; nm.remove(); const ms = document.getElementById('my-status'); if (ms) ms.remove(); const f = document.getElementById('answer-form'); if (f) f.style.display = ''; i.focus(); }); }
     // 선생님이 예약해 둔 학생이면 이름을 적을 때 제출 기한을 보여 준다
     (function () {
       const inp = document.getElementById('student-name'), box = document.getElementById('dl-box');
@@ -405,9 +406,21 @@ async function submitAnswers(e) {
 
 // ── 틀린 문제만 다시 입력해서 맞는지 확인 (점수에는 안 들어가고, 정답은 알려 주지 않는다) ──
 // ── 같은 QR을 다시 찍었을 때: 이 시험의 공부 현황(틀린 문제 → 다시 풀기 → 정답·해설)을 맨 위에 한 번에 보여 준다 ──
-async function showMyStatus() {
+async function showMyStatus(confirmedName) {
   let last = null; try { last = JSON.parse(localStorage.getItem('sx_last_' + examId) || 'null'); } catch (e) {}
-  const name = (last && last.name) || (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })();
+  const sessName = (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })();
+  const name = sessName || confirmedName || '';
+  if (!name && last && last.name && !confirmedName) {
+    // 이 폰에 남은 이름(다른 학생일 수 있음)은 자동으로 열지 않고, 본인인지 먼저 묻는다
+    const f0 = document.getElementById('answer-form'); if (!f0 || document.getElementById('who-card')) return;
+    const w = document.createElement('div'); w.className = 'card'; w.id = 'who-card'; w.style.cssText = 'border:2px solid #C9D6EA; background:#F6F9FE;';
+    w.innerHTML = '<div style="font-weight:800; font-size:16px; margin-bottom:8px;">👤 이 폰으로 전에 낸 기록이 있어요</div><div style="margin-bottom:10px;"><b>' + escapeHtml(last.name) + '</b>님 본인이에요?</div>' +
+      '<div style="display:flex; gap:8px;"><button type="button" class="btn primary" id="who-yes" style="flex:1;">네, 내 기록 보기</button><button type="button" class="btn outline" id="who-no" style="flex:1;">아니에요</button></div>';
+    f0.parentNode.insertBefore(w, f0);
+    document.getElementById('who-yes').addEventListener('click', () => { w.remove(); showMyStatus(last.name); });
+    document.getElementById('who-no').addEventListener('click', () => { try { localStorage.removeItem('sx_last_' + examId); localStorage.removeItem(draftKey()); } catch (e) {} location.reload(); });
+    return;
+  }
   if (!name) return;
   let r; try { r = await callApi('myExamStatus', { id: examId, studentName: name }); } catch (e) { return; }
   if (!r || !r.ok || !r.submitted) return;
@@ -439,7 +452,7 @@ function setupRetry(res, opt) {
   const grid = document.getElementById('retry-grid'), msg = document.getElementById('retry-msg'), btn = document.getElementById('retry-btn');
   wrong.forEach(i => {
     const row = document.createElement('div'); row.className = 'qrow'; row.id = 'rq' + i;
-    row.innerHTML = '<span class="qnum" style="min-width:auto;display:inline-block;background:#0B1F5C;color:#fff;border-radius:8px;padding:3px 12px;font-size:17px;">문제 ' + dn(i) + '번</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(n => '<button type="button" class="ans-btn" data-q="' + i + '" data-v="' + n + '">' + '①②③④⑤'[n - 1] + '</button>').join('') + '</div>' + (isMulti(i) ? '<span class="multi-note">복수 선택</span>' : '') + '<span class="rq-st" style="margin-left:8px;font-weight:800;"></span>';
+    row.innerHTML = '<span class="qnum" style="min-width:auto;display:inline-block;white-space:nowrap;flex-shrink:0;background:#0B1F5C;color:#fff;border-radius:8px;padding:2px 9px;font-size:14px;line-height:1.5;">문제 ' + dn(i) + '번</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(n => '<button type="button" class="ans-btn" data-q="' + i + '" data-v="' + n + '">' + '①②③④⑤'[n - 1] + '</button>').join('') + '</div>' + (isMulti(i) ? '<span class="multi-note">복수 선택</span>' : '') + '<span class="rq-st" style="margin-left:8px;font-weight:800;"></span>';
     grid.appendChild(row);
   });
   // 오늘 이미 기회를 다 쓴 문항은 잠가 둔다
