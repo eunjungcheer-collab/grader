@@ -152,6 +152,8 @@ function handle_(e) {
       case 'getExamMarks': result = actionGetExamMarks_(params); break;
       case 'linkBook': result = actionLinkBook_(params); break;
       case 'relinkOldQr': result = actionRelinkOldQr_(params); break;
+      case 'orphanRecords': result = actionOrphanRecords_(params); break;
+      case 'moveOrphanRecords': result = actionMoveOrphanRecords_(params); break;
       case 'editSubmission': result = submitOnce_(params, actionEditSubmission_); break;
       case 'requestFix': result = actionRequestFix_(params); break;
       case 'getFixStatus': result = actionGetFixStatus_(params); break;
@@ -3524,4 +3526,76 @@ function actionUnlinkOldQr_(p) {
   } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
   if (n) bustCache_();
   return { ok: true, removed: n };
+}
+
+
+// ───────── 「(삭제된 시험)」 기록을 지금 시험지로 옮기기 ─────────
+// 휴지통 기간(30일)이 지났거나, 교재로 등록하지 않아 자동 후보가 안 나오는 삭제된 시험지의 기록을 선생님이 직접 고른 시험지로 옮긴다.
+// 옮기면 그 기록이 새 시험지의 제목·정답으로 다시 채점되어, 오답노트·틀린 문제 다시 풀기·성적 추이에 정상으로 나온다.
+function actionOrphanRecords_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), ed = ss.getSheetByName(SHEET_EXAMS).getDataRange().getValues();
+  const live = {}, exams = [];
+  for (let i = 1; i < ed.length; i++) {
+    const r = ed[i]; if (!r[0]) continue; live[String(r[0])] = 1;
+    const rc = safeJson_(r[8], null); if (rc && rc.aliases) rc.aliases.forEach(function (al) { live[String(al)] = 1; });
+    exams.push({ id: String(r[0]), title: String(r[1]), count: examAnswers_(r).length, createdAt: r[3] instanceof Date ? r[3].toISOString() : String(r[3] || '') });
+  }
+  exams.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
+  const trashTitle = {};
+  try { trashRead_(ss).items.forEach(function (it) { if (it.type !== 'exam') return; try { const row = JSON.parse(it.parts.join('')); trashTitle[String(row[0])] = String(row[1]); } catch (e) {} }); } catch (e) {}
+  const sd = ss.getSheetByName(SHEET_SCORES).getDataRange().getValues(), by = {};
+  for (let i = 1; i < sd.length; i++) {
+    const id = String(sd[i][0]); if (!id || live[id]) continue;
+    const o = by[id] || (by[id] = { oldId: id, count: 0, names: [], answerCount: 0, last: '' });
+    o.count++;
+    const nm = String(sd[i][1] || '').trim(); if (nm && o.names.indexOf(nm) < 0) o.names.push(nm);
+    o.answerCount = Math.max(o.answerCount, String(sd[i][2] || '').split(',').length);
+    const t = sd[i][5] instanceof Date ? sd[i][5].toISOString() : String(sd[i][5] || ''); if (t > o.last) o.last = t;
+  }
+  const items = Object.keys(by).map(function (k) { const o = by[k]; o.title = trashTitle[k] || ''; return o; }).sort(function (a, b) { return a.last < b.last ? 1 : -1; });
+  return { ok: true, items: items, exams: exams };
+}
+function actionMoveOrphanRecords_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const oldId = String(p.oldId || ''), newId = String(p.newId || '');
+  if (!oldId || !newId || oldId === newId) return { ok: false, error: '옮길 시험지를 골라 주세요.' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), exams = ss.getSheetByName(SHEET_EXAMS);
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  const moved = {};
+  try {
+    const ed = exams.getRange(2, 1, Math.max(1, exams.getLastRow() - 1), 1).getValues();
+    if (ed.some(function (r) { return String(r[0]) === oldId; })) return { ok: false, error: '이 시험지는 아직 있어요. 삭제된 시험지 기록만 옮길 수 있어요.' };
+    let tRow = 0; for (let i = 0; i < ed.length; i++) if (String(ed[i][0]) === newId) { tRow = i + 2; break; }
+    if (!tRow) return { ok: false, error: '옮길 시험지를 찾지 못했어요.' };
+    const target = exams.getRange(tRow, 1, 1, exams.getLastColumn()).getValues()[0], correct = examAnswers_(target);
+    // 1) 점수 기록: 시험 번호를 바꾸고 새 시험지 정답으로 다시 채점
+    const sc = ss.getSheetByName(SHEET_SCORES), last = sc.getLastRow();
+    if (last >= 2) {
+      const d = sc.getRange(2, 1, last - 1, 7).getValues();
+      const mism = d.filter(function (r) { return String(r[0]) === oldId && String(r[2]).split(',').length !== correct.length; }).length;
+      if (mism && !p.force) return { ok: false, mismatch: true, error: '문항 수가 달라요 (삭제된 시험지 기록 ' + String(d.find(function (r) { return String(r[0]) === oldId; })[2]).split(',').length + '문항 · 고른 시험지 ' + correct.length + '문항). 다른 시험지를 고르거나, 그래도 옮기려면 「그래도 옮기기」를 눌러 주세요.' };
+      let n = 0;
+      d.forEach(function (r, i) {
+        if (String(r[0]) !== oldId) return;
+        const ans = String(r[2]).split(',').map(function (a) { return String(a).trim(); });
+        while (ans.length < correct.length) ans.push('~');
+        const g = gradeAnswers_(correct, ans.slice(0, correct.length));
+        sc.getRange(i + 2, 1).setValue(newId);
+        sc.getRange(i + 2, 3, 1, 3).setValues([[ans.slice(0, correct.length).join(','), g.score, g.objective]]);
+        sc.getRange(i + 2, 7).setValue(g.objective ? Math.round(g.score / g.objective * 100) : 0);
+        n++;
+      });
+      moved.scores = n;
+    }
+    // 2) 다시 풀기·오답 복습·예약 기록도 같은 시험지로
+    [['Retries', 1], ['Cleared', 1], ['ReviewFail', 1], ['RetryWrong', 1], [RETRY_ROUNDS_SHEET, 1], [SHEET_ASSIGN, 2]].forEach(function (pr) {
+      const sh = ss.getSheetByName(pr[0]); if (!sh || sh.getLastRow() < 2) return;
+      const rg = sh.getRange(2, pr[1], sh.getLastRow() - 1, 1), v = rg.getValues(); let c = 0;
+      v.forEach(function (r) { if (String(r[0]) === oldId) { r[0] = newId; c++; } });
+      if (c) { rg.setValues(v); moved[pr[0]] = c; }
+    });
+  } finally { try { SpreadsheetApp.flush(); } catch (e) {} lock.releaseLock(); }
+  bustCache_();
+  return { ok: true, moved: moved };
 }

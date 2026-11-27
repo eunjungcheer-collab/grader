@@ -44,6 +44,12 @@
       <div class="hint" id="rq-msg" style="margin-top:8px;"></div>
       <hr style="border:0;border-top:1px solid #ddd;margin:12px 0;">
       <button type="button" class="btn outline" id="rq-clear" style="font-size:13px;">이어붙인 것 전부 해제</button>
+      <hr style="border:0;border-top:1px solid #ddd;margin:12px 0;">
+      <b>🗂 「(삭제된 시험)」 기록을 지금 시험지로 옮기기</b>
+      <p class="hint" style="margin:6px 0 8px;">위에서 후보가 안 나올 때(휴지통 30일이 지났거나 교재로 등록하지 않은 시험지) 쓰세요. 학생 기록이 남아 있는 삭제된 시험지를 보여 주고, <b>내가 고른 시험지</b>로 기록을 옮겨요. 옮기면 그 시험지의 정답으로 다시 채점되고, 오답노트·틀린 문제 다시 풀기가 돼요.</p>
+      <button type="button" class="btn primary" id="or-find">🔍 「삭제된 시험」 기록 찾기</button>
+      <div id="or-list" style="margin-top:10px;"></div>
+      <div class="hint" id="or-msg" style="margin-top:8px;"></div>
       <span class="hint">(한 시험지씩 해제하려면 그 시험지 화면에서 해제하세요)</span>
     </div>
     <div class="card" id="pc-card">
@@ -236,6 +242,50 @@ $('rq-find').addEventListener('click', async () => {
       try { const r2 = await callApi('relinkOldQr', { password: getTeacherPassword(), apply: pick.map(c => ({ oldId: c.oldId, newId: c.newId })) }); m.textContent = r2.ok ? '✅ ' + r2.linked + '개를 이어 줬어요.' : (r2.error || '실패했어요'); if (r2.ok) L.innerHTML = ''; } catch (x) { m.textContent = '서버에 연결할 수 없어요.'; }
     });
   } catch (x) { m.textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
+  b.disabled = false;
+});
+// 「(삭제된 시험)」 기록 → 고른 시험지로 옮기기
+let OR = null;
+$('or-find').addEventListener('click', async () => {
+  const b = $('or-find'), m = $('or-msg'), L = $('or-list'); b.disabled = true; m.textContent = '찾는 중...'; L.innerHTML = '';
+  try {
+    const r = await callApi('orphanRecords', { password: getTeacherPassword() });
+    if (!r.ok) { m.textContent = r.error || '실패했어요'; b.disabled = false; return; }
+    OR = r;
+    if (!r.items.length) { m.textContent = '「삭제된 시험」으로 남은 학생 기록이 없어요.'; b.disabled = false; return; }
+    m.textContent = '학생 기록이 남은 삭제된 시험지 ' + r.items.length + '개 · 옮길 시험지를 고르고 「옮기기」를 누르세요 (문항 수가 같은 시험지가 위에 나와요)';
+    L.innerHTML = r.items.map((it, i) => {
+      const same = r.exams.filter(x => x.count === it.answerCount), other = r.exams.filter(x => x.count !== it.answerCount);
+      const opt = x => '<option value="' + e(x.id) + '"' + (it.title && x.title === it.title ? ' selected' : '') + '>' + e(x.title) + ' (' + x.count + '문항)</option>';
+      return '<div style="padding:8px 0; border-top:1px solid #eee;" data-or="' + i + '">' +
+        '<b>' + (it.title ? e(it.title) : '제목 모름 (휴지통에서도 지워짐)') + '</b> <span class="hint">· ' + it.answerCount + '문항 · 기록 ' + it.count + '개 · 마지막 ' + e(D(it.last)) + '</span><br>' +
+        '<span style="font-size:12.5px; color:#555;">학생: ' + it.names.slice(0, 8).map(e).join(', ') + (it.names.length > 8 ? ' 외 ' + (it.names.length - 8) + '명' : '') + '</span>' +
+        '<div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;"><select class="or-sel" style="flex:1; min-width:200px;"><option value="">— 옮길 시험지 고르기 —</option>' +
+        (same.length ? '<optgroup label="문항 수가 같은 시험지 (' + it.answerCount + '문항)">' + same.map(opt).join('') + '</optgroup>' : '') +
+        (other.length ? '<optgroup label="문항 수가 다른 시험지">' + other.map(opt).join('') + '</optgroup>' : '') +
+        '</select><button type="button" class="btn primary or-go">옮기기</button></div><div class="hint or-res" style="margin-top:4px;"></div></div>';
+    }).join('');
+    L.querySelectorAll('[data-or]').forEach(row => {
+      const it = OR.items[+row.dataset.or], go = row.querySelector('.or-go'), res = row.querySelector('.or-res');
+      const run = async force => {
+        const nid = row.querySelector('.or-sel').value; if (!nid) { res.textContent = '옮길 시험지를 먼저 골라 주세요.'; return; }
+        const tgt = OR.exams.find(x => x.id === nid);
+        if (!force && !confirm('「' + (it.title || '삭제된 시험') + '」 기록 ' + it.count + '개를 「' + (tgt ? tgt.title : '') + '」로 옮길까요?\n옮기면 그 시험지의 정답으로 다시 채점돼요.')) return;
+        go.disabled = true; res.textContent = '옮기는 중...';
+        try {
+          const r2 = await callApi('moveOrphanRecords', { password: getTeacherPassword(), oldId: it.oldId, newId: nid, force: !!force });
+          if (!r2.ok) {
+            res.innerHTML = '⚠️ ' + e(r2.error || '실패했어요') + (r2.mismatch ? ' <button type="button" class="btn outline or-force" style="padding:3px 10px;">그래도 옮기기</button>' : '');
+            const f = res.querySelector('.or-force'); if (f) f.addEventListener('click', () => run(true));
+            go.disabled = false; return;
+          }
+          res.style.color = '#1a7a4a'; res.textContent = '✅ 기록 ' + (r2.moved.scores || 0) + '개를 옮기고 새 정답으로 다시 채점했어요.';
+          row.querySelector('.or-sel').disabled = true;
+        } catch (x) { res.textContent = '⚠️ ' + x.message; go.disabled = false; }
+      };
+      go.addEventListener('click', () => run(false));
+    });
+  } catch (x) { m.textContent = '서버에 연결할 수 없어요. (채점 앱 Apps Script를 새 버전으로 배포했는지 확인하세요)'; }
   b.disabled = false;
 });
 $('rq-clear').addEventListener('click', async () => {
