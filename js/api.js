@@ -351,7 +351,7 @@ function rtKey(exam, n) { return 'rt_' + rtDay() + '_' + exam + '_' + n; }
 function rtCount(exam, n) { try { return parseInt(localStorage.getItem(rtKey(exam, n)) || '0', 10) || 0; } catch (e) { return 0; } }
 function rtAdd(exam, n) { try { localStorage.setItem(rtKey(exam, n), String(rtCount(exam, n) + 1)); } catch (e) {} return rtCount(exam, n); }
 function rtSet(exam, n, c) { try { localStorage.setItem(rtKey(exam, n), String(c)); } catch (e) {} }
-const RT_LOCK_MSG = '🔒 오늘 기회 2번을 다 썼어요. 해설을 보고 내일 다시 풀어 보세요';
+const RT_LOCK_MSG = '🔒 오늘 기회 2번을 다 썼어요. 학생 앱 「오답 복습」에서 정답·해설을 보고 공부한 뒤, 내일 다시 풀어 보세요';
 window.RT_TRIES = RT_TRIES; window.rtCount = rtCount; window.rtAdd = rtAdd; window.rtSet = rtSet; window.RT_LOCK_MSG = RT_LOCK_MSG;
 
 // 화면에 글자를 넣을 때 <, & 같은 문자가 깨지지 않게 바꿔준다 (모든 화면이 쓰는 공용 함수라 여기 둔다)
