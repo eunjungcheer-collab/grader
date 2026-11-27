@@ -631,8 +631,8 @@ function actionGetExamDetail_(p) {
   };
 }
 
-// 틀린 문제를 다시 입력해 본 것을 맞는지만 확인해 준다 (점수·기록에는 넣지 않고, 정답 자체도 알려 주지 않는다)
-function actionRetryCheck_(p) {
+// (옛 형식 · 쓰지 않음) 같은 이름의 함수가 아래에 또 있어서 이 함수는 불리지 않았다 → 이름을 바꿔 둔다. 실제 retryCheck는 아래 「오답노트 QR」 쪽 함수.
+function actionRetryCheckOld_(p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
   if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
