@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>교재 여러 단원 채점 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611271930">
+<link rel="stylesheet" href="css/style.css?v=202611272140">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,10 +14,10 @@
 <template id="page-content">
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
-<script src="js/config.js?v=202611271930"></script>
-<script src="js/api.js?v=202611271930"></script>
-<script src="js/common.js?v=202611271930"></script>
-<script src="js/confirmans.js?v=202611271930"></script>
+<script src="js/config.js?v=202611272140"></script>
+<script src="js/api.js?v=202611272140"></script>
+<script src="js/common.js?v=202611272140"></script>
+<script src="js/confirmans.js?v=202611272140"></script>
 <script>
 const numLbl = (id, i) => { const f = (typeof state !== 'undefined' && state[id]) ? state[id].info : null; return (f && f.nums && f.nums.length === f.answerCount) ? f.nums[i] : i + 1; };
 renderHeader();
@@ -59,6 +59,18 @@ function showPicker(keep) {
     <button type="button" class="btn primary" id="go" style="width:100%; margin-top:12px;">선택한 단원 답 입력하기</button>
     <div id="pick-msg" class="hint" style="margin-top:8px;"></div>`;
   const box = document.getElementById('groups');
+  // 이 기기에서 최근(30일)에 채점한 단원: 틀린 번호와 내가 쓴 답을 다시 볼 수 있게 맨 위에 보여 준다
+  try {
+    const recent = book.exams.map(ex => { let l = null; try { l = JSON.parse(localStorage.getItem('sx_last_' + ex.id) || 'null'); } catch (e) {} return l && Array.isArray(l.answers) && Date.now() - (l.t || 0) < 30 * 86400000 ? { ex, l } : null; }).filter(Boolean).sort((a, b) => b.l.t - a.l.t);
+    if (recent.length) {
+      const rc = document.createElement('div'); rc.className = 'card';
+      rc.innerHTML = '<b>📋 최근에 채점한 단원</b> <span class="hint">(이 기기 · 창을 닫아도 여기서 다시 볼 수 있어요)</span>' + recent.map(({ ex, l }) =>
+        '<div style="padding:8px 0; border-top:1px solid #eee; margin-top:6px;"><b>' + esc(ex.label) + '</b> <span class="hint">· ' + esc(l.name || '') + (l.wrong && l.wrong.length ? ' · 틀린 문항 ' + l.wrong.length + '개' : ' · 다 맞았어요') + '</span>' +
+        (l.wrong && l.wrong.length ? ' <a class="btn primary" style="padding:4px 10px; margin-left:4px; display:inline-block;" href="student_retry.html?id=' + encodeURIComponent(ex.id) + '&n=' + l.wrong.join(',') + '&name=' + encodeURIComponent(l.name || '') + '">틀린 문제 다시 풀기</a>' : '') +
+        lastAnswersHtml(l) + '</div>').join('');
+      box.parentNode.insertBefore(rc, box);
+    }
+  } catch (e) {}
   groups.forEach((g, gi) => {
     const d = document.createElement('div');
     d.className = 'card';
@@ -192,6 +204,8 @@ async function submitAll() {
       if (!stx.sid) stx.sid = newSubmitId();      // 같은 단원을 다시 보내도 한 번만 저장되게 (앞에서 이미 낸 단원은 처음 결과를 그대로 받음)
       const res = await submitWithRetry('submitAnswer', { sid: stx.sid, defer: true, id: ex.id, studentName: studentName, outOfRange: oorN, answers: state[ex.id].answers.map((a, i) => (state[ex.id].skip && state[ex.id].skip.has(i + 1) && (state[ex.id].info.subjective || []).indexOf(i + 1) < 0) ? '~' : a) }, (k, n) => { btn.textContent = '서버가 바빠서 다시 보내는 중… (' + k + '/' + n + ') · 답은 그대로 있어요'; });
       if (!res || !res.ok) throw new Error((ex.label) + ': ' + ((res && res.error) || '제출 실패'));
+      // 채점 결과를 이 기기에 저장 → 창을 닫아도 다시 들어오면 틀린 번호와 내가 쓴 답을 볼 수 있다 (한 단원 채점 화면과 같은 저장 칸)
+      try { localStorage.setItem('sx_last_' + ex.id, JSON.stringify({ name: studentName, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], oor: res.outOfRange || [], answers: res.studentAnswers, wrong: (res.results || []).map((r, i) => r === 'x' ? i + 1 : 0).filter(Boolean) })); } catch (e) {}
       results.push({ ex, res });
       callApi('afterSubmit', { id: ex.id, studentName: studentName }).catch(() => {});
     }
@@ -210,7 +224,7 @@ function editGo(exId, mode, subm, answers, shift, oor) {
 }
 function showResults(results) {
   let sc = 0, tot = 0;
-  results.forEach(({ ex, res }) => { try { localStorage.setItem('sx_last_' + ex.id, JSON.stringify({ name: studentName, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], oor: res.outOfRange || [], answers: res.studentAnswers })); } catch (e) {} });
+  results.forEach(({ ex, res }) => { try { localStorage.setItem('sx_last_' + ex.id, JSON.stringify({ name: studentName, submittedAt: res.submittedAt, t: Date.now(), skipped: res.skipped || [], oor: res.outOfRange || [], answers: res.studentAnswers, wrong: (res.results || []).map((r, i) => r === 'x' ? i + 1 : 0).filter(Boolean) })); } catch (e) {} });
   results.forEach(({ res }) => { sc += res.score || 0; tot += res.total || 0; });
   area().innerHTML = `
     <h1>채점 결과</h1>

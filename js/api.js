@@ -324,6 +324,26 @@ function fmtAnswer(a) {
   return n.split('/').map(function (x) { return x.split('').join(', '); }).join(' 또는 ');
 }
 
+// 지난번에 낸 답 보기 (이 기기에 저장된 채점 결과 sx_last_시험번호) — 창을 닫아도 틀린 번호와 내가 쓴 답을 다시 볼 수 있게.
+// 정답은 보여 주지 않는다. dn(i) = 화면에 쓰는 문항 번호(없으면 i)
+function lastAnswersHtml(last, dn) {
+  if (!last || !Array.isArray(last.answers)) return '';
+  dn = dn || function (i) { return i; };
+  const wrong = {}; (last.wrong || []).forEach(function (n) { wrong[n] = 1; });
+  const skip = {}; (last.skipped || []).forEach(function (n) { skip[n] = 1; });
+  const d = new Date(last.submittedAt || last.t), when = isNaN(d) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  const cell = function (a, i) {
+    const n = i + 1, raw = String(a == null ? '' : a).trim(), isW = !!wrong[n];
+    const txt = (!raw || raw === '~' || skip[n]) ? '안 씀' : (raw === '-' ? '주관식' : fmtAnswer(raw));
+    return '<span style="display:inline-block; min-width:70px; margin:2px 4px 2px 0; padding:3px 7px; border-radius:7px; font-size:13px; ' + (isW ? 'background:#FDECEA; border:1px solid #E8A8A0; font-weight:700;' : 'background:#F3F5F9; border:1px solid #E1E5EC;') + '">' + (isW ? '❌ ' : '') + dn(n) + '번 · ' + txt + '</span>';
+  };
+  const wl = last.answers.map(cell).filter(function (_, i) { return wrong[i + 1]; });
+  return '<details style="margin-top:8px;"><summary style="cursor:pointer; font-weight:700;">📋 지난번에 낸 답 보기' + (when ? ' (' + when + ' 제출)' : '') + '</summary>' +
+    (wl.length ? '<div style="margin:6px 0 2px; font-size:13px;"><b>틀린 문항 · 내가 쓴 답</b> (교재에 표시해 두세요)</div><div>' + wl.join('') + '</div>' : '<div style="margin:6px 0; font-size:13px;">틀린 문항이 없어요 🎉</div>') +
+    '<div style="margin:8px 0 2px; font-size:13px;"><b>전체 내 답</b></div><div>' + last.answers.map(cell).join('') + '</div></details>';
+}
+window.lastAnswersHtml = lastAnswersHtml;
+
 // 화면에 글자를 넣을 때 <, & 같은 문자가 깨지지 않게 바꿔준다 (모든 화면이 쓰는 공용 함수라 여기 둔다)
 
 // ── 문제은행 문항의 정답을 시험지 정답표에서 찾는 공용 도구 (조합 화면·문제은행 목록에서 같이 쓴다) ──

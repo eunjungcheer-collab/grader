@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611271930">
+<link rel="stylesheet" href="css/style.css?v=202611272140">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611271930"></script>
-<script src="js/api.js?v=202611271930"></script>
-<script src="js/common.js?v=202611271930"></script>
-<script src="js/confirmans.js?v=202611271930"></script>
+<script src="js/config.js?v=202611272140"></script>
+<script src="js/api.js?v=202611272140"></script>
+<script src="js/common.js?v=202611272140"></script>
+<script src="js/confirmans.js?v=202611272140"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -250,6 +250,12 @@ async function loadExam() {
           const u = 'student_retry.html?id=' + encodeURIComponent(examId) + '&n=' + last.wrong.join(',') + '&name=' + encodeURIComponent(last.name || '');
           eb.innerHTML = '🔁 <b>' + escapeHtml(last.name) + '</b>님이 틀린 문항(' + escapeHtml(rangeText(last.wrong)) + ')이 있어요. <a class="btn primary" href="' + u + '" style="padding:6px 12px; margin-left:6px; display:inline-block;">틀린 문제만 다시 풀기</a>';
         }
+        // 지난번에 낸 답(틀린 번호·내가 쓴 답)을 펼쳐 볼 수 있게 — 창을 닫아도 다시 볼 수 있다
+        if (last && Array.isArray(last.answers) && Date.now() - (last.t || 0) < 30 * 86400000) {
+          const eb = document.getElementById('edit-banner');
+          if (eb.style.display === 'none') { eb.style.display = ''; eb.style.background = '#F3F6FB'; eb.style.border = '1px solid #C9D6EA'; eb.innerHTML = '<b>' + escapeHtml(last.name || '') + '</b>님이 이 기기에서 낸 답안이 있어요.'; }
+          eb.insertAdjacentHTML('beforeend', lastAnswersHtml(last, typeof dnOf === 'function' ? dnOf : null));
+        }
       } catch (e) {}
     }
     // 전에 입력하다 만 답이 이 기기에 남아 있으면 되살린다
@@ -370,6 +376,7 @@ async function submitAnswers(e) {
       <p class="hint" style="text-align:center;">${res.total ? '객관식 ' + res.total + '문항 중 ' + res.score + '개 정답 · 100점 만점 환산' : ''}</p>
       ${(res.subjective && res.subjective.length) ? '<p class="hint" style="text-align:center;">주관식 ' + res.subjective.length + '문항(' + res.subjective.map(dnOf).join(', ') + '번)은 점수에 합산하지 않아요. 선생님이 따로 채점해요.</p>' : ''}
       ${wrongN ? '<button type="button" class="btn primary" id="go-retry" style="width:100%; margin:6px 0 4px;">❌ 틀린 문제 ' + wrongN + '개 다시 입력하기 ↓</button>' : ''}
+      <p class="hint" style="margin:4px 0 8px;">💾 이 결과는 이 기기에 저장돼요. 창을 닫아도 같은 QR을 다시 찍으면 틀린 번호와 내가 쓴 답을 볼 수 있어요.</p>
       <h2>문항별 결과</h2>
       <div class="sx-chips">
         ${res.results.map((rs, i) => rs === 'ok' ? '<div class="sx-chip ok">' + dn(i) + '번<small>⭕ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : rs === 'x' ? '<div class="sx-chip x">' + dn(i) + '번<small>❌ ' + escapeHtml(fmtAnswer(res.studentAnswers[i])) + '</small></div>' : '<div class="sx-chip na">' + dn(i) + '번<small>' + (rs === 'subj' ? '주관식' : '안 품') + '</small></div>').join('')}
