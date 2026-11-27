@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611280000">
+<link rel="stylesheet" href="css/style.css?v=202611280010">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611280000"></script>
-<script src="js/api.js?v=202611280000"></script>
-<script src="js/common.js?v=202611280000"></script>
-<script src="js/confirmans.js?v=202611280000"></script>
+<script src="js/config.js?v=202611280010"></script>
+<script src="js/api.js?v=202611280010"></script>
+<script src="js/common.js?v=202611280010"></script>
+<script src="js/confirmans.js?v=202611280010"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -423,9 +423,11 @@ async function showMyStatus() {
     (todo.length ? '<div id="retry-card"><div id="retry-grid"></div><div id="retry-msg" class="hint" style="margin:8px 0 0;font-weight:700;"></div><button type="button" id="retry-btn" class="btn primary" style="width:100%;margin-top:8px;">확인하기</button></div>'
                  : (r.wrong.length ? '<div style="font-weight:700; color:#1a7a4a;">🎉 틀린 문제를 모두 해결했어요!</div>' : '<div style="font-weight:700; color:#1a7a4a;">🎉 다 맞았어요!</div>')) +
     (last && last.name === name ? lastAnswersHtml(last, dnOf) : '') +
-    '<p class="hint" style="margin:10px 0 0;">처음부터 새로 답안을 내려면 아래에 입력하세요.</p>';
+    (todo.length ? '<button type="button" id="show-newform" class="btn" style="width:100%;margin-top:10px;">📝 처음부터 새 답안 내기 (여기는 틀린 문제 다시 풀기가 아니에요)</button>' : '<p class="hint" style="margin:10px 0 0;">처음부터 새로 답안을 내려면 아래에 입력하세요.</p>');
   form.parentNode.insertBefore(card, form);
   if (todo.length) {
+    form.style.display = 'none';
+    document.getElementById('show-newform').addEventListener('click', function () { form.style.display = ''; this.style.display = 'none'; form.scrollIntoView({ behavior: 'smooth' }); });
     const results = new Array(answerCount).fill('ok'); todo.forEach(w => { results[w.n - 1] = 'x'; });
     setupRetry({ results: results }, { name: name, lockedNs: todo.filter(w => w.left <= 0).map(w => w.n) });
   }
@@ -437,7 +439,7 @@ function setupRetry(res, opt) {
   const grid = document.getElementById('retry-grid'), msg = document.getElementById('retry-msg'), btn = document.getElementById('retry-btn');
   wrong.forEach(i => {
     const row = document.createElement('div'); row.className = 'qrow'; row.id = 'rq' + i;
-    row.innerHTML = '<span class="qnum">' + (i + 1) + '</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(n => '<button type="button" class="ans-btn" data-q="' + i + '" data-v="' + n + '">' + n + '</button>').join('') + '</div>' + (isMulti(i) ? '<span class="multi-note">복수 선택</span>' : '') + '<span class="rq-st" style="margin-left:8px;font-weight:800;"></span>';
+    row.innerHTML = '<span class="qnum" style="min-width:auto;">' + dn(i) + '번</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(n => '<button type="button" class="ans-btn" data-q="' + i + '" data-v="' + n + '">' + n + '</button>').join('') + '</div>' + (isMulti(i) ? '<span class="multi-note">복수 선택</span>' : '') + '<span class="rq-st" style="margin-left:8px;font-weight:800;"></span>';
     grid.appendChild(row);
   });
   // 오늘 이미 기회를 다 쓴 문항은 잠가 둔다
@@ -452,6 +454,7 @@ function setupRetry(res, opt) {
     }).catch(() => {});
   }
   if (!pending.size) { msg.style.color = '#7C6F57'; msg.textContent = '오늘은 여기까지! 🔒 문항은 정답·해설을 보고 공부한 뒤 내일 다시 풀어요.'; btn.style.display = 'none'; }
+  { const lst = document.createElement('div'); lst.style.cssText = 'margin:0 0 8px; padding:8px 10px; background:#FFF8E6; border:1px solid #F0D9A0; border-radius:8px; font-size:14px; font-weight:700;'; lst.textContent = '✏️ 내 시험지에서 다시 풀 문제: ' + wrong.map(i => dn(i) + '번').join(', '); grid.parentNode.insertBefore(lst, grid); }
   const hint = document.createElement('p'); hint.className = 'hint'; hint.style.margin = '0 0 8px'; hint.textContent = '한 문항은 하루에 2번까지 고를 수 있어요. 찍지 말고 다시 생각해서 골라요.'; grid.parentNode.insertBefore(hint, grid);
   grid.querySelectorAll('.ans-btn').forEach(b => b.addEventListener('click', function () {
     const q = +this.dataset.q, v = this.dataset.v; if (!pending.has(q)) return;
@@ -463,7 +466,7 @@ function setupRetry(res, opt) {
   btn.addEventListener('click', async () => {
     const todo = Array.from(pending), empty = todo.filter(q => !picked[q]);
     if (!todo.length) return;
-    if (empty.length) { msg.style.color = '#B45309'; msg.textContent = (empty[0] + 1) + '번에 답을 골라 주세요.'; return; }
+    if (empty.length) { msg.style.color = '#B45309'; msg.textContent = dn(empty[0]) + '번에 답을 골라 주세요.'; return; }
     btn.disabled = true; btn.textContent = '채점 중...';
     try {
       // 서버의 retryCheck는 [{n: 문항 번호(1부터), a: 답}] 형식을 받고, 결과도 번호(1부터)로 돌려준다
