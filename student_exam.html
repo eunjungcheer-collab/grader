@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611272350">
+<link rel="stylesheet" href="css/style.css?v=202611280000">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611272350"></script>
-<script src="js/api.js?v=202611272350"></script>
-<script src="js/common.js?v=202611272350"></script>
-<script src="js/confirmans.js?v=202611272350"></script>
+<script src="js/config.js?v=202611280000"></script>
+<script src="js/api.js?v=202611280000"></script>
+<script src="js/common.js?v=202611280000"></script>
+<script src="js/confirmans.js?v=202611280000"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -272,6 +272,7 @@ async function loadExam() {
       }
     }
     DRAFT_ON = true;
+    if (!EDIT) showMyStatus();
     document.getElementById('student-name').addEventListener('input', saveDraft);
     document.getElementById('answer-form').addEventListener('submit', submitAnswers);
     // 선생님이 예약해 둔 학생이면 이름을 적을 때 제출 기한을 보여 준다
@@ -383,7 +384,7 @@ async function submitAnswers(e) {
       </div>
       ${res.skipped && res.skipped.length ? '<div class="card" style="margin:14px 0; border:2px solid #F3D9A4; background:#FFF9EC;"><b>📝 아직 입력하지 않은 문항이 ' + res.skipped.length + '개 있어요</b> (' + escapeHtml(rangeText(res.skipped)) + ')<p class="hint" style="margin:4px 0 8px;">지금까지 입력한 답으로만 점수가 나왔어요. 나머지는 나중에 이어서 입력하면 점수가 합쳐져요. (기간 제한 없어요)</p><button type="button" class="btn primary" id="continue-btn" style="width:100%;">이어서 입력하기</button></div>' : ''}
       ${(EDIT && EDIT.mode === 'fix') ? '' : (res.shiftSuspect ? '<div class="card" style="margin:14px 0; border:2px solid #E8A8A0; background:#FFF5F4;"><b>⚠️ 답이 한 칸씩 밀려 입력된 것 같아요</b><p class="hint" style="margin:4px 0 8px;">번호를 잘못 맞춰 눌렀다면 제출한 지 30분 안에 <b>한 번만</b> 고칠 수 있어요. 헷갈려서 바꿔 찍는 용도는 아니에요.</p><button type="button" class="btn primary" id="fix-btn" style="width:100%;">✏️ 답안 수정하기</button></div>' : '<div class="card" style="margin:14px 0;"><b>✏️ 마킹을 잘못 눌렀나요?</b><p class="hint" style="margin:4px 0 8px;">선생님께 수정 요청을 보내고, <b>선생님이 승인하면</b> 한 번만 고칠 수 있어요. 헷갈려서 바꿔 찍는 용도는 아니에요.</p><button type="button" class="btn outline" id="fixreq-btn" style="width:100%;">✏️ 수정 요청하기</button><button type="button" class="btn primary" id="fixchk-btn" style="width:100%; margin-top:6px; display:none;">🔍 승인 확인</button><div id="fixreq-msg" class="hint" style="margin-top:6px; font-weight:700;"></div></div>')}
-      ${wrongN ? '<div id="retry-card" class="card" style="margin:14px 0;"><h2 style="margin:0 0 4px;">❌ 틀린 문제 다시 입력하기</h2><p class="hint" style="margin:0 0 10px;">틀린 ' + wrongN + '문항만 다시 답을 골라 「다시 채점」을 누르세요. 정답은 알려 주지 않고 맞았는지만 알려 줘요. 이 연습은 점수에 들어가지 않아요.</p><div id="retry-grid"></div><div id="retry-msg" class="hint" style="margin:8px 0 0;font-weight:700;"></div><button type="button" id="retry-btn" class="btn primary" style="width:100%;margin-top:8px;">다시 채점</button></div>' : ''}
+      ${wrongN ? '<div id="retry-card" class="card" style="margin:14px 0;"><h2 style="margin:0 0 4px;">❌ 틀린 문제 다시 입력하기</h2><p class="hint" style="margin:0 0 10px;">틀린 ' + wrongN + '문항만 다시 답을 골라 「다시 채점」을 누르세요. 한 문항에 하루 2번까지 고를 수 있고, 2번 다 틀리면 정답·해설을 보여 줘요. 창을 닫아도 같은 QR을 다시 찍으면 여기서 이어서 할 수 있어요.</p><div id="retry-grid"></div><div id="retry-msg" class="hint" style="margin:8px 0 0;font-weight:700;"></div><button type="button" id="retry-btn" class="btn primary" style="width:100%;margin-top:8px;">다시 채점</button></div>' : ''}
       <p class="hint">❌ 표시한 문항은 다시 풀어 보세요. ${FROM_APP ? '「오답 복습」에서 틀린 문제만 모아서 다시 풀 수 있어요.' : ''}</p>
       <div class="actions">
         ${FROM_APP || STU_NAME ? '<a class="btn primary" href="student_app.html' + (wrongN ? '#wrong' : '') + '" style="width:100%;">' + (wrongN ? '🔁 틀린 문제 복습하러 가기' : '🏠 내 시험 현황으로') + '</a>' : ''}
@@ -403,7 +404,34 @@ async function submitAnswers(e) {
 }
 
 // ── 틀린 문제만 다시 입력해서 맞는지 확인 (점수에는 안 들어가고, 정답은 알려 주지 않는다) ──
-function setupRetry(res) {
+// ── 같은 QR을 다시 찍었을 때: 이 시험의 공부 현황(틀린 문제 → 다시 풀기 → 정답·해설)을 맨 위에 한 번에 보여 준다 ──
+async function showMyStatus() {
+  let last = null; try { last = JSON.parse(localStorage.getItem('sx_last_' + examId) || 'null'); } catch (e) {}
+  const name = (last && last.name) || (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })();
+  if (!name) return;
+  let r; try { r = await callApi('myExamStatus', { id: examId, studentName: name }); } catch (e) { return; }
+  if (!r || !r.ok || !r.submitted) return;
+  const form = document.getElementById('answer-form'); if (!form || document.getElementById('my-status')) return;
+  const todo = r.wrong.filter(w => !w.cleared), done = r.wrong.length - todo.length;
+  const eb = document.getElementById('edit-banner'); if (eb && /🔁/.test(eb.textContent)) eb.style.display = 'none';      // 예전 「틀린 문제만 다시 풀기」 안내는 이 카드로 대신
+  const d = new Date(r.submittedAt), when = isNaN(d) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ';
+  const step = (on, t) => '<span style="display:inline-block; padding:2px 8px; margin:2px 2px; border-radius:10px; font-size:12px; ' + (on ? 'background:#0B1F5C; color:#fff;' : 'background:#E8EDF6; color:#55607A;') + '">' + t + '</span>';
+  const card = document.createElement('div'); card.className = 'card'; card.id = 'my-status'; card.style.cssText = 'border:2px solid #C9D6EA; background:#F6F9FE;';
+  card.innerHTML = '<h2 style="margin:0 0 4px;">📚 ' + escapeHtml(name) + '님의 이 시험 공부</h2>' +
+    '<div style="margin:0 0 6px;">' + step(true, '① 답안 제출 ✅') + ' → ' + step(todo.length > 0, '② 틀린 문제 다시 풀기 (하루 2번)') + ' → ' + step(false, '③ 못 푼 문제는 정답·해설 보고 내일 다시') + '</div>' +
+    '<p class="hint" style="margin:0 0 8px;">' + when + '제출 · ' + r.score100 + '점 · 틀린 문항 ' + r.wrong.length + '개 중 <b>' + done + '개 해결</b></p>' +
+    (todo.length ? '<div id="retry-card"><div id="retry-grid"></div><div id="retry-msg" class="hint" style="margin:8px 0 0;font-weight:700;"></div><button type="button" id="retry-btn" class="btn primary" style="width:100%;margin-top:8px;">확인하기</button></div>'
+                 : (r.wrong.length ? '<div style="font-weight:700; color:#1a7a4a;">🎉 틀린 문제를 모두 해결했어요!</div>' : '<div style="font-weight:700; color:#1a7a4a;">🎉 다 맞았어요!</div>')) +
+    (last && last.name === name ? lastAnswersHtml(last, dnOf) : '') +
+    '<p class="hint" style="margin:10px 0 0;">처음부터 새로 답안을 내려면 아래에 입력하세요.</p>';
+  form.parentNode.insertBefore(card, form);
+  if (todo.length) {
+    const results = new Array(answerCount).fill('ok'); todo.forEach(w => { results[w.n - 1] = 'x'; });
+    setupRetry({ results: results }, { name: name, lockedNs: todo.filter(w => w.left <= 0).map(w => w.n) });
+  }
+}
+function setupRetry(res, opt) {
+  opt = opt || {};
   const wrong = []; res.results.forEach((r, i) => { if (r === 'x') wrong.push(i); });
   const pending = new Set(wrong), picked = {};
   const grid = document.getElementById('retry-grid'), msg = document.getElementById('retry-msg'), btn = document.getElementById('retry-btn');
@@ -414,8 +442,16 @@ function setupRetry(res) {
   });
   // 오늘 이미 기회를 다 쓴 문항은 잠가 둔다
   const lockQ = q => { pending.delete(q); const st = document.querySelector('#rq' + q + ' .rq-st'); st.style.color = '#7C6F57'; st.textContent = RT_LOCK_MSG; grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => { x.disabled = true; x.classList.remove('selected'); }); };
-  const rtName = (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })();
+  const rtName = opt.name || (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })();
   if (!rtName) wrong.forEach(q => { if (rtCount(examId, q + 1) >= RT_TRIES) lockQ(q); });      // 이름이 있으면 서버가 잠금을 판단한다
+  // 오늘 기회를 이미 다 쓴 문항(서버 기준): 잠그고 정답·해설을 불러와 보여 준다 (잠긴 문항은 확인해도 기회가 줄지 않는다)
+  if (opt.lockedNs && opt.lockedNs.length) {
+    opt.lockedNs.forEach(n => lockQ(n - 1));
+    callApi('retryCheck', { id: examId, studentName: rtName, answers: opt.lockedNs.map(n => ({ n: n, a: '1' })) }).then(r => {
+      if (r && r.ok) opt.lockedNs.forEach(n => { const row = document.getElementById('rq' + (n - 1)); if (row) row.insertAdjacentHTML('afterend', rtRevealHtml(r.reveal && r.reveal[n], r.revealHidden)); });
+    }).catch(() => {});
+  }
+  if (!pending.size) { msg.style.color = '#7C6F57'; msg.textContent = '오늘은 여기까지! 🔒 문항은 정답·해설을 보고 공부한 뒤 내일 다시 풀어요.'; btn.style.display = 'none'; }
   const hint = document.createElement('p'); hint.className = 'hint'; hint.style.margin = '0 0 8px'; hint.textContent = '한 문항은 하루에 2번까지 고를 수 있어요. 찍지 말고 다시 생각해서 골라요.'; grid.parentNode.insertBefore(hint, grid);
   grid.querySelectorAll('.ans-btn').forEach(b => b.addEventListener('click', function () {
     const q = +this.dataset.q, v = this.dataset.v; if (!pending.has(q)) return;
@@ -431,7 +467,7 @@ function setupRetry(res) {
     btn.disabled = true; btn.textContent = '채점 중...';
     try {
       // 서버의 retryCheck는 [{n: 문항 번호(1부터), a: 답}] 형식을 받고, 결과도 번호(1부터)로 돌려준다
-      const r = await callApi('retryCheck', { id: examId, studentName: (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })(), answers: todo.map(q => ({ n: q + 1, a: picked[q] })) });
+      const r = await callApi('retryCheck', { id: examId, studentName: opt.name || (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })(), answers: todo.map(q => ({ n: q + 1, a: picked[q] })) });
       if (!r.ok) throw new Error(r.error || '채점하지 못했어요.');
       tries++;
       todo.forEach(q => {

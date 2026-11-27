@@ -123,6 +123,7 @@ function handle_(e) {
       case 'createExam': result = actionCreateExam_(params); break;
       case 'listExams': result = actionListExams_(params); break;
       case 'getExamPublic': result = actionGetExamPublic_(params); break;
+      case 'myExamStatus': result = actionMyExamStatus_(params); break;
       case 'getBookPublic': result = actionGetBookPublic_(params); break;
       case 'getExamDetail': result = actionGetExamDetail_(params); break;
       case 'submitAnswer': result = submitOnce_(params, actionSubmitAnswer_); break;
@@ -2965,6 +2966,28 @@ function actionRetryCheck_(p) {
   let rs = null;
   try { if (p.studentName) rs = recordRetryRound_(ss, found, p, results); } catch (e) {}
   return { ok: true, results: results, left: left, reveal: reveal, revealHidden: !!(tries && outN.length && hidden), dailyTries: RETRY_DAILY_TRIES, tried: tried, correct: okN, round: rs ? rs.round : undefined, score100: rs ? rs.score100 : undefined, roundScore: rs || undefined };
+}
+// QR을 다시 찍었을 때 한 화면에서 이어 가도록: 이 학생이 이 시험에서 틀린 문항과 각 문항의 상태(해결/오늘 남은 기회)
+// 학생이 쓴 답이나 정답은 보내지 않는다 (다른 친구 이름으로 봐도 답을 베낄 수 없게)
+function actionMyExamStatus_(p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
+  if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
+  const nk = nameKey_(p.studentName); if (!nk) return { ok: true, submitted: false };
+  const ids = {}; ids[String(p.id)] = 1; ids[String(found.row[0])] = 1;
+  const sd = ss.getSheetByName(SHEET_SCORES).getDataRange().getValues(); let mine = null;
+  for (let i = sd.length - 1; i >= 1; i--) if (ids[String(sd[i][0])] && nameKey_(sd[i][1]) === nk) { mine = sd[i]; break; }
+  if (!mine) return { ok: true, submitted: false };
+  const correct = examAnswers_(found.row), my = String(mine[2]).split(','), at = new Date(mine[5]).getTime() || 0;
+  const cleared = {}, cl = ss.getSheetByName('Cleared');
+  if (cl && cl.getLastRow() >= 2) cl.getRange(2, 1, cl.getLastRow() - 1, 4).getValues().forEach(function (r) { if (ids[String(r[0])] && nameKey_(r[1]) === nk && (new Date(r[3]).getTime() || 0) >= at) cleared[Number(r[2])] = 1; });
+  const tries = retryTriesToday_(ss, found.row[0], p.studentName), wrong = [];
+  for (let k = 0; k < correct.length; k++) {
+    const a = String(my[k] === undefined ? '' : my[k]).trim();
+    if (isSubjective_(correct[k]) || a === '~' || a === '') continue;
+    if (ansMatches_(normAns_(a), correct[k])) continue;
+    wrong.push({ n: k + 1, cleared: !!cleared[k + 1], left: Math.max(0, RETRY_DAILY_TRIES - tries.count(k + 1)) });
+  }
+  return { ok: true, submitted: true, submittedAt: mine[5], score100: mine[6], score: mine[3], total: mine[4], wrong: wrong, dailyTries: RETRY_DAILY_TRIES };
 }
 // ── 다시 풀기 하루 기회 (문항마다 하루 2번까지 틀릴 수 있다) ──
 const RETRY_DAILY_TRIES = 2;
