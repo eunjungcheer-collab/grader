@@ -351,7 +351,18 @@ function rtKey(exam, n) { return 'rt_' + rtDay() + '_' + exam + '_' + n; }
 function rtCount(exam, n) { try { return parseInt(localStorage.getItem(rtKey(exam, n)) || '0', 10) || 0; } catch (e) { return 0; } }
 function rtAdd(exam, n) { try { localStorage.setItem(rtKey(exam, n), String(rtCount(exam, n) + 1)); } catch (e) {} return rtCount(exam, n); }
 function rtSet(exam, n, c) { try { localStorage.setItem(rtKey(exam, n), String(c)); } catch (e) {} }
-const RT_LOCK_MSG = '🔒 오늘 기회 2번을 다 썼어요. 학생 앱 「오답 복습」에서 정답·해설을 보고 공부한 뒤, 내일 다시 풀어 보세요';
+const RT_LOCK_MSG = '🔒 오늘 기회 2번을 다 썼어요. 내일 다시 풀어서 맞히면 해결돼요';
+// 기회를 다 쓴 문항의 정답·해설 (서버가 알려 준 것) — 학생 앱이 없어도 QR 화면에서 바로 공부할 수 있게
+function rtRevealHtml(rv, hiddenNow) {
+  if (hiddenNow) return '<div class="hint" style="margin:4px 0 0;">아직 제출 기한 중인 친구가 있어서 정답·해설은 기한이 끝난 뒤에 볼 수 있어요.</div>';
+  if (!rv) return '';
+  const th = id => 'https://drive.google.com/thumbnail?id=' + id + '&sz=w720';
+  return '<div style="margin-top:6px; padding:8px 10px; border-radius:8px; background:#FFF8E6; border:1px solid #F0D9A0; font-size:13.5px; font-weight:400; color:#3a3a3a;">' +
+    '📖 정답은 <b>' + escapeHtml(fmtAnswer(rv.correct)) + '번</b>이에요. 왜 그런지 해설을 보고 공부해요. <span style="color:#7C6F57;">(정답을 본 문제라 오늘은 해결로 치지 않아요)</span>' +
+    (rv.fileId ? '<details style="margin-top:6px;"><summary style="cursor:pointer; font-weight:700;">문제 보기</summary><img loading="lazy" src="' + th(rv.fileId) + '" style="max-width:100%; margin-top:6px;"></details>' : '') +
+    (rv.explFileId ? '<details open style="margin-top:6px;"><summary style="cursor:pointer; font-weight:700;">해설 보기</summary><img loading="lazy" src="' + th(rv.explFileId) + '" style="max-width:100%; margin-top:6px;"></details>' : '<div class="hint" style="margin:4px 0 0;">해설은 오답노트 맨 뒤 쪽(또는 해설지)을 보세요.</div>') + '</div>';
+}
+window.rtRevealHtml = rtRevealHtml;
 window.RT_TRIES = RT_TRIES; window.rtCount = rtCount; window.rtAdd = rtAdd; window.rtSet = rtSet; window.RT_LOCK_MSG = RT_LOCK_MSG;
 
 // 화면에 글자를 넣을 때 <, & 같은 문자가 깨지지 않게 바꿔준다 (모든 화면이 쓰는 공용 함수라 여기 둔다)

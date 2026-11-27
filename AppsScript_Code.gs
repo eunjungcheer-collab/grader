@@ -2948,6 +2948,14 @@ function actionRetryCheck_(p) {
     else { results[n] = 'x'; if (tries) { tries.add(n); left[n] = Math.max(0, RETRY_DAILY_TRIES - tries.count(n)); } }      // left[n] === 0 이면 오늘은 더 못 푼다
   });
   if (tries) tries.save();
+  // 기회를 다 쓴 문항: 학생 앱이 없는 학생도 공부할 수 있게 정답·해설을 알려 준다 (기한 중인 친구가 있으면 숨김). 점수·해결 기록에는 넣지 않는다.
+  const reveal = {}, hidden = stuRevealHidden_(p.id);
+  const outN = Object.keys(left).filter(function (n) { return left[n] === 0; });
+  if (tries && outN.length && !hidden) {
+    let bm = {};
+    try { bm = bankMapForExam_(questionsSheet_().getDataRange().getValues().slice(1), String(found.row[1]), safeJson_(found.row[7], []), correct.length); } catch (e) {}
+    outN.forEach(function (n) { const q = bm[n] || []; reveal[n] = { correct: correct[n - 1], fileId: String(q[6] || ''), explFileId: String(q[7] || '') }; });
+  }
   try {
     const sh = ensureSheet_(ss, 'Retries', ['examId', 'studentName', 'tried', 'correct', 'at']);
     sh.appendRow([p.id, String(p.studentName || '이름없음'), tried, okN, new Date().toISOString()]);
@@ -2956,7 +2964,7 @@ function actionRetryCheck_(p) {
   } catch (e) {}
   let rs = null;
   try { if (p.studentName) rs = recordRetryRound_(ss, found, p, results); } catch (e) {}
-  return { ok: true, results: results, left: left, dailyTries: RETRY_DAILY_TRIES, tried: tried, correct: okN, round: rs ? rs.round : undefined, score100: rs ? rs.score100 : undefined, roundScore: rs || undefined };
+  return { ok: true, results: results, left: left, reveal: reveal, revealHidden: !!(tries && outN.length && hidden), dailyTries: RETRY_DAILY_TRIES, tried: tried, correct: okN, round: rs ? rs.round : undefined, score100: rs ? rs.score100 : undefined, roundScore: rs || undefined };
 }
 // ── 다시 풀기 하루 기회 (문항마다 하루 2번까지 틀릴 수 있다) ──
 const RETRY_DAILY_TRIES = 2;

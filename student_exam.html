@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611272340">
+<link rel="stylesheet" href="css/style.css?v=202611272350">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611272340"></script>
-<script src="js/api.js?v=202611272340"></script>
-<script src="js/common.js?v=202611272340"></script>
-<script src="js/confirmans.js?v=202611272340"></script>
+<script src="js/config.js?v=202611272350"></script>
+<script src="js/api.js?v=202611272350"></script>
+<script src="js/common.js?v=202611272350"></script>
+<script src="js/confirmans.js?v=202611272350"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -440,11 +440,11 @@ function setupRetry(res) {
         if (v === 'ok') {
           pending.delete(q); st.style.color = '#1a7a4a'; st.textContent = '⭕ 맞았어요!';
           grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => { x.disabled = true; });
-        } else if (v === 'locked') { rtSet(examId, q + 1, RT_TRIES); lockQ(q); }
+        } else if (v === 'locked') { rtSet(examId, q + 1, RT_TRIES); lockQ(q); document.getElementById('rq' + q).insertAdjacentHTML('afterend', rtRevealHtml(r.reveal && r.reveal[q + 1], r.revealHidden)); }
         else {
           // 남은 기회: 이름이 있으면 서버가 센 값(선생님이 잠금을 풀면 다시 생김), 없으면 이 기기에서 센 값
           let c; if (lf !== null) { c = RT_TRIES - lf; rtSet(examId, q + 1, c); } else c = rtAdd(examId, q + 1);
-          if (RT_TRIES - c <= 0) lockQ(q);
+          if (RT_TRIES - c <= 0) { lockQ(q); document.getElementById('rq' + q).insertAdjacentHTML('afterend', rtRevealHtml(r.reveal && r.reveal[q + 1], r.revealHidden)); }
           else { st.style.color = '#C1392B'; st.textContent = '❌ 아니에요. 다시 생각해서 골라 보세요 (오늘 남은 기회 ' + (RT_TRIES - c) + '번)'; grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => x.classList.remove('selected')); delete picked[q]; }
         }
       });
