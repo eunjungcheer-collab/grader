@@ -480,6 +480,14 @@ function linkDeletedExamIds_(ss, examsSheet, newId, title) {
   } catch (e) {}
   return 0;
 }
+// 시험 번호 → 제목 (삭제 후 다시 등록해 이어 준 예전 번호도 새 시험지 제목으로)
+function fillTitleOf_(ss, titleOf) {
+  ss.getSheetByName(SHEET_EXAMS).getDataRange().getValues().slice(1).forEach(function (r) {
+    titleOf[String(r[0])] = String(r[1]);
+    const t = String(r[8] || ''); if (t.indexOf('"aliases"') < 0) return;
+    const rc = safeJson_(t, null); if (rc && rc.aliases) rc.aliases.forEach(function (al) { if (!titleOf[String(al)]) titleOf[String(al)] = String(r[1]); });
+  });
+}
 function findExamRow_(sheet, examId) {
   // 시험지가 수백 개로 늘어도 빠르도록: 먼저 ID 열만 읽어 줄을 찾고, 그 한 줄만 전체를 읽는다 (예전에는 매번 시트 전체를 읽었다)
   const last = sheet.getLastRow(), lc = sheet.getLastColumn();
@@ -1361,6 +1369,12 @@ function listSubmissionsBuild_() {
     };
   }
 
+  // 삭제 후 다시 등록해 이어 준 시험지: 예전 시험 번호로 남은 기록도 새 시험지의 제목·정답으로 보여 준다 (오답노트·틀린 문제 다시 풀기가 되게)
+  for (let i = 1; i < examsData.length; i++) {
+    const t = String(examsData[i][8] || ''); if (t.indexOf('"aliases"') < 0) continue;
+    const rc = safeJson_(t, null), base = examOf[String(examsData[i][0])];
+    if (rc && base) (rc.aliases || []).forEach(function (al) { if (!examOf[String(al)]) examOf[String(al)] = base; });
+  }
   const scoresData = ss.getSheetByName(SHEET_SCORES).getDataRange().getValues();
   const subs = [];
   for (let i = 1; i < scoresData.length; i++) {
@@ -1984,7 +1998,7 @@ function actionListAssignments_(p) {
   const out = [];
   if (last >= 2) {
     const titleOf = {};
-    ss.getSheetByName(SHEET_EXAMS).getDataRange().getValues().slice(1).forEach(function (r) { titleOf[String(r[0])] = String(r[1]); });
+    fillTitleOf_(ss, titleOf);
     sh.getRange(2, 1, last - 1, ASSIGN_HEADERS.length).getValues().forEach(function (r) {
       out.push({ id: r[0], examId: r[1], examTitle: titleOf[String(r[1])] || '(삭제된 시험)', studentName: r[2], deadline: r[3], createdAt: r[4], status: String(r[5] || 'wait'), notifiedAt: r[6], submittedAt: r[7] });
     });
@@ -2034,7 +2048,7 @@ function actionListAlerts_(p) {
   ensureDailyReview_();
   const since = p.since ? new Date(p.since).getTime() : 0;
   const titleOf = {};
-  ss.getSheetByName(SHEET_EXAMS).getDataRange().getValues().slice(1).forEach(function (r) { titleOf[String(r[0])] = String(r[1]); });
+  fillTitleOf_(ss, titleOf);
   const recent = [];
   const sd = ss.getSheetByName(SHEET_SCORES).getDataRange().getValues();
   for (let i = sd.length - 1; i >= 1 && recent.length < 50; i--) {
@@ -2355,6 +2369,7 @@ function actionStuHome_(p) {
     const r = ed[i]; if (!r[0]) continue;
     titleOf[String(r[0])] = String(r[1]);
     const rc = safeJson_(r[8], null);
+    if (rc && rc.aliases) rc.aliases.forEach(function (al) { if (!titleOf[String(al)]) titleOf[String(al)] = String(r[1]); });      // 삭제 후 다시 등록해 이어 준 예전 시험 번호
     exams.push({ id: String(r[0]), title: String(r[1]), count: examAnswers_(r).length, createdAt: r[3], book: (rc && rc.book) ? String(rc.book) : '' });
   }
   const sd = ss.getSheetByName(SHEET_SCORES).getDataRange().getValues(), records = [], doneIds = {}, best = {};
@@ -2984,7 +2999,7 @@ function actionRetryLog_(p) {
   const sh = ss.getSheetByName('Retries');
   if (!sh) return { ok: true, rows: [] };
   const titleOf = {};
-  ss.getSheetByName(SHEET_EXAMS).getDataRange().getValues().slice(1).forEach(function (r) { titleOf[String(r[0])] = String(r[1]); });
+  fillTitleOf_(ss, titleOf);
   const rows = sh.getDataRange().getValues().slice(1).map(function (r) {
     return { examId: String(r[0]), examTitle: titleOf[String(r[0])] || '(삭제된 시험)', studentName: String(r[1]), total: Number(r[2]) || 0, score: Number(r[3]) || 0, submittedAt: String(r[4]) };
   });
