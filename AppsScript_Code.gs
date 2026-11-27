@@ -123,12 +123,12 @@ function handle_(e) {
       case 'createExam': result = actionCreateExam_(params); break;
       case 'listExams': result = actionListExams_(params); break;
       case 'getExamPublic': result = actionGetExamPublic_(params); break;
-      case 'myExamStatus': result = actionMyExamStatus_(params); break;
+      case 'myExamStatus': result = stuGuard_(params) || actionMyExamStatus_(params); break;
       case 'getBookPublic': result = actionGetBookPublic_(params); break;
       case 'getExamDetail': result = actionGetExamDetail_(params); break;
-      case 'submitAnswer': result = submitOnce_(params, actionSubmitAnswer_); break;
+      case 'submitAnswer': result = stuGuard_(params) || submitOnce_(params, actionSubmitAnswer_); break;
       case 'afterSubmit': result = actionAfterSubmit_(params); break;
-      case 'retryCheck': result = actionRetryCheck_(params); break;
+      case 'retryCheck': result = stuGuard_(params) || actionRetryCheck_(params); break;
       case 'listSubmissions': result = actionListSubmissions_(params); break;
       case 'deleteSubmission': result = actionDeleteSubmission_(params); break;
       case 'updateSubmissionScore': result = actionUpdateSubmissionScore_(params); break;
@@ -208,7 +208,7 @@ function handle_(e) {
       case 'dataTrim': result = actionDataTrim_(params); break;
       case 'backupTabs': result = actionBackupTabs_(params); break;
       case 'backupRestore': result = actionBackupRestore_(params); break;
-      case 'retryCheck': result = actionRetryCheck_(params); break;
+      case 'retryCheck': result = stuGuard_(params) || actionRetryCheck_(params); break;
       case 'resetRetryTries': result = actionResetRetryTries_(params); break;
       case 'retryLog': result = actionRetryLog_(params); break;
       case 'retryRounds': result = actionRetryRounds_(params); break;
@@ -2317,6 +2317,28 @@ function stuAuth_(p) {
   }
   cache.remove(ck);
   return { ok: true, display: String(f.row[0]), rowIndex: f.rowIndex };
+}
+// ── 학생 비밀번호 확인: 가입·승인된 학생 이름으로 답안 제출 / 기록 보기 / 다시 풀기를 하려면 그 학생의 비밀번호가 맞아야 한다 ──
+// 가입하지 않은 이름은 예전처럼 비밀번호 없이 쓸 수 있다. 막히면 {ok:false, needPin:true}를 돌려주고, 통과하면 null.
+function stuGuard_(p) {
+  const name = String((p && p.studentName) || '').trim(); if (!nameKey_(name)) return null;
+  const ck = 'stureg_' + nameKey_(name), cache = CacheService.getScriptCache();
+  let reg = cache.get(ck);
+  if (reg === null) {
+    reg = '0';
+    try {
+      const f = stuFind_(name);
+      if (f) { if (String(f.row[6]) !== 'pending') reg = '1'; }
+      else { const a = acctGet_(name); if (a && a.exists && !a.pending) reg = '1'; }
+    } catch (e) { reg = '0'; }
+    if (reg === '1') cache.put(ck, '1', 300);
+  }
+  if (reg !== '1') return null;
+  const pin = String(p.pin || '');
+  if (pin.length < 4) return { ok: false, needPin: true, error: '이 이름은 가입한 학생이에요. 비밀번호를 입력해 주세요.' };
+  const a = stuAuth_({ name: name, pin: pin });
+  if (a.ok) { p.studentName = a.display; return null; }
+  return { ok: false, needPin: true, locked: !!a.locked, error: a.error || '비밀번호가 맞지 않아요.' };
 }
 function actionStuClear_(p) {
   const a = stuAuth_(p); if (!a.ok) return a;

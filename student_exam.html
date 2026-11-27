@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611280013">
+<link rel="stylesheet" href="css/style.css?v=202611280014">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611280013"></script>
-<script src="js/api.js?v=202611280013"></script>
-<script src="js/common.js?v=202611280013"></script>
-<script src="js/confirmans.js?v=202611280013"></script>
+<script src="js/config.js?v=202611280014"></script>
+<script src="js/api.js?v=202611280014"></script>
+<script src="js/common.js?v=202611280014"></script>
+<script src="js/confirmans.js?v=202611280014"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -417,7 +417,7 @@ async function showMyStatus(confirmedName) {
     w.innerHTML = '<div style="font-weight:800; font-size:16px; margin-bottom:8px;">👤 이 폰으로 전에 낸 기록이 있어요</div><div style="margin-bottom:10px;"><b>' + escapeHtml(last.name) + '</b>님 본인이에요?</div>' +
       '<div style="display:flex; gap:8px;"><button type="button" class="btn primary" id="who-yes" style="flex:1;">네, 내 기록 보기</button><button type="button" class="btn outline" id="who-no" style="flex:1;">아니에요</button></div>';
     f0.parentNode.insertBefore(w, f0);
-    document.getElementById('who-yes').addEventListener('click', () => { w.remove(); showMyStatus(last.name); });
+    document.getElementById('who-yes').addEventListener('click', () => { showMyStatus(last.name).then(() => { if (document.getElementById('my-status')) w.remove(); }); });
     document.getElementById('who-no').addEventListener('click', () => { try { localStorage.removeItem('sx_last_' + examId); localStorage.removeItem(draftKey()); } catch (e) {} location.reload(); });
     return;
   }

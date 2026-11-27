@@ -138,7 +138,7 @@ async function callApiRetry(action, params, tries, onWait) {
   }
   return r;
 }
-async function callApi(action, params) {
+async function callApiBase(action, params) {
   if (_PF_OK.test(action)) { const hit = _pfGet(action, params); if (hit) return JSON.parse(JSON.stringify(hit)); }
   else if (!_PF_READ.test(action)) _pfClear();
   if (action === 'listQuestions' && !(params && params.fresh)) {
@@ -154,6 +154,53 @@ async function callApi(action, params) {
   if (_QC_WRITE_RE.test(action)) _qcClear();
   return out;
 }
+// ── 학생 비밀번호: 가입한 학생 이름으로 제출·기록 보기·다시 풀기를 하면 서버가 비밀번호를 요구한다 → 여기서 한 번만 물어보고 이 탭에서는 기억한다 ──
+const _PIN_RE = /^(submitAnswer|myExamStatus|retryCheck)$/;
+function _pinKey(n) { return String(n || '').replace(/\s+/g, '').toLowerCase(); }
+function _pinGet(name) {
+  try {
+    const k = _pinKey(name), s = JSON.parse(sessionStorage.getItem('stu_pin') || 'null');
+    if (s && s.k === k && s.pin) return s.pin;
+    const l = JSON.parse(localStorage.getItem('stu_login') || sessionStorage.getItem('stu_login') || 'null');
+    if (l && l.pin && _pinKey(l.name) === k) return String(l.pin);
+  } catch (e) {}
+  return '';
+}
+function _pinSet(name, pin) { try { sessionStorage.setItem('stu_pin', JSON.stringify({ k: _pinKey(name), pin: pin })); } catch (e) {} }
+function _pinForget(name) { try { const s = JSON.parse(sessionStorage.getItem('stu_pin') || 'null'); if (s && s.k === _pinKey(name)) sessionStorage.removeItem('stu_pin'); } catch (e) {} }
+function askStudentPin(name, msg) {
+  return new Promise(function (resolve) {
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+    const bx = document.createElement('div'); bx.style.cssText = 'background:#fff;border-radius:16px;padding:20px;width:100%;max-width:340px;box-sizing:border-box;';
+    const t = document.createElement('div'); t.style.cssText = 'font-weight:800;font-size:17px;margin-bottom:6px;'; t.textContent = '🔒 ' + name + '님 비밀번호';
+    const m = document.createElement('div'); m.style.cssText = 'font-size:14px;color:#8F2A1F;margin-bottom:10px;min-height:18px;'; m.textContent = msg || '학생 앱에서 만든 비밀번호를 입력해 주세요.';
+    const inp = document.createElement('input'); inp.type = 'password'; inp.maxLength = 40; inp.autocomplete = 'off'; inp.placeholder = '••••'; inp.style.cssText = 'width:100%;box-sizing:border-box;font-size:22px;letter-spacing:4px;text-align:center;padding:10px;border:2px solid #C9D6EA;border-radius:10px;';
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;margin-top:12px;';
+    const ok = document.createElement('button'); ok.type = 'button'; ok.textContent = '확인'; ok.style.cssText = 'flex:1;padding:12px;font-size:16px;font-weight:800;border:0;border-radius:10px;background:#0B1F5C;color:#fff;';
+    const no = document.createElement('button'); no.type = 'button'; no.textContent = '취소'; no.style.cssText = 'flex:1;padding:12px;font-size:16px;border:1px solid #C9D6EA;border-radius:10px;background:#fff;';
+    const done = function (v) { ov.remove(); resolve(v); };
+    ok.onclick = function () { const v = inp.value.trim(); if (v.length < 4) { m.textContent = '비밀번호는 4자 이상이에요.'; return; } done(v); };
+    no.onclick = function () { done(null); };
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') ok.onclick(); });
+    row.appendChild(ok); row.appendChild(no); bx.appendChild(t); bx.appendChild(m); bx.appendChild(inp); bx.appendChild(row); ov.appendChild(bx); document.body.appendChild(ov);
+    setTimeout(function () { try { inp.focus(); } catch (e) {} }, 50);
+  });
+}
+async function callApi(action, params) {
+  if (!(_PIN_RE.test(action) && params && params.studentName)) return callApiBase(action, params);
+  let pin = params.pin || _pinGet(params.studentName), r = null, msg = '';
+  for (let i = 0; i < 4; i++) {
+    r = await callApiBase(action, Object.assign({}, params, pin ? { pin: pin } : {}));
+    if (!(r && r.needPin)) { if (r && r.ok && pin) _pinSet(params.studentName, pin); return r; }
+    if (pin) _pinForget(params.studentName);
+    if (r.locked) return r;
+    msg = r.error || '';
+    pin = await askStudentPin(params.studentName, pin ? msg : '이 이름은 가입한 학생이에요. 학생 앱에서 만든 비밀번호를 입력해 주세요.');
+    if (!pin) return r;
+  }
+  return r;
+}
+window.askStudentPin = askStudentPin;
 // ── 오프라인 대기열: 인터넷이 끊겼을 때 한 저장·수정(두 번 실행돼도 안전한 것만)을 기기에 보관했다가 연결되면 자동 전송 ──
 const _OFFQ_KEY = 'offq_v1', _OFFQ_OK = /^(updateExamTitle|updateExamAnswers|updateSubmissionScore|updateQuestions?|setRosters|setAlertSettings|setToc|setPresets|setStuOptions|deleteAssignment|createAssignments|approveStudent)$/;
 function _offqLoad() { try { return JSON.parse(localStorage.getItem(_OFFQ_KEY) || '[]'); } catch (e) { return []; } }
