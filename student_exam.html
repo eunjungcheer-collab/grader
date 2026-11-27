@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>답안 제출 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611272250">
+<link rel="stylesheet" href="css/style.css?v=202611272330">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -41,10 +41,10 @@
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/config.js?v=202611272250"></script>
-<script src="js/api.js?v=202611272250"></script>
-<script src="js/common.js?v=202611272250"></script>
-<script src="js/confirmans.js?v=202611272250"></script>
+<script src="js/config.js?v=202611272330"></script>
+<script src="js/api.js?v=202611272330"></script>
+<script src="js/common.js?v=202611272330"></script>
+<script src="js/confirmans.js?v=202611272330"></script>
 <script>
 renderHeader();  // 학생은 로그인 필요 없음 — requireLogin() 호출 안 함
 
@@ -412,6 +412,11 @@ function setupRetry(res) {
     row.innerHTML = '<span class="qnum">' + (i + 1) + '</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(n => '<button type="button" class="ans-btn" data-q="' + i + '" data-v="' + n + '">' + n + '</button>').join('') + '</div>' + (isMulti(i) ? '<span class="multi-note">복수 선택</span>' : '') + '<span class="rq-st" style="margin-left:8px;font-weight:800;"></span>';
     grid.appendChild(row);
   });
+  // 오늘 이미 기회를 다 쓴 문항은 잠가 둔다
+  const lockQ = q => { pending.delete(q); const st = document.querySelector('#rq' + q + ' .rq-st'); st.style.color = '#7C6F57'; st.textContent = RT_LOCK_MSG; grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => { x.disabled = true; x.classList.remove('selected'); }); };
+  const rtName = (function () { try { return sessionStorage.getItem('stu_name') || STU_NAME || ''; } catch (e) { return STU_NAME || ''; } })();
+  if (!rtName) wrong.forEach(q => { if (rtCount(examId, q + 1) >= RT_TRIES) lockQ(q); });      // 이름이 있으면 서버가 잠금을 판단한다
+  const hint = document.createElement('p'); hint.className = 'hint'; hint.style.margin = '0 0 8px'; hint.textContent = '한 문항은 하루에 2번까지 고를 수 있어요. 찍지 말고 다시 생각해서 골라요.'; grid.parentNode.insertBefore(hint, grid);
   grid.querySelectorAll('.ans-btn').forEach(b => b.addEventListener('click', function () {
     const q = +this.dataset.q, v = this.dataset.v; if (!pending.has(q)) return;
     if (isMulti(q)) { this.classList.toggle('selected'); picked[q] = Array.from(grid.querySelectorAll('.ans-btn[data-q="' + q + '"].selected')).map(x => x.dataset.v).sort().join(''); }
@@ -421,6 +426,7 @@ function setupRetry(res) {
   let tries = 0;
   btn.addEventListener('click', async () => {
     const todo = Array.from(pending), empty = todo.filter(q => !picked[q]);
+    if (!todo.length) return;
     if (empty.length) { msg.style.color = '#B45309'; msg.textContent = (empty[0] + 1) + '번에 답을 골라 주세요.'; return; }
     btn.disabled = true; btn.textContent = '채점 중...';
     try {
@@ -430,15 +436,21 @@ function setupRetry(res) {
       tries++;
       todo.forEach(q => {
         const st = document.querySelector('#rq' + q + ' .rq-st');
-        if (r.results[q + 1] === 'ok') {
+        const v = r.results[q + 1], lf = r.left && r.left[q + 1] !== undefined ? r.left[q + 1] : null;
+        if (v === 'ok') {
           pending.delete(q); st.style.color = '#1a7a4a'; st.textContent = '⭕ 맞았어요!';
           grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => { x.disabled = true; });
-        } else {
-          st.style.color = '#C1392B'; st.textContent = '❌ 아니에요. 다시 골라 보세요';
-          grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => x.classList.remove('selected')); delete picked[q];
+        } else if (v === 'locked') { rtSet(examId, q + 1, RT_TRIES); lockQ(q); }
+        else {
+          // 남은 기회: 이름이 있으면 서버가 센 값(선생님이 잠금을 풀면 다시 생김), 없으면 이 기기에서 센 값
+          let c; if (lf !== null) { c = RT_TRIES - lf; rtSet(examId, q + 1, c); } else c = rtAdd(examId, q + 1);
+          if (RT_TRIES - c <= 0) lockQ(q);
+          else { st.style.color = '#C1392B'; st.textContent = '❌ 아니에요. 다시 생각해서 골라 보세요 (오늘 남은 기회 ' + (RT_TRIES - c) + '번)'; grid.querySelectorAll('.ans-btn[data-q="' + q + '"]').forEach(x => x.classList.remove('selected')); delete picked[q]; }
         }
       });
-      if (!pending.size) { msg.style.color = '#1a7a4a'; msg.textContent = '🎉 틀렸던 문제를 모두 맞혔어요! (' + tries + '번 만에)'; btn.style.display = 'none'; }
+      const lockedN = wrong.filter(q => !pending.has(q) && !/맞았/.test(document.querySelector('#rq' + q + ' .rq-st').textContent)).length;
+      if (!pending.size && !lockedN) { msg.style.color = '#1a7a4a'; msg.textContent = '🎉 틀렸던 문제를 모두 맞혔어요! (' + tries + '번 만에)'; btn.style.display = 'none'; }
+      else if (!pending.size) { msg.style.color = '#7C6F57'; msg.textContent = '오늘은 여기까지! 🔒 문항은 해설을 보고 내일 다시 풀어요 (같은 QR을 찍으면 「틀린 문제만 다시 풀기」가 있어요).'; btn.style.display = 'none'; }
       else { msg.style.color = '#C1392B'; msg.textContent = '아직 ' + pending.size + '문항이 남았어요. 다시 골라서 「다시 채점」을 눌러요.'; }
     } catch (e) { msg.style.color = '#C1392B'; msg.textContent = e.message; }
     btn.disabled = false; btn.textContent = '다시 채점';

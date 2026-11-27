@@ -208,6 +208,7 @@ function handle_(e) {
       case 'backupTabs': result = actionBackupTabs_(params); break;
       case 'backupRestore': result = actionBackupRestore_(params); break;
       case 'retryCheck': result = actionRetryCheck_(params); break;
+      case 'resetRetryTries': result = actionResetRetryTries_(params); break;
       case 'retryLog': result = actionRetryLog_(params); break;
       case 'retryRounds': result = actionRetryRounds_(params); break;
       case 'weakReport': result = actionWeakReport_(params); break;
@@ -2932,16 +2933,21 @@ function actionRetryCheck_(p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const found = findExamRow_(ss.getSheetByName(SHEET_EXAMS), p.id);
   if (!found) return { ok: false, error: '존재하지 않는 시험이에요.' };
-  const correct = examAnswers_(found.row), results = {};
+  const correct = examAnswers_(found.row), results = {}, left = {};
   let okN = 0, tried = 0;
+  // 찍어서 맞히기 방지: 한 문항은 하루에 RETRY_DAILY_TRIES번까지만 확인할 수 있다 (다 쓰면 'locked' → 해설을 보고 다음 날 다시)
+  const tries = p.studentName ? retryTriesToday_(ss, p.id, p.studentName) : null;
   (p.answers || []).forEach(function (it) {
     const n = Number(it.n); if (!(n >= 1 && n <= correct.length)) return;
     if (isSubjective_(correct[n - 1])) { results[n] = 'subj'; return; }
     const a = normAns_(it.a);
     if (!a) return;
+    if (tries && tries.count(n) >= RETRY_DAILY_TRIES) { results[n] = 'locked'; left[n] = 0; return; }
     tried++;
-    if (ansMatches_(a, correct[n - 1])) { results[n] = 'ok'; okN++; } else results[n] = 'x';
+    if (ansMatches_(a, correct[n - 1])) { results[n] = 'ok'; okN++; }
+    else { results[n] = 'x'; if (tries) { tries.add(n); left[n] = Math.max(0, RETRY_DAILY_TRIES - tries.count(n)); } }      // left[n] === 0 이면 오늘은 더 못 푼다
   });
+  if (tries) tries.save();
   try {
     const sh = ensureSheet_(ss, 'Retries', ['examId', 'studentName', 'tried', 'correct', 'at']);
     sh.appendRow([p.id, String(p.studentName || '이름없음'), tried, okN, new Date().toISOString()]);
@@ -2950,7 +2956,36 @@ function actionRetryCheck_(p) {
   } catch (e) {}
   let rs = null;
   try { if (p.studentName) rs = recordRetryRound_(ss, found, p, results); } catch (e) {}
-  return { ok: true, results: results, tried: tried, correct: okN, round: rs ? rs.round : undefined, score100: rs ? rs.score100 : undefined, roundScore: rs || undefined };
+  return { ok: true, results: results, left: left, dailyTries: RETRY_DAILY_TRIES, tried: tried, correct: okN, round: rs ? rs.round : undefined, score100: rs ? rs.score100 : undefined, roundScore: rs || undefined };
+}
+// ── 다시 풀기 하루 기회 (문항마다 하루 2번까지 틀릴 수 있다) ──
+const RETRY_DAILY_TRIES = 2;
+function retryTriesToday_(ss, examId, name) {
+  const sh = ensureSheet_(ss, 'RetryTries', ['day', 'examId', 'name', 'n', 'wrongCount', 'at']);
+  const day = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'), nk = nameKey_(name), map = {}, dirty = {};
+  if (sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues().forEach(function (r, i) {
+    if (String(r[0]) === day && String(r[1]) === String(examId) && nameKey_(r[2]) === nk) map[Number(r[3])] = { row: i + 2, c: Number(r[4]) || 0 };
+  });
+  return {
+    count: function (n) { return map[n] ? map[n].c : 0; },
+    add: function (n) { if (!map[n]) map[n] = { row: 0, c: 0 }; map[n].c++; dirty[n] = 1; },
+    save: function () {
+      const now = new Date().toISOString(), add = [];
+      Object.keys(dirty).forEach(function (n) { const m = map[n]; if (m.row) sh.getRange(m.row, 5, 1, 2).setValues([[m.c, now]]); else add.push([day, String(examId), String(name).trim(), Number(n), m.c, now]); });
+      if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, 6).setValues(add);
+    }
+  };
+}
+// 선생님용: 학생의 오늘 다시 풀기 잠금 풀기 (examId를 비우면 그 학생의 오늘 잠금 전부)
+function actionResetRetryTries_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('RetryTries');
+  if (!sh || sh.getLastRow() < 2) return { ok: true, removed: 0 };
+  const nk = nameKey_(p.name), v = sh.getRange(2, 1, sh.getLastRow() - 1, 6).getValues();
+  const keep = v.filter(function (r) { return !(nameKey_(r[2]) === nk && (!p.examId || String(r[1]) === String(p.examId))); });
+  const removed = v.length - keep.length;
+  if (removed) { sh.getRange(2, 1, v.length, 6).clearContent(); if (keep.length) sh.getRange(2, 1, keep.length, 6).setValues(keep); }
+  return { ok: true, removed: removed };
 }
 
 // ───────── 다시 풀기 회차(2차·3차) 점수 ─────────

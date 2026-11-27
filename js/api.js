@@ -344,6 +344,16 @@ function lastAnswersHtml(last, dn) {
 }
 window.lastAnswersHtml = lastAnswersHtml;
 
+// ── 틀린 문제 다시 풀기: 한 문항은 하루 2번까지 (찍어서 맞히기 방지). 다 쓰면 해설을 보고 다음 날 다시 ──
+const RT_TRIES = 2;
+function rtDay() { const d = new Date(Date.now() + 9 * 3600000); return d.toISOString().slice(0, 10); }      // 한국 날짜
+function rtKey(exam, n) { return 'rt_' + rtDay() + '_' + exam + '_' + n; }
+function rtCount(exam, n) { try { return parseInt(localStorage.getItem(rtKey(exam, n)) || '0', 10) || 0; } catch (e) { return 0; } }
+function rtAdd(exam, n) { try { localStorage.setItem(rtKey(exam, n), String(rtCount(exam, n) + 1)); } catch (e) {} return rtCount(exam, n); }
+function rtSet(exam, n, c) { try { localStorage.setItem(rtKey(exam, n), String(c)); } catch (e) {} }
+const RT_LOCK_MSG = '🔒 오늘 기회 2번을 다 썼어요. 해설을 보고 내일 다시 풀어 보세요';
+window.RT_TRIES = RT_TRIES; window.rtCount = rtCount; window.rtAdd = rtAdd; window.rtSet = rtSet; window.RT_LOCK_MSG = RT_LOCK_MSG;
+
 // 화면에 글자를 넣을 때 <, & 같은 문자가 깨지지 않게 바꿔준다 (모든 화면이 쓰는 공용 함수라 여기 둔다)
 
 // ── 문제은행 문항의 정답을 시험지 정답표에서 찾는 공용 도구 (조합 화면·문제은행 목록에서 같이 쓴다) ──

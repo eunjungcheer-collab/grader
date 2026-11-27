@@ -123,9 +123,9 @@ svg text{font-family:inherit;}
   <button data-t="wrong"><span class="ic">🔁</span>다시 풀기</button>
 </nav>
 
-<script src="js/config.js?v=202611272250"></script>
-<script src="js/api.js?v=202611272250"></script>
-<script src="js/common.js?v=202611272250"></script>
+<script src="js/config.js?v=202611272330"></script>
+<script src="js/api.js?v=202611272330"></script>
+<script src="js/common.js?v=202611272330"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -348,14 +348,17 @@ async function loadWrong(id) {
         (r.hidden ? '' : '<button type="button" class="btn sm outline wchk">정답 확인</button>') + '<div class="res"></div>' +
         (w.explFileId ? '<details style="margin-top:8px;"><summary style="font-weight:700;cursor:pointer;">해설 보기</summary><img loading="lazy" src="' + thumb(w.explFileId, 720) + '" style="margin-top:8px;"></details>' : '') + '</div></div>';
     }).join('');
+    const rvLock = q => { q.querySelectorAll('.opts button').forEach(b => { b.disabled = true; b.classList.remove('sel'); }); const wc0 = q.querySelector('.wchk'); if (wc0) wc0.disabled = true; q.querySelector('.res').innerHTML = '<span style="color:#7C6F57">' + RT_LOCK_MSG + '</span>'; const d0 = q.querySelector('details'); if (d0) d0.open = true; };
     body.querySelectorAll('.q').forEach(q => {
+      if (!r.hidden && rtCount('app:' + id, +q.dataset.n) >= RT_TRIES && q.dataset.st !== 'solved' && q.dataset.st !== 'mastered') rvLock(q);
       const mult = !/\//.test(q.dataset.c) && q.dataset.c.length > 1;
       q.querySelectorAll('.opts button').forEach(b => b.addEventListener('click', () => { if (!mult) q.querySelectorAll('.opts button').forEach(x => x.classList.remove('sel')); b.classList.toggle('sel', mult ? !b.classList.contains('sel') : true); }));
       const wc = q.querySelector('.wchk'); if (wc) wc.addEventListener('click', () => {
         const c = q.dataset.c, picked = Array.from(q.querySelectorAll('.opts button.sel')).map(b => b.dataset.v).sort().join('');
         if (!picked) { q.querySelector('.res').textContent = '먼저 답을 골라 주세요.'; return; }
         const ok = c.indexOf('/') >= 0 ? c.split('/').indexOf(picked) >= 0 : picked === c;
-        q.querySelectorAll('.opts button').forEach(b => { const isC = c.indexOf('/') >= 0 ? c.split('/').indexOf(b.dataset.v) >= 0 : c.indexOf(b.dataset.v) >= 0; b.classList.remove('sel'); if (isC) b.classList.add('good'); else if (picked.indexOf(b.dataset.v) >= 0) b.classList.add('bad'); });
+        // 틀려도 정답 번호는 보여 주지 않는다 (찍어서 맞히기 방지) — 맞혔을 때만 초록으로
+        q.querySelectorAll('.opts button').forEach(b => { b.classList.remove('sel'); if (ok && picked.indexOf(b.dataset.v) >= 0) b.classList.add('good'); else if (!ok && picked.indexOf(b.dataset.v) >= 0) b.classList.add('bad'); });
         const st0 = q.dataset.st || 'todo';
         if (ok) {
           if (st0 === 'todo') { markSolved(id, q); callApi('stuClear', { name: ME.name, pin: ME.pin, examId: id, n: +q.dataset.n, ok: true }).then(() => loadWeak()).catch(() => {}); }
@@ -365,7 +368,12 @@ async function loadWrong(id) {
           callApi('stuClear', { name: ME.name, pin: ME.pin, examId: id, n: +q.dataset.n, ok: false }).then(() => loadWeak()).catch(() => {});
           markFailed(id, q);
         }
-        q.querySelector('.res').innerHTML = ok ? '<span style="color:var(--ok)">⭕ 맞았어요!</span>' : '<span style="color:var(--red)">❌ 정답은 ' + esc(fmtAnswer(c)) + '번이에요.</span>';
+        if (ok) q.querySelector('.res').innerHTML = '<span style="color:var(--ok)">⭕ 맞았어요!</span>';
+        else {
+          const used = rtAdd('app:' + id, +q.dataset.n);
+          if (used >= RT_TRIES) rvLock(q);
+          else q.querySelector('.res').innerHTML = '<span style="color:var(--red)">❌ 아니에요. 해설을 보고 다시 생각해서 골라 보세요 (오늘 남은 기회 ' + (RT_TRIES - used) + '번)</span>';
+        }
       });
     });
   } catch (e) { body.innerHTML = '<div class="banner" style="margin-top:12px;">' + esc(e.message || '불러오지 못했어요') + '</div>'; }

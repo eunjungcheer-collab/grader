@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>틀린 문항 다시 풀기</title>
-<link rel="stylesheet" href="css/style.css?v=202611272250">
+<link rel="stylesheet" href="css/style.css?v=202611272330">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
@@ -23,9 +23,9 @@
 <template id="page-content">
   <div id="content-area" class="muted">불러오는 중...</div>
 </template>
-<script src="js/config.js?v=202611272250"></script>
-<script src="js/api.js?v=202611272250"></script>
-<script src="js/common.js?v=202611272250"></script>
+<script src="js/config.js?v=202611272330"></script>
+<script src="js/api.js?v=202611272330"></script>
+<script src="js/common.js?v=202611272330"></script>
 <script>
 renderHeader();
 const qs = new URLSearchParams(location.search), examId = qs.get('id');
@@ -44,30 +44,37 @@ async function init() {
     area.innerHTML = '<h1>🔁 ' + round + '차 · 틀린 문항 다시 풀기</h1><p class="muted"><b>' + escapeHtml(title) + '</b><br>오답노트에 있던 <b>' + list.length + '문항</b>만 다시 풀어요. 풀고 「확인하기」를 누르면 맞았는지 알려 줘요. 정답은 오답노트 맨 뒤 쪽에 있어요. <b>' + round + '차 점수는 문항마다 처음 고른 답으로 계산돼요</b> (틀린 뒤 다시 골라 맞혀도 점수는 처음 답 기준이에요).</p>' +
       '<div class="card"><label>이름</label><input type="text" id="nm" value="' + escapeHtml(nm) + '" autocomplete="off"><div id="grid" style="margin-top:14px;"></div><button type="button" class="btn primary" id="chk" style="width:100%;margin-top:14px;font-size:17px;padding:15px;">확인하기</button><div id="sum" class="hint" style="margin-top:10px;text-align:center;"></div></div>';
     const grid = document.getElementById('grid');
+    const lockRow = n => { state[n] = 'locked'; const row = document.getElementById('r' + n); row.classList.remove('ok'); row.classList.add('x'); row.querySelector('.verdict').innerHTML = '<span style="color:#7C6F57;">' + RT_LOCK_MSG + '</span>'; grid.querySelectorAll('.ans-btn[data-n="' + n + '"]').forEach(x => { x.disabled = true; x.classList.remove('selected'); }); };
     list.forEach(n => {
       const isM = multi.indexOf(n) >= 0, row = document.createElement('div'); row.className = 'qrow'; row.id = 'r' + n;
       row.innerHTML = '<span class="qnum">' + n + '</span><div class="ans-btns">' + [1, 2, 3, 4, 5].map(v => '<button type="button" class="ans-btn" data-n="' + n + '" data-v="' + v + '">' + v + '</button>').join('') + '</div>' + (isM ? '<span class="multi-note">복수 선택 — 정답을 모두 눌러요</span>' : '') + '<span class="verdict"></span>';
       grid.appendChild(row);
     });
+    if (!nm) list.forEach(n => { if (rtCount(examId, n) >= RT_TRIES) lockRow(n); });      // 이름이 있으면 서버가 잠금을 판단한다 (선생님이 풀어 줄 수 있게)
+    { const h = document.createElement('p'); h.className = 'hint'; h.style.margin = '8px 0 0'; h.textContent = '한 문항은 하루에 2번까지 고를 수 있어요. 2번 다 틀리면 해설을 보고 내일 다시 풀어요.'; grid.parentNode.insertBefore(h, grid); }
     grid.querySelectorAll('.ans-btn').forEach(b => b.addEventListener('click', () => {
-      const n = +b.dataset.n; if (state[n] === 'ok') return;
+      const n = +b.dataset.n; if (state[n] === 'ok' || state[n] === 'locked') return;
       const isM = multi.indexOf(n) >= 0;
       if (isM) b.classList.toggle('selected'); else { grid.querySelectorAll('.ans-btn[data-n="' + n + '"]').forEach(x => x.classList.remove('selected')); b.classList.add('selected'); }
       ans[n] = Array.from(grid.querySelectorAll('.ans-btn[data-n="' + n + '"].selected')).map(x => x.dataset.v).sort().join('');
       const row = document.getElementById('r' + n); row.classList.remove('x'); row.querySelector('.verdict').textContent = '';
     }));
     document.getElementById('chk').addEventListener('click', async () => {
-      const todo = list.filter(n => state[n] !== 'ok' && ans[n]);
+      const todo = list.filter(n => state[n] !== 'ok' && state[n] !== 'locked' && ans[n]);
       if (!todo.length) { document.getElementById('sum').textContent = '답을 먼저 골라 주세요.'; return; }
       const btn = document.getElementById('chk'); btn.disabled = true; btn.textContent = '확인 중...';
       try {
         const r2 = await callApi('retryCheck', { id: examId, round: round, studentName: document.getElementById('nm').value.trim(), answers: todo.map(n => ({ n: n, a: ans[n] })) });
         if (!r2.ok) throw new Error(r2.error);
         todo.forEach(n => {
-          const row = document.getElementById('r' + n), v = r2.results[n]; state[n] = v;
+          const row = document.getElementById('r' + n), v = r2.results[n], lf = r2.left && r2.left[n] !== undefined ? r2.left[n] : null;
+          if (v === 'locked') { rtSet(examId, n, RT_TRIES); lockRow(n); return; }
+          state[n] = v;
           row.classList.remove('ok', 'x'); row.classList.add(v === 'ok' ? 'ok' : 'x');
-          row.querySelector('.verdict').innerHTML = v === 'ok' ? '<span style="color:#1a7a4a;">⭕ 맞았어요!</span>' : '<span style="color:#C1392B;">❌ 틀렸어요. 해설을 보고 다시 골라 보세요.</span>';
-          if (v === 'ok') grid.querySelectorAll('.ans-btn[data-n="' + n + '"]').forEach(x => x.disabled = true);
+          if (v === 'ok') { row.querySelector('.verdict').innerHTML = '<span style="color:#1a7a4a;">⭕ 맞았어요!</span>'; grid.querySelectorAll('.ans-btn[data-n="' + n + '"]').forEach(x => x.disabled = true); return; }
+          const c = lf !== null ? RT_TRIES - lf : rtAdd(examId, n); if (lf !== null) rtSet(examId, n, c);
+          if (RT_TRIES - c <= 0) lockRow(n);
+          else row.querySelector('.verdict').innerHTML = '<span style="color:#C1392B;">❌ 틀렸어요. 해설을 보고 다시 생각해서 골라 보세요 (오늘 남은 기회 ' + (RT_TRIES - c) + '번)</span>';
         });
         const okN = list.filter(n => state[n] === 'ok').length;
         if (r2.score100 !== undefined) { let sb = document.getElementById('rscore'); if (!sb) { sb = document.createElement('div'); sb.id = 'rscore'; sb.style.cssText = 'margin-top:10px;padding:10px 12px;background:#EDE9FE;border:2px solid #7C3AED;border-radius:10px;font-weight:800;color:#5B21B6;'; document.getElementById('sum').parentNode.insertBefore(sb, document.getElementById('sum')); } sb.innerHTML = '🏅 ' + round + '차 점수: <span style="font-size:20px;">' + r2.score100 + '점</span> <span style="font-weight:500;font-size:12px;color:#475569;">(처음 고른 답 기준 · 1차에서 맞힌 ' + r2.roundScore.base + '개 + 다시 풀어 새로 맞힌 ' + r2.roundScore.gain + '개 = ' + (r2.roundScore.base + r2.roundScore.gain) + '/' + r2.roundScore.objective + ')</span>'; }

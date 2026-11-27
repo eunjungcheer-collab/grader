@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>데이터 관리 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611272250">
+<link rel="stylesheet" href="css/style.css?v=202611272330">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -44,6 +44,11 @@
       <div class="hint" id="rq-msg" style="margin-top:8px;"></div>
       <hr style="border:0;border-top:1px solid #ddd;margin:12px 0;">
       <button type="button" class="btn outline" id="rq-clear" style="font-size:13px;">이어붙인 것 전부 해제</button>
+      <hr style="border:0;border-top:1px solid #ddd;margin:12px 0;">
+      <b>🔓 다시 풀기 잠금 풀기</b>
+      <p class="hint" style="margin:6px 0 8px;">틀린 문제 다시 풀기는 한 문항에 하루 2번까지예요. 학생이 오늘 기회를 다 써서 잠겼는데 지금 다시 풀게 하고 싶을 때 이름을 넣고 누르세요. (QR로 푸는 다시 풀기 화면만 해당 · 학생 앱 오답 복습은 다음 날 자동으로 풀려요)</p>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;"><input type="text" id="rt-name" placeholder="학생 이름" style="flex:1; min-width:140px;"><button type="button" class="btn primary" id="rt-reset">오늘 잠금 풀기</button></div>
+      <div class="hint" id="rt-msg" style="margin-top:6px;"></div>
       <hr style="border:0;border-top:1px solid #ddd;margin:12px 0;">
       <b>🗂 「(삭제된 시험)」 기록을 지금 시험지로 옮기기</b>
       <p class="hint" style="margin:6px 0 8px;">위에서 후보가 안 나올 때(휴지통 30일이 지났거나 교재로 등록하지 않은 시험지) 쓰세요. 학생 기록이 남아 있는 삭제된 시험지를 보여 주고, <b>내가 고른 시험지</b>로 기록을 옮겨요. 옮기면 그 시험지의 정답으로 다시 채점되고, 오답노트·틀린 문제 다시 풀기가 돼요.</p>
@@ -104,10 +109,10 @@
     <div id="nm-msg" class="hint" style="margin-top:6px;"></div>
   </div>
 </template>
-<script src="js/config.js?v=202611272250"></script>
-<script src="js/api.js?v=202611272250"></script>
-<script src="js/common.js?v=202611272250"></script>
-<script src="js/pdfui.js?v=202611272250"></script>
+<script src="js/config.js?v=202611272330"></script>
+<script src="js/api.js?v=202611272330"></script>
+<script src="js/common.js?v=202611272330"></script>
+<script src="js/pdfui.js?v=202611272330"></script>
 <script>
 requireLogin();
 renderHeader({});
@@ -243,6 +248,12 @@ $('rq-find').addEventListener('click', async () => {
     });
   } catch (x) { m.textContent = '서버에 연결할 수 없어요. (서버를 새 버전으로 배포했는지 확인하세요)'; }
   b.disabled = false;
+});
+$('rt-reset').addEventListener('click', async () => {
+  const nm = $('rt-name').value.trim(), m = $('rt-msg'); if (!nm) { m.textContent = '학생 이름을 넣어 주세요.'; return; }
+  m.textContent = '푸는 중...';
+  try { const r = await callApi('resetRetryTries', { password: getTeacherPassword(), name: nm }); m.textContent = r.ok ? (r.removed ? '✅ ' + nm + ' 학생의 잠금 ' + r.removed + '개를 풀었어요. 다시 풀기 화면을 새로고침하면 다시 풀 수 있어요.' : nm + ' 학생은 오늘 잠긴 문항이 없어요.') : '⚠️ ' + (r.error || '실패했어요'); }
+  catch (x) { m.textContent = '서버에 연결할 수 없어요. (채점 앱 Apps Script를 새 버전으로 배포했는지 확인하세요)'; }
 });
 // 「(삭제된 시험)」 기록 → 고른 시험지로 옮기기
 let OR = null;
