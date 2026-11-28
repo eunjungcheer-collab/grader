@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>새 시험지 등록 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611280019">
+<link rel="stylesheet" href="css/style.css?v=202611280020">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -162,17 +162,17 @@
   </form>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611280019"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611280019"></script>
-<script src="js/printpdf.js?v=202611280019"></script>
-<script src="js/vendor/pdf.min.js?v=202611280019"></script>
-<script src="js/config.js?v=202611280019"></script>
-<script src="js/api.js?v=202611280019"></script>
-<script src="js/common.js?v=202611280019"></script>
-<script src="js/ocr.js?v=202611280019"></script>
-<script src="js/bankcore.js?v=202611280019"></script>
-<script src="js/pdfui.js?v=202611280019"></script>
-<script src="js/pdfview.js?v=202611280019"></script>
+<script src="js/vendor/qrcode.min.js?v=202611280020"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611280020"></script>
+<script src="js/printpdf.js?v=202611280020"></script>
+<script src="js/vendor/pdf.min.js?v=202611280020"></script>
+<script src="js/config.js?v=202611280020"></script>
+<script src="js/api.js?v=202611280020"></script>
+<script src="js/common.js?v=202611280020"></script>
+<script src="js/ocr.js?v=202611280020"></script>
+<script src="js/bankcore.js?v=202611280020"></script>
+<script src="js/pdfui.js?v=202611280020"></script>
+<script src="js/pdfview.js?v=202611280020"></script>
 <script>
 requireLogin();
 ensureToc();
@@ -1079,7 +1079,7 @@ async function openSavedReview(onlyIds) {
           if (!mine.length && Array.isArray(d.sourceQuestionIds) && d.sourceQuestionIds.length) { const ids = {}; d.sourceQuestionIds.forEach((id, i) => { ids[String(id)] = i + 1; }); mine = qs.filter(q => ids[String(q.id)]).map(q => Object.assign({}, q, { num: q.num > 0 ? q.num : ids[String(q.id)] })); }   // 문제은행에서 조합한 시험
           mine = mine.sort((a, b) => a.num - b.num);
           const bankIds = {}, qinfo = [], units = [], qthumb = {};
-          mine.forEach(q => { bankIds[q.num] = q.id; if (q.fileId) qthumb[q.num] = driveThumb(q.fileId, 500); qinfo.push({ n: q.num, unit: q.unit === '(단원 미지정)' ? '' : q.unit, grade: q.grade || '', sub: q.sub || '', head: q.head || 0 }); if (units.indexOf(q.unit) < 0) units.push(q.unit); });
+          mine.forEach(q => { bankIds[q.num] = q.id; if (q.fileId) qthumb[q.num] = driveThumb(q.fileId, 500); qinfo.push({ n: q.num, unit: q.unit === '(단원 미지정)' ? '' : q.unit, grade: q.grade || '', sub: q.sub || '', head: q.head || 0, text: String(q.textPreview || '').slice(0, 120) }); if (units.indexOf(q.unit) < 0) units.push(q.unit); });
           server.push({ title: d.title, id: d.id, answers: ans, units: units, unread: [], dash: ans.map((a, i) => a === '-' ? i + 1 : 0).filter(Boolean), dashImg: {}, pair: null, srv: true, essay: Array.isArray(e.essay) ? e.essay.filter(n => n > 0) : null, bankIds: bankIds, unreadImg: {}, qinfo: qinfo, tm: {}, qthumb: qthumb, at: e.createdAt });
         } catch (e2) {} } };
       await Promise.all([worker(), worker(), worker(), worker()]);
@@ -1649,10 +1649,11 @@ function showAutoReview(R) {
       let q = x.qinfo || [];
       const noBank = !q.length && x.answers && x.answers.length;       // 문제은행에 이 시험지 문항이 없으면 번호만이라도 보이게 한다
       if (noBank) q = x.answers.map((a, i) => ({ n: i + 1, unit: '', grade: '', sub: '' }));
+      const autoLk = (() => { try { return BankCore.linkHeads(q.filter(o => o.text).map(o => ({ num: o.n, text: o.text }))); } catch (e) { return {}; } })();
       const g0 = (q[0] && q[0].grade) || '';
       body.className = 'rv-ubody'; body.innerHTML = '<div class="hint" style="margin:0 0 6px; font-weight:700; color:#0F766E;">' + (x.pending ? '💾 단원·소단원은 고르면 바로 적용되고, 맨 아래 「OK — 이 시험지 등록」을 누를 때 시험지와 함께 저장돼요.' : '💾 단원·소단원은 고르는 즉시 자동 저장돼요 (저장 버튼을 누를 필요 없어요). 번호 옆에 ✅ 저장됨이 보이면 끝난 거예요.') + '</div><div class="qunit-row" style="flex-wrap:wrap;"><b>전체</b><select class="rv-allu" style="width:auto; max-width:100%;">' + unitSelectOptions(g0, '', '') + '</select><span class="sub-wrap"><select class="rv-alls" style="width:auto; max-width:100%;"></select></span><button type="button" class="btn outline rv-allbtn" style="padding:4px 10px;">이 시험지 전체에 적용</button><span class="hint rv-umsg" style="margin:0; position:sticky; top:0; background:#fff; font-weight:700;"></span></div>' +
         '<div class="qunit-row" style="flex-wrap:wrap;"><b>📏 구간</b><input type="number" class="rv-rf" min="1" placeholder="시작" style="width:64px;"> <span>번 ~</span> <input type="number" class="rv-rt" min="1" placeholder="끝" style="width:64px;"> <span>번</span><button type="button" class="btn outline rv-rangebtn" style="padding:4px 10px;">위에서 고른 단원·소단원을 이 구간에 적용</button></div><div class="hint rv-rsum" style="margin:2px 0 6px; font-weight:700;"></div>' +
-        q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b title="' + o.n + '번">' + numNameOf(x.answers, o.n, x.essay) + '</b>' + ((x.pending || (x.bankIds && x.bankIds[o.n])) ? '<span style="display:flex; flex-direction:column; gap:3px; align-items:flex-start;"><button type="button" class="btn outline rv-crop" data-n="' + o.n + '" style="padding:2px 8px; font-size:12px;">✂ 영역 조정</button><span class="hint" style="margin:0; font-size:11px;">' + (() => { try { const sq = x.fr.contentWindow.eval('scanned').questions.filter(z => z.num === o.n); if (!sq.length) return 'PDF에서 이 번호를 못 찾았어요'; return sq.map(z => 'PDF ' + z.page + '쪽 · ' + (z.rect[0] > 250 ? '오른쪽' : '왼쪽') + ' 단 · 위에서 ' + Math.round(z.rect[1] / 8.42) + '%').join(' / '); } catch (e) { return ''; } })() + '</span></span>' : '') + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" data-n="' + o.n + '" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span>' + (o.n > 1 ? '<label style="flex-basis:100%; font-size:13px; font-weight:700; color:#8A5A00; cursor:pointer; margin-top:2px;"><input type="checkbox" class="rv-lk" data-n="' + o.n + '"' + (o.head ? ' checked' : '') + ' style="width:auto; margin:0 5px 0 0; vertical-align:middle;">🔗 앞 문항의 그림·표를 같이 써요 (이 문항만 고르면 앞 문항도 같이 들어가요)</label>' : '') + '</div>').join('');
+        q.map(o => '<div class="qunit-row" style="flex-wrap:wrap; align-items:flex-start; border-top:1px solid var(--line); padding:6px 0;"><b title="' + o.n + '번">' + numNameOf(x.answers, o.n, x.essay) + '</b>' + ((x.pending || (x.bankIds && x.bankIds[o.n])) ? '<span style="display:flex; flex-direction:column; gap:3px; align-items:flex-start;"><button type="button" class="btn outline rv-crop" data-n="' + o.n + '" style="padding:2px 8px; font-size:12px;">✂ 영역 조정</button><span class="hint" style="margin:0; font-size:11px;">' + (() => { try { const sq = x.fr.contentWindow.eval('scanned').questions.filter(z => z.num === o.n); if (!sq.length) return 'PDF에서 이 번호를 못 찾았어요'; return sq.map(z => 'PDF ' + z.page + '쪽 · ' + (z.rect[0] > 250 ? '오른쪽' : '왼쪽') + ' 단 · 위에서 ' + Math.round(z.rect[1] / 8.42) + '%').join(' / '); } catch (e) { return ''; } })() + '</span></span>' : '') + (x.qthumb && x.qthumb[o.n] ? '<img class="rv-q" data-n="' + o.n + '" src="' + x.qthumb[o.n] + '" alt="' + o.n + '번 문제" style="width:min(300px,100%); border:1px solid var(--line); border-radius:6px; cursor:zoom-in;" onclick="this.style.width=this.style.width===\'100%\'?\'min(300px,100%)\':\'100%\'">' : '') + '<select class="rv-u" data-n="' + o.n + '" style="width:auto; max-width:100%;">' + unitSelectOptions(o.grade, o.unit, o.grade) + '</select><span class="sub-wrap"><select class="rv-s" data-n="' + o.n + '" style="width:auto; max-width:100%;"></select></span><span class="rv-st" data-n="' + o.n + '" style="font-size:12px; font-weight:700; margin-left:6px;"></span>' + (o.n > 1 ? (() => { const auto = !o.head && autoLk[o.n]; return '<label style="flex-basis:100%; font-size:13px; font-weight:700; color:#8A5A00; cursor:pointer; margin-top:2px;"><input type="checkbox" class="rv-lk" data-n="' + o.n + '" data-auto="' + (autoLk[o.n] ? 1 : 0) + '"' + ((o.head > 0 || auto) ? ' checked' : '') + ' style="width:auto; margin:0 5px 0 0; vertical-align:middle;">🔗 앞 문항의 그림·표를 같이 써요 <span class="lk-auto" style="font-weight:400;">' + (auto ? '(자동 인식됨)' : '') + '</span> (이 문항만 고르면 앞 문항도 같이 들어가요)</label>'; })() : '') + '</div>').join('');
       const allu = body.querySelector('.rv-allu'), alls = body.querySelector('.rv-alls'), umsg = body.querySelector('.rv-umsg');
       { const hd = document.createElement('div'); hd.className = 'rv-uhead'; hd.style.cssText = 'position:sticky; top:0; z-index:6; background:#fff; padding:6px 0 4px; border-bottom:2px solid var(--line); box-shadow:0 4px 6px -4px rgba(0,0,0,.15);';
         const kids = Array.from(body.children).slice(0, 4); body.insertBefore(hd, kids[0]); kids.forEach(k => hd.appendChild(k)); }       // 전체·구간 지정 줄을 맨 위에 고정해서, 아래로 내려가도 구간 버튼이 보이게 한다
@@ -1710,11 +1711,20 @@ function showAutoReview(R) {
         if (ss) { if (it.unit !== undefined) { try { w.refreshSubSelect(ss, w.tocEntryFor(it.grade || '', it.unit), it.sub || ''); } catch (e2) {} } if (it.sub !== undefined) ss.value = it.sub; }
       };
       body.querySelectorAll('.rv-crop').forEach(cb => cb.addEventListener('click', () => { const h = HK(); if (h) h.crop(+cb.dataset.n); }));
+      if (x.pending) (async () => {      // 등록 전 시험지: 글자를 읽어 자동 인식된 연결을 미리 체크해 보여 준다 (등록할 때도 같은 규칙으로 저장돼요)
+        try {
+          const w = x.fr && x.fr.contentWindow; if (!w) return;
+          const sc = w.eval('scanned'), doc = w.eval('pdfInfo').doc, items = [];
+          for (const q0 of sc.questions) items.push({ num: q0.num, text: await w.BankCore.textPreviewQ(doc, q0, 240) });
+          const hm = BankCore.linkHeads(items);
+          Object.keys(hm).forEach(k => { const c = body.querySelector('.rv-lk[data-n="' + k + '"]'); if (c && !c.checked) { c.checked = true; c.dataset.auto = '1'; const la = c.parentNode.querySelector('.lk-auto'); if (la) la.textContent = '(자동 인식됨)'; } });
+        } catch (e) {}
+      })();
       // 🔗 수동 연결: 앞 문항의 그림·표를 같이 쓰는 문항 표시 (자동 인식이 못 찾은 것을 직접 지정). 대표 = 앞 문항이 연결돼 있으면 그 대표, 아니면 앞 문항
       body.querySelectorAll('.rv-lk').forEach(cb => cb.addEventListener('change', async () => {
         const n = +cb.dataset.n, prev = body.querySelector('.rv-lk[data-n="' + (n - 1) + '"]');
         const rootOf = k => { let r = k - 1; while (r > 1) { const c = body.querySelector('.rv-lk[data-n="' + r + '"]'); if (c && c.checked) r--; else break; } return r; };
-        const head = cb.checked ? rootOf(n) : 0, st = body.querySelector('.rv-st[data-n="' + n + '"]');
+        const head = cb.checked ? rootOf(n) : (cb.dataset.auto === '1' ? -1 : 0), st = body.querySelector('.rv-st[data-n="' + n + '"]'), la = cb.parentNode.querySelector('.lk-auto'); if (la) la.textContent = '';
         if (x.pending) { const w = x.fr && x.fr.contentWindow; if (w) { w.__manualLinks = w.__manualLinks || {}; w.__manualLinks[n] = head; } if (st) { st.textContent = cb.checked ? '🔗 연결 적용됨' : ''; st.style.color = '#15803D'; } umsg.textContent = '✅ 적용했어요 (OK를 누를 때 함께 저장돼요)'; return; }
         const qid = x.bankIds && x.bankIds[n]; if (!qid) return;
         if (st) { st.textContent = '⏳ 저장 중'; st.style.color = '#B45309'; }
@@ -2236,7 +2246,7 @@ async function saveToBank(cls, source, onProgress, ranges) {
     });
   }
   { const hm = BankCore.linkHeads(picks.map(p => ({ num: p.num, text: p.textPreview }))); picks.forEach(p => { if (hm[p.num]) p.head = hm[p.num]; }); }   // 연관 문제 표시
-  { const ml = window.__manualLinks || {}; picks.forEach(p => { if (ml[p.num]) p.head = ml[p.num]; }); }      // 선생님이 직접 지정한 연결(등록 화면의 🔗 체크)이 자동 인식보다 우선
+  { const ml = window.__manualLinks || {}; picks.forEach(p => { if (ml[p.num] > 0) p.head = ml[p.num]; else if (ml[p.num] < 0) p.head = -1; }); }      // 선생님이 직접 지정한 연결(등록 화면의 🔗 체크)이 자동 인식보다 우선
   // 같은 PDF를 또 올렸을 때 중복 저장하지 않는다 (이미 문제은행에 있는 글자와 같은 문항은 뺀다)
   const keys = await existingPreviewKeys();
   const kept = picks.filter(p => !isDupPreview(p.textPreview, keys));

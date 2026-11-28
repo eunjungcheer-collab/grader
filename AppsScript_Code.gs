@@ -991,7 +991,7 @@ function actionSaveQuestions_(p) {
     jobs.forEach(function (j, k) { if (j.qi === i) { if (j.kind === 'q') fileId = ids[k]; else explId = ids[k]; } });
     rows.push([q.id, q.unit, normAns_(q.answer), q.source || '', q.textPreview || '', new Date().toISOString(), fileId, explId, q.difficulty || '', (q.diffScore === undefined || q.diffScore === null) ? '' : q.diffScore,
       q.numRect ? JSON.stringify(q.numRect) : '', q.explNumRect ? JSON.stringify(q.explNumRect) : '',
-      cleanText_(q.grade, 20), normKind_(q.kind), cleanText_(q.school, 80), normYear_(q.year), numOrBlank_(q.num), numOrBlank_(q.head), cleanText_(q.sub, 80), q.auto ? (Number(q.auto) || 1) : '']);
+      cleanText_(q.grade, 20), normKind_(q.kind), cleanText_(q.school, 80), normYear_(q.year), numOrBlank_(q.num), (Number(q.head) < 0 ? -1 : numOrBlank_(q.head)), cleanText_(q.sub, 80), q.auto ? (Number(q.auto) || 1) : '']);
   });
   let msLock = 0, msSheet = 0;
   if (rows.length) {
@@ -1137,7 +1137,7 @@ function actionSetQuestionHeads_(p) {
     const ids = sheet.getRange(2, 1, last - 1, 1).getValues(), rowOf = {};
     for (let i = 0; i < ids.length; i++) rowOf[String(ids[i][0])] = i + 2;
     let n = 0;
-    items.forEach(function (it) { const r = rowOf[String(it.id)]; if (!r) return; sheet.getRange(r, 18).setValue(numOrBlank_(it.head)); n++; });
+    items.forEach(function (it) { const r = rowOf[String(it.id)]; if (!r) return; sheet.getRange(r, 18).setValue(Number(it.head) < 0 ? -1 : numOrBlank_(it.head)); n++; });
     bustCache_();
     return { ok: true, updated: n };
   } finally { lock.releaseLock(); }
