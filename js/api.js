@@ -22,7 +22,7 @@ function _qcSet(q) {
 }
 function _qcClear() { _qcMem = null; try { localStorage.setItem('qbank_dirty', String(Date.now())); } catch (e) {} try { sessionStorage.removeItem(_QC_KEY); } catch (e) {} }
 window.clearQuestionCache = _qcClear;
-const _QC_WRITE_RE = /^(saveQuestions|updateQuestions?|deleteQuestions?|renameBook|linkBook|deleteExams?)$/;      // 문제은행 문항이 바뀔 수 있는 작업 뒤에는 저장해 둔 문항 목록을 버린다
+const _QC_WRITE_RE = /^(saveQuestions|setQuestionHeads|updateQuestions?|deleteQuestions?|renameBook|linkBook|deleteExams?)$/;      // 문제은행 문항이 바뀔 수 있는 작업 뒤에는 저장해 둔 문항 목록을 버린다
 
 // ── 미리 받아 두기: 홈 화면에서 자주 가는 화면의 목록을 조용히 받아 두면, 그 화면을 열 때 바로 쓴다 (2분 안, 쓰기 작업이 있으면 버림) ──
 const _PF_KEY = 'pf_v1', _PF_TTL = 120000, _PF_OK = /^(listExams|listAssignments|listSubmissions|retryLog|getRosters|listAlerts)$/;
@@ -80,7 +80,7 @@ window.newSubmitId = newSubmitId;
 window.submitWithRetry = submitWithRetry;
 
 // 저장이 끝나기 전에 창을 닫거나 다른 화면으로 나가면 방금 고른 값이 사라진다 → 저장 중인 요청이 있으면 나가기 전에 경고한다
-const _SAVE_GUARD_RE = /^(updateQuestions?|updateExamAnswers|updateExamTitle|saveQuestions|deleteQuestions?|deleteExams?|saveRedoUnits)$/;
+const _SAVE_GUARD_RE = /^(setQuestionHeads|updateQuestions?|updateExamAnswers|updateExamTitle|saveQuestions|deleteQuestions?|deleteExams?|saveRedoUnits)$/;
 window.__savePending = 0; window.__saveDirty = 0;
 // 저장 요청을 하나씩 기록한다: 진행 중인 것(너무 오래 멈춘 것은 제외)과 실패한 것. 「나갈까요?」 경고는 정말 저장 중이거나 실패한 게 있을 때만 뜬다
 const _pend = {}; let _pendId = 0; window.__saveFails = {};

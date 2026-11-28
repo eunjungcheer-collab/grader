@@ -142,6 +142,7 @@ function handle_(e) {
       case 'getPresets': result = actionGetPresets_(params); break;
       case 'setPresets': result = actionSetPresets_(params); break;
       case 'updateQuestions': result = actionUpdateQuestions_(params); break;
+      case 'setQuestionHeads': result = actionSetQuestionHeads_(params); break;
       case 'deleteQuestions': result = actionDeleteQuestions_(params); break;
       case 'updateExamAnswers': result = actionUpdateExamAnswers_(params); break;
       case 'replaceExamPdf': result = actionReplaceExamPdf_(params); break;
@@ -1126,6 +1127,21 @@ function actionAttachExplanation_(p) {
 // updates: [{id, unit?, answer?, difficulty?}, ...]
 // 문항 수가 아무리 많아도(수백~수천), 이 함수의 속도는 "이번에 바뀐 문항 수"에만 좌우되게 만든다.
 // 예전에는 정답 하나만 고쳐도 전체 시트를 통째로 다시 썼는데, 그러면 문항이 많아질수록 느려졌다.
+// 연관 문제(앞 문항의 그림·표를 같이 쓰는 문항) 수동 지정: items [{id, head}] — head는 대표(그림이 있는) 문항 번호, 0이면 해제
+function actionSetQuestionHeads_(p) {
+  if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
+  const items = p.items || []; if (!items.length) return { ok: true, updated: 0 };
+  const lock = LockService.getScriptLock(); lock.waitLock(55000);
+  try {
+    const sheet = questionsSheet_(), last = sheet.getLastRow(); if (last < 2) return { ok: true, updated: 0 };
+    const ids = sheet.getRange(2, 1, last - 1, 1).getValues(), rowOf = {};
+    for (let i = 0; i < ids.length; i++) rowOf[String(ids[i][0])] = i + 2;
+    let n = 0;
+    items.forEach(function (it) { const r = rowOf[String(it.id)]; if (!r) return; sheet.getRange(r, 18).setValue(numOrBlank_(it.head)); n++; });
+    bustCache_();
+    return { ok: true, updated: n };
+  } finally { lock.releaseLock(); }
+}
 function actionUpdateQuestions_(p) {
   if (!checkPassword_(p.password)) return { ok: false, error: '로그인이 필요해요.' };
   const updates = p.updates || [];
