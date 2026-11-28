@@ -500,17 +500,22 @@
         if (skipPages && skipPages.includes(idx + 1) || !out[idx] || !out[idx].length) return;
         const base = out[idx], cols = clusterColumns(base.slice());
         const colX = cols.map(cs => Math.min.apply(null, cs.map(sp => sp.x)));
+        // 한 그림에 문제가 여럿 딸린 쪽은 둘째 문제 번호("2.")가 첫 문제 번호("1.")보다 살짝 안쪽(8~18pt)에서 시작하는 경우가 있다.
+        // 이런 번호는 앞 문항 바로 다음 번호이고 그 줄의 맨 앞일 때만 되살린다 (본문 속 "2." 같은 글자와 구분)
+        const lineStart = (sp, cx) => !pd.items.some(o => o.x < sp.x - 2 && o.x >= cx - 12 && Math.abs(o.base - (sp.bottom - (sp.bottom - sp.top) * 0.2)) < 6 && o.str.trim() && !(o.top >= sp.bottom || o.bottom <= sp.top));
         const cand = numberSpans(pd).filter(sp => missing.has(sp.num) && !have.has(sp.num) && sp.size >= qSize * 0.6 && sp.size <= qSize * 1.5 && !tagNear(pd, sp) &&
-          colX.some(x => Math.abs(sp.x - x) <= 8)).sort((a, b) => a.top - b.top);
+          colX.some(x => sp.x >= x - 8 && sp.x <= x + 18)).sort((a, b) => a.top - b.top);
         cand.forEach(sp => {
           if (have.has(sp.num)) return;
-          const ci = colX.findIndex(x => Math.abs(sp.x - x) <= 8);
+          const ci = colX.findIndex(x => sp.x >= x - 8 && sp.x <= x + 18);
+          const wide = Math.abs(sp.x - colX[ci]) > 8;
           const same = base.filter(b => Math.abs(b.x - colX[ci]) <= 8).sort((a, b) => a.top - b.top);
           let prev = null, next = null;
           same.forEach(b => { if (b.top < sp.top - 2) prev = b; else if (b.top > sp.top + 2 && !next) next = b; });
           if (prev && sp.num <= prev.num) return;
           if (next && sp.num >= next.num) return;
           if (prev && sp.num - prev.num > 3) return;
+          if (wide && !(prev && sp.num === prev.num + 1 && lineStart(sp, colX[ci]))) return;
           base.push(sp); have.add(sp.num);
         });
         // 다시 읽는 순서(단 → 위에서 아래)로 정렬
@@ -3159,6 +3164,8 @@
   // 연관 문제 묶기: "위 실험을 바탕으로…"처럼 앞 문항의 자료를 이어 쓰는 문항, "[7~8]" 처럼 범위로 묶인 문항은
   // 앞 문항(대표)과 함께 출제돼야 한다. items: [{num, text}] → { 문항번호: 대표 문항 번호 } (묶인 문항만)
   const DEP_RE = /(위|앞|윗)\s*(의|에서의?)?\s*(실험|결과|과정|조건|사례|상황|자료)|윗글|위\s*글|위\s*(표|그래프|내용)(을|에서|를|와)|(이|위)\s*실험(을|에서)?\s*(바탕|토대)|앞\s*문제/;
+  // 문제가 "이 그래프에 대한 설명으로…", "위 그림은…", "이 표에서…"처럼 앞 문항의 그림·표를 가리키며 시작하면 앞 문항과 같이 나와야 풀 수 있다 (「다음 그림은…」은 자기 그림이라 제외)
+  const DEP_START_RE = /^[※*\s]*(이|위|앞|윗|그)\s*(그림|그래프|표|도표|자료|모형|장치|사진|지도|도형|실험|결과|과정)/;
   const RANGE_RE = /[\[(【]\s*(\d{1,2})\s*[~∼～\-–]\s*(\d{1,2})\s*(?:번)?\s*[\])】]|(\d{1,2})\s*[~∼～]\s*(\d{1,2})\s*번/g;
   function linkHeads(items) {
     const list = (items || []).slice().sort((a, b) => a.num - b.num), head = {}, byNum = {};
@@ -3174,7 +3181,7 @@
     list.forEach(q => {
       if (head[q.num] || !byNum[q.num - 1]) return;
       const body = String(q.text || '').replace(/^\s*\d{1,2}\s*[.)]?\s*/, '').slice(0, 60);
-      if (DEP_RE.test(body)) head[q.num] = head[q.num - 1] || q.num - 1;
+      if (DEP_RE.test(body) || DEP_START_RE.test(body)) head[q.num] = head[q.num - 1] || q.num - 1;
     });
     return head;
   }

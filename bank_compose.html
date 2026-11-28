@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611280015">
+<link rel="stylesheet" href="css/style.css?v=202611280017">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611280015"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611280015"></script>
-<script src="js/config.js?v=202611280015"></script>
-<script src="js/api.js?v=202611280015"></script>
-<script src="js/common.js?v=202611280015"></script>
-<script src="js/bankcore.js?v=202611280015"></script>
-<script src="js/vendor/pdf.min.js?v=202611280015"></script>
-<script src="js/printpdf.js?v=202611280015"></script>
-<script src="js/pdfui.js?v=202611280015"></script>
+<script src="js/vendor/qrcode.min.js?v=202611280017"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611280017"></script>
+<script src="js/config.js?v=202611280017"></script>
+<script src="js/api.js?v=202611280017"></script>
+<script src="js/common.js?v=202611280017"></script>
+<script src="js/bankcore.js?v=202611280017"></script>
+<script src="js/vendor/pdf.min.js?v=202611280017"></script>
+<script src="js/printpdf.js?v=202611280017"></script>
+<script src="js/pdfui.js?v=202611280017"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -599,17 +599,32 @@ let reviewPicks = [], reviewTitle = '', reviewRecipe = null;
 let finalDone = null;   // 이미 시험지로 등록한 결과 {key, pdfBase64, examId} — 같은 구성으로 다시 인쇄할 때 재등록하지 않고 그대로 쓴다
 // 연관 문제 함께 묶기: "위 실험을 바탕으로…" 처럼 앞 문항의 자료를 이어 쓰는 문항은 대표(앞) 문항과 같이 넣는다
 let groupNote = '';
-function expandGroups(picks) {
-  const bySrc = {};
-  allQuestions.forEach(q => { if (q.num) (bySrc[q.source] = bySrc[q.source] || []).push(q); });
-  const out = [], seen = new Set(); let added = 0;
-  // 저장된 연결 정보(head)가 없는 문항은 본문("위 실험을 바탕으로…", "[7~8]")을 보고 앞 문항과의 연결을 찾아 준다
+// 저장된 연결 정보(head)가 없는 문항은 본문("위 실험을 바탕으로…", "이 그래프에 대한…", "[7~8]")을 보고 앞 문항과의 연결을 찾아 준다
+function headOfFn(bySrc) {
   const autoHead = {};
   Object.keys(bySrc).forEach(src => {
     const hs = BankCore.linkHeads(bySrc[src].map(x => ({ num: x.num, text: x.textPreview || '' })));
     Object.keys(hs).forEach(n => { autoHead[src + '\u0001' + n] = hs[n]; });
   });
-  const headOf = x => x.head || autoHead[x.source + '\u0001' + x.num] || 0;
+  return x => x.head || autoHead[x.source + '\u0001' + x.num] || 0;
+}
+// 지금 고른 문항 중 「같이 나와야 풀 수 있는 앞 문항」이 빠져 있는 것: [{q(뒷 문항), root(빠진 앞 문항)}]
+function orphanLinks(picks) {
+  const bySrc = {}; allQuestions.forEach(q => { if (q.num) (bySrc[q.source] = bySrc[q.source] || []).push(q); });
+  const headOf = headOfFn(bySrc), out = [];
+  picks.forEach(q => {
+    if (!q.num) return;
+    const r = headOf(q); if (!r || r === q.num) return;
+    const root = (bySrc[q.source] || []).find(x => x.num === r);
+    if (root && !picks.some(p => p.id === root.id)) out.push({ q: q, root: root });
+  });
+  return out;
+}
+function expandGroups(picks) {
+  const bySrc = {};
+  allQuestions.forEach(q => { if (q.num) (bySrc[q.source] = bySrc[q.source] || []).push(q); });
+  const out = [], seen = new Set(); let added = 0;
+  const headOf = headOfFn(bySrc);
   picks.forEach(q => {
     if (seen.has(q.id)) return;
     const root = q.num ? (headOf(q) || q.num) : 0;
@@ -648,6 +663,7 @@ function renderReview() {
       <h2 style="margin-top:0;">검토: "${escapeHtml(reviewTitle)}" · 총 ${reviewPicks.length}문항${nSub ? ' (주관식 ' + nSub + ')' : ''}</h2>
       ${groupNote ? '<p class="hint" style="margin:0 0 8px;">🔗 ' + groupNote + '</p>' : ''}
       <div id="unit-audit"></div>
+      <div id="orphan-box"></div>
       <p class="hint">빼고 싶은 문항은 "빼기"를 누르세요. 더 넣고 싶으면 아래에서 검색해서 추가하세요.</p>
       <div id="review-list"></div>
       <div style="margin-top:12px;">
@@ -693,8 +709,19 @@ function renderUnitAudit() {
   box.innerHTML = '<div class="banner" style="text-align:left;margin:0 0 10px;"><b>⚠️ 선택한 단원(' + Array.from(selNums).sort((a, b) => a - b).join(', ') + '단원) 밖의 문항이 ' + outside.length + '개 섞여 있어요</b><div class="hint" style="margin:4px 0 6px;">' + Object.keys(cnt).map(k => escapeHtml(k) + ' ' + cnt[k] + '개').join(' · ') + '</div><button type="button" class="btn danger" id="audit-rm" style="padding:6px 14px;">이 ' + outside.length + '개 빼기</button> <span class="hint">(빼면 시험지 제목의 단원 표시도 다시 맞춰져요)</span></div>';
   $('audit-rm').onclick = () => { const gone = new Set(outside.map(q => q.id)); reviewPicks = reviewPicks.filter(q => !gone.has(q.id)); reviewTitle = titleWithUnits(reviewTitle, reviewPicks); renderReview(); };
 }
+function renderOrphans() {
+  const box = $('orphan-box'); if (!box) return;
+  const o = orphanLinks(reviewPicks);
+  if (!o.length) { box.innerHTML = ''; return; }
+  const nm = x => (x.source ? String(x.source).slice(0, 14) + ' ' : '') + x.num + '번';
+  box.innerHTML = '<div class="banner" style="text-align:left;margin:0 0 10px;background:#FDECEA;border:2px solid #C1392B;color:#7A1F14;"><b>⚠️ 그림·표가 빠진 문항이 ' + o.length + '개 있어요</b><div class="hint" style="margin:4px 0 6px;color:#7A1F14;">' +
+    o.slice(0, 6).map(x => escapeHtml(nm(x.q)) + ' ← ' + escapeHtml(nm(x.root)) + '의 그림·표를 같이 써요').join('<br>') + (o.length > 6 ? '<br>… 외 ' + (o.length - 6) + '개' : '') +
+    '<br>같이 넣지 않으면 학생이 그림 없이 풀어야 해요.</div><button type="button" class="btn primary" id="orphan-fix" style="padding:8px 14px;">🔗 앞 문항 함께 넣기</button></div>';
+  $('orphan-fix').onclick = () => { reviewPicks = expandGroups(reviewPicks); renderReview(); };
+}
 function renderReviewList() {
   try { renderUnitAudit(); } catch (e) {}
+  try { renderOrphans(); } catch (e) {}
   $('review-list').innerHTML = reviewPicks.map((q, i) => `
     <div class="review-row" data-i="${i}">
       <div class="review-row-top">
@@ -735,7 +762,7 @@ function renderAddResults() {
   box.querySelectorAll('.review-thumb').forEach(im => im.addEventListener('click', (e) => { e.stopPropagation(); zoomImg(im.src.replace(/=w\d+$/, '=w1600')); }));
   box.querySelectorAll('.add-btn').forEach(b => b.addEventListener('click', () => {
     const item = all.find(x => x.id === b.dataset.id);
-    if (item) { reviewPicks.push(item); renderReview(); $('add-search').focus(); }
+    if (item) { reviewPicks.push(item); reviewPicks = expandGroups(reviewPicks); renderReview(); $('add-search').focus(); }
   }));
 }
 
@@ -791,6 +818,7 @@ async function buildTeacherBytes(title, picks, slots, items, map) {
 // 강사용 시험지: 문제 바로 밑에 정답(빨간 글씨)·해설이 붙고 객관식 정답 번호에 빨간 동그라미를 친 PDF. 버튼을 눌렀을 때만 만들고, 등록은 하지 않는다.
 async function makeTeacher(doPrint) {
   const err = $('error-banner'); err.innerHTML = '';
+  { const o = orphanLinks(reviewPicks); if (o.length && !confirm('그림·표를 같이 써야 하는 앞 문항이 빠진 문항이 ' + o.length + '개 있어요. 그래도 이대로 만들까요?')) return; }
   const picks = reviewPicks, title = reviewTitle;
   if (!picks.length) return;
   showSpinner('문항 이미지 불러오는 중...');
@@ -861,6 +889,7 @@ async function getImgs(ids) {
 async function finalize(printAfter) {
   const err = $('error-banner');
   err.innerHTML = '';
+  { const o = orphanLinks(reviewPicks); if (o.length && !confirm('그림·표를 같이 써야 하는 앞 문항이 빠진 문항이 ' + o.length + '개 있어요.\n(학생이 그림 없이 풀어야 해요)\n\n[취소]를 누르고 「앞 문항 함께 넣기」를 누르는 것을 권해요. 그래도 이대로 만들까요?')) return; }
   const picks = reviewPicks, title = reviewTitle, recipe = reviewRecipe;
   const dkey = title + '|' + picks.map(q => q.id).join(',');
   if (finalDone && finalDone.key === dkey) {       // 같은 구성은 이미 등록됨 → 새로 등록하지 않는다
