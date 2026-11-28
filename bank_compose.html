@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0B1F5C">
 <title>시험 조합 - 자동 채점 시스템</title>
-<link rel="stylesheet" href="css/style.css?v=202611280020">
+<link rel="stylesheet" href="css/style.css?v=202611280021">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -20,15 +20,15 @@
   <div id="content" class="muted">불러오는 중...</div>
 </template>
 
-<script src="js/vendor/qrcode.min.js?v=202611280020"></script>
-<script src="js/vendor/pdf-lib.min.js?v=202611280020"></script>
-<script src="js/config.js?v=202611280020"></script>
-<script src="js/api.js?v=202611280020"></script>
-<script src="js/common.js?v=202611280020"></script>
-<script src="js/bankcore.js?v=202611280020"></script>
-<script src="js/vendor/pdf.min.js?v=202611280020"></script>
-<script src="js/printpdf.js?v=202611280020"></script>
-<script src="js/pdfui.js?v=202611280020"></script>
+<script src="js/vendor/qrcode.min.js?v=202611280021"></script>
+<script src="js/vendor/pdf-lib.min.js?v=202611280021"></script>
+<script src="js/config.js?v=202611280021"></script>
+<script src="js/api.js?v=202611280021"></script>
+<script src="js/common.js?v=202611280021"></script>
+<script src="js/bankcore.js?v=202611280021"></script>
+<script src="js/vendor/pdf.min.js?v=202611280021"></script>
+<script src="js/printpdf.js?v=202611280021"></script>
+<script src="js/pdfui.js?v=202611280021"></script>
 <script>
 requireLogin();
 renderHeader();
@@ -606,7 +606,9 @@ function headOfFn(bySrc) {
     const hs = BankCore.linkHeads(bySrc[src].map(x => ({ num: x.num, text: x.textPreview || '' })));
     Object.keys(hs).forEach(n => { autoHead[src + '\u0001' + n] = hs[n]; });
   });
-  return x => x.head > 0 ? x.head : (x.head < 0 ? 0 : (autoHead[x.source + '\u0001' + x.num] || 0));      // head -1 = 선생님이 「연결 아님」으로 지정
+  const base = x => x.head > 0 ? x.head : (x.head < 0 ? 0 : (autoHead[x.source + '\u0001' + x.num] || 0));      // head -1 = 선생님이 「연결 아님」으로 지정
+  // 연결이 이어져 있으면(24→23→22) 맨 앞 대표(22)까지 따라간다: 23번만 연결돼 있어도 22번 그림이 같이 들어오게
+  return x => { let h = base(x), g = 0; while (h && g++ < 6) { const r = (bySrc[x.source] || []).find(z => z.num === h); const h2 = r ? base(r) : 0; if (h2 && h2 < h) h = h2; else break; } return h; };
 }
 // 지금 고른 문항 중 「같이 나와야 풀 수 있는 앞 문항」이 빠져 있는 것: [{q(뒷 문항), root(빠진 앞 문항)}]
 function orphanLinks(picks) {
